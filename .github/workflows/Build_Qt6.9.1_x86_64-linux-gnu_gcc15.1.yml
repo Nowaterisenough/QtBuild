@@ -1,4 +1,4 @@
-name: build_Qt6.9.1_GCC15
+name: Build_Qt6.9.1_x86_64-linux-gnu_gcc15.1
 
 on: workflow_dispatch
 #on: [push, pull_request]
@@ -37,28 +37,34 @@ jobs:
         sudo apt-get install -y libxext-dev libxfixes-dev libxi-dev libxrender-dev
         sudo apt-get install -y libssl-dev libdbus-1-dev libasound2-dev
 
-    # 安装 GCC 15
+    # 安装 GCC 15（从预编译包）
     - name: Setup GCC 15
       run: |
         cd ..  # Directory: /home/runner/work/QtBuild
-        wget https://github.com/gcc-mirror/gcc/archive/releases/gcc-15.1.0.tar.gz
-        tar -xzf gcc-15.1.0.tar.gz
-        cd gcc-releases-gcc-15.1.0
-        ./contrib/download_prerequisites
-        mkdir build && cd build
-        ../configure --prefix=/home/runner/work/QtBuild/gcc15 --enable-languages=c,c++ --disable-multilib
-        make -j$(nproc)
-        make install
+        
+        # 下载预编译的 GCC 15.1.0
+        wget https://github.com/brechtsanders/winlibs_mingw/releases/download/15.1.0posix-18.1.8-12.0.0-ucrt-r1/gcc-15.1.0-linux-x86_64.tar.xz
+        
+        # 如果上面的链接不可用，使用备用方案：添加测试仓库
+        if [ ! -f gcc-15.1.0-linux-x86_64.tar.xz ]; then
+          # 添加 Ubuntu 测试仓库来获取更新的 GCC
+          sudo add-apt-repository ppa:ubuntu-toolchain-r/test -y
+          sudo apt-get update
+          sudo apt-get install -y gcc-15 g++-15
+          
+          # 创建符号链接
+          sudo mkdir -p /home/runner/work/QtBuild/gcc15/bin
+          sudo ln -sf /usr/bin/gcc-15 /home/runner/work/QtBuild/gcc15/bin/gcc
+          sudo ln -sf /usr/bin/g++-15 /home/runner/work/QtBuild/gcc15/bin/g++
+        else
+          # 解压预编译的 GCC
+          tar -xf gcc-15.1.0-linux-x86_64.tar.xz
+          mv gcc-15.1.0 gcc15
+        fi
 
     # 构建Qt
     - name: Build Qt
       run: |
-        # ls     # Directory: /home/runner/work/QtBuild/QtBuild(即仓库目录)
-        # /home/runner/work/QtBuild                                上级目录，这里当做根目录
-        # /home/runner/work/QtBuild/Qt                             Qt目录
-        # /home/runner/work/QtBuild/Qt/${{env.QT_VERSION}}         Qt目录源代码和build文件夹存放目录
-        # /home/runner/work/QtBuild/Qt/${{env.QT_VERSION}}-static  Qt安装目录
-        
         # 创建文件夹
         cd ..  # Directory: /home/runner/work/QtBuild
         mkdir -p Qt
@@ -73,7 +79,7 @@ jobs:
         tar -xf qt-everywhere-src.tar.xz -C ./${{env.QT_VERSION}}
 
         # 调用编译脚本
-        bash "/home/runner/work/QtBuild/QtBuild/Qt6Build/build-Qt6gcc15.sh"
+        bash "/home/runner/work/QtBuild/QtBuild/Qt6Build/Build_Qt6.9.1_x86_64-linux-gnu_gcc15.1.sh"
 
     # 打包
     - name: Package binaries
