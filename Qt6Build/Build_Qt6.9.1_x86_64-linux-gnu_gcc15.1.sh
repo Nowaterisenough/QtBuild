@@ -12,23 +12,9 @@ QT_VERSION=6.9.1
 # 设置GCC版本代号
 GCC_VERSION=gcc15_64
 
-# 检查 GCC 15 安装路径并设置环境变量
-if [ -d "/home/runner/work/QtBuild/gcc15/bin" ]; then
-    # 使用下载的预编译 GCC
-    export PATH="/home/runner/work/QtBuild/gcc15/bin:$PATH"
-    export CC="/home/runner/work/QtBuild/gcc15/bin/gcc"
-    export CXX="/home/runner/work/QtBuild/gcc15/bin/g++"
-    export LD_LIBRARY_PATH="/home/runner/work/QtBuild/gcc15/lib64:$LD_LIBRARY_PATH"
-elif command -v gcc-15 >/dev/null 2>&1; then
-    # 使用系统安装的 GCC 15
-    export CC="gcc-15"
-    export CXX="g++-15"
-else
-    # 回退到系统默认 GCC
-    echo "Warning: GCC 15 not found, using system default GCC"
-    export CC="gcc"
-    export CXX="g++"
-fi
+# 设置编译器（使用系统安装的 GCC 15）
+export CC="gcc-15"
+export CXX="g++-15"
 
 # 设置Qt文件夹路径
 QT_PATH="/home/runner/work/QtBuild/Qt"
