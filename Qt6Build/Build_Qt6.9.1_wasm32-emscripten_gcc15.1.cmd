@@ -8,7 +8,7 @@ SET QT_VERSION=6.9.1
 SET WASM_VERSION=wasm32_emscripten
 
 :: 设置Emscripten版本
-SET EMSCRIPTEN_VERSION=3.1.56
+SET EMSCRIPTEN_VERSION=3.1.70
 
 :: 设置Emscripten SDK路径并激活环境
 SET EMSDK_ROOT=D:\a\QtBuild\emsdk
