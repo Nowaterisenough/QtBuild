@@ -1,4 +1,4 @@
-name: build_Qt6.9.1_MinGW64
+name: Build_Qt6.9.1_x86_64-windows-mingw_gcc15.1
 
 on: workflow_dispatch
 #on: [push, pull_request]
@@ -42,12 +42,6 @@ jobs:
     # 构建Qt
     - name: Build Qt
       run: |
-        #ls     #Directory: D:\a\QtBuild\QtBuild(即仓库目录)
-        #D:\a\QtBuild                                上级目录，这里当做根目录
-        #D:\a\QtBuild\Qt                             Qt目录
-        #D:\a\QtBuild\Qt\${{env.QT_VERSION}}         Qt目录源代码和build文件夹存放目录
-        #D:\a\QtBuild\Qt\${{env.QT_VERSION}}-static  Qt安装目录
-        
         # 创建文件夹
         cd ..  #Directory: D:\a\QtBuild
         mkdir -p Qt
@@ -62,12 +56,11 @@ jobs:
         unzip -q qt-everywhere-src.zip -d ./${{env.QT_VERSION}}
 
         # 调用编译脚本
-        cmd.exe /c "call `"D:\a\QtBuild\QtBuild\Qt6Build\build-Qt6mingw64.cmd`""
+        cmd.exe /c "call `"D:\a\QtBuild\QtBuild\Qt6Build\Build_Qt6.9.1_x86_64-windows-mingw_gcc15.1.cmd`""
 
     # 打包
     - name: Package binaries
       run: |
-        #ls     #Directory: D:\a\QtBuild\QtBuild(即仓库目录)
         7z a Qt_${{env.QT_VERSION}}-${{env.FILE_NAME}}.7z ../Qt/${{env.QT_VERSION}}-static -mx=9
 
     # 上传

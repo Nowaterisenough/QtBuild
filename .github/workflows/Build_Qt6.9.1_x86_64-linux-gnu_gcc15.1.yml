@@ -40,7 +40,16 @@ jobs:
     # 安装 GCC 15
     - name: Setup GCC 15
       run: |
+        # 添加Ubuntu工具链PPA
+        sudo add-apt-repository ppa:ubuntu-toolchain-r/test -y
+        sudo apt-get update
+        
+        # 安装GCC 15
         sudo apt-get install -y gcc-15 g++-15
+        
+        # 验证安装
+        gcc-15 --version
+        g++-15 --version
 
     # 构建Qt
     - name: Build Qt
