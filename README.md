@@ -18,6 +18,8 @@
 
 ## 支持的构建配置
 
+> 构建选项参考：[Qt 6.9 Tools and Versions](https://wiki.qt.io/Qt_6.9_Tools_and_Versions)
+
 ### Qt 6.9.1 x64
 
 | 编译器 | 版本 | 状态 | 下载链接 |

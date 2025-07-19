@@ -39,9 +39,13 @@ mkdir "%BUILD_DIR%" && cd /d "%BUILD_DIR%"
 call %SRC_QT%\configure.bat ^
     -shared ^
     -release ^
+    -force-debug-info ^
+    -separate-debug-info ^
     -prefix %INSTALL_DIR% ^
     -nomake examples ^
     -nomake tests ^
+    -c++std c++20 ^
+    -headersclean ^
     -skip qtwebengine ^
     -opensource ^
     -confirm-license ^
@@ -52,12 +56,7 @@ call %SRC_QT%\configure.bat ^
     -qt-freetype ^
     -schannel ^
     -platform win32-g++ ^
-    -opengl desktop ^
-    -feature-accessibility ^
-    -feature-fontconfig ^
-    -feature-harfbuzz ^
-    -feature-style-windows ^
-    -feature-style-windowsvista
+    -opengl desktop
 
 :: 检查configure是否成功
 if %errorlevel% neq 0 (

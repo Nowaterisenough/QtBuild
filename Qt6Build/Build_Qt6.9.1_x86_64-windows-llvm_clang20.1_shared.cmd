@@ -4,11 +4,11 @@
 :: 设置Qt版本
 SET QT_VERSION=6.9.1
 
-:: 设置MSVC版本代号
-SET MSVC_VERSION=msvc2022_64
+:: 设置LLVM-MinGW版本代号
+SET LLVM_MinGW_VERSION=llvm-mingw20.1.6_64_UCRT
 
-:: 设置MSVC2022环境
-CALL "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" amd64
+:: 设置编译器和Ninja
+SET PATH=D:\a\QtBuild\llvm-mingw-20250528-ucrt-x86_64\bin;D:\a\QtBuild\ninja;%PATH%
 
 :: 设置Qt文件夹路径
 SET QT_PATH=D:\a\QtBuild\Qt
@@ -19,14 +19,15 @@ SET QT_PATH=D:\a\QtBuild\Qt
 SET SRC_QT="%QT_PATH%\%QT_VERSION%\qt-everywhere-src-%QT_VERSION%"
 
 :: 设置安装文件夹目录
-SET INSTALL_DIR="%QT_PATH%\%QT_VERSION%-static\%MSVC_VERSION%"
+SET INSTALL_DIR="%QT_PATH%\%QT_VERSION%-shared\%LLVM_MinGW_VERSION%"
 
 :: 设置build文件夹目录
-SET BUILD_DIR="%QT_PATH%\%QT_VERSION%\build-%MSVC_VERSION%"
+SET BUILD_DIR="%QT_PATH%\%QT_VERSION%\build-shared-%LLVM_MinGW_VERSION%"
 
 :: 显示编译器版本信息
 echo Using compiler:
-cl
+clang --version
+clang++ --version
 echo.
 
 :: 根据需要进行全新构建
@@ -34,10 +35,9 @@ rmdir /s /q "%BUILD_DIR%" 2>nul
 :: 定位到构建目录：
 mkdir "%BUILD_DIR%" && cd /d "%BUILD_DIR%"
 
-:: configure
+:: configure for shared build
 call %SRC_QT%\configure.bat ^
-    -static ^
-    -platform win32-msvc ^
+    -shared ^
     -release ^
     -force-debug-info ^
     -separate-debug-info ^
@@ -85,6 +85,17 @@ if %errorlevel% neq 0 (
 
 :: 复制qt.conf
 copy %~dp0\qt.conf %INSTALL_DIR%\bin
+
+:: 复制LLVM-MinGW运行时库到bin目录
+echo Copying LLVM-MinGW runtime libraries...
+copy D:\a\QtBuild\llvm-mingw-20250528-ucrt-x86_64\bin\libc++.dll %INSTALL_DIR%\bin\ 2>nul
+copy D:\a\QtBuild\llvm-mingw-20250528-ucrt-x86_64\bin\libunwind.dll %INSTALL_DIR%\bin\ 2>nul
+copy D:\a\QtBuild\llvm-mingw-20250528-ucrt-x86_64\bin\libwinpthread-1.dll %INSTALL_DIR%\bin\ 2>nul
+
+:: 列出生成的动态库
+echo.
+echo Generated Qt libraries:
+dir /b %INSTALL_DIR%\bin\Qt6*.dll
 
 echo Build completed successfully!
 echo Installation directory: %INSTALL_DIR%

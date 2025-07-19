@@ -1,4 +1,4 @@
-name: Build_Qt6.9.1_x86_64-linux-gnu_gcc15.1_static
+name: Build_Qt6.9.1_x86_64-linux-gnu_gcc15.1_shared
 
 on: workflow_dispatch
 #on: [push, pull_request]
@@ -6,11 +6,11 @@ on: workflow_dispatch
 env:
   QT_VERSION: 6.9.1
   QT_VERSION2: 6.9
-  FILE_NAME: static-Release_gcc15_64
+  FILE_NAME: shared-Release_gcc15_64
   GCC_VERSION: 15.1.0
 
 jobs:
-  ubuntu_gcc15_static_release:
+  ubuntu_gcc15_shared_release:
     runs-on: ubuntu-24.04
 
     steps:
@@ -104,19 +104,19 @@ jobs:
         # 创建文件夹
         cd Qt   # Directory: /home/runner/work/QtBuild/Qt
         mkdir -p ${{env.QT_VERSION}}
-        mkdir -p ${{env.QT_VERSION}}-static
+        mkdir -p ${{env.QT_VERSION}}-shared
 
         # 下载源代码并解压，源代码目录/home/runner/work/QtBuild/Qt/${{env.QT_VERSION}}/XXX
         curl -L -o qt-everywhere-src.tar.xz https://download.qt.io/official_releases/qt/${{env.QT_VERSION2}}/${{env.QT_VERSION}}/single/qt-everywhere-src-${{env.QT_VERSION}}.tar.xz
         tar -xf qt-everywhere-src.tar.xz -C ./${{env.QT_VERSION}}
 
         # 调用编译脚本
-        bash "/home/runner/work/QtBuild/QtBuild/Qt6Build/Build_Qt6.9.1_x86_64-linux-gnu_gcc15.1_static.sh"
+        bash "/home/runner/work/QtBuild/QtBuild/Qt6Build/Build_Qt6.9.1_x86_64-linux-gnu_gcc15.1_shared.sh"
 
     # 打包
     - name: Package binaries
       run: |
-        7z a Qt_${{env.QT_VERSION}}-${{env.FILE_NAME}}.7z ../Qt/${{env.QT_VERSION}}-static -mx=9
+        7z a Qt_${{env.QT_VERSION}}-${{env.FILE_NAME}}.7z ../Qt/${{env.QT_VERSION}}-shared -mx=9
 
     # 上传
     - uses: actions/upload-artifact@v4

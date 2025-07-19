@@ -30,7 +30,28 @@ rmdir /s /q "%BUILD_DIR%"
 mkdir "%BUILD_DIR%" && cd /d "%BUILD_DIR%"
 
 :: configure
-call %SRC_QT%\configure.bat -static -static-runtime -release -prefix %INSTALL_DIR% -nomake examples -nomake tests -skip qtwebengine -opensource -confirm-license -qt-libpng -qt-libjpeg -qt-zlib -qt-pcre -qt-freetype -schannel -platform win32-g++
+call %SRC_QT%\configure.bat ^
+    -static ^
+    -static-runtime ^
+    -release ^
+    -force-debug-info ^
+    -separate-debug-info ^
+    -prefix %INSTALL_DIR% ^
+    -nomake examples ^
+    -nomake tests ^
+    -c++std c++20 ^
+    -headersclean ^
+    -skip qtwebengine ^
+    -opensource ^
+    -confirm-license ^
+    -qt-libpng ^
+    -qt-libjpeg ^
+    -qt-zlib ^
+    -qt-pcre ^
+    -qt-freetype ^
+    -schannel ^
+    -platform win32-g++ ^
+    -opengl desktop
 
 :: 编译(不要忘记点)
 cmake --build . --parallel

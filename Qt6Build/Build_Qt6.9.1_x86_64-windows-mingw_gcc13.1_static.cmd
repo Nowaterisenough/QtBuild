@@ -40,9 +40,13 @@ call %SRC_QT%\configure.bat ^
     -static ^
     -static-runtime ^
     -release ^
+    -force-debug-info ^
+    -separate-debug-info ^
     -prefix %INSTALL_DIR% ^
     -nomake examples ^
     -nomake tests ^
+    -c++std c++20 ^
+    -headersclean ^
     -skip qtwebengine ^
     -opensource ^
     -confirm-license ^
@@ -52,7 +56,8 @@ call %SRC_QT%\configure.bat ^
     -qt-pcre ^
     -qt-freetype ^
     -schannel ^
-    -platform win32-g++
+    -platform win32-g++ ^
+    -opengl desktop
 
 :: 检查configure是否成功
 if %errorlevel% neq 0 (

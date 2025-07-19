@@ -26,10 +26,10 @@ QT_PATH="/home/runner/work/QtBuild/Qt"
 SRC_QT="$QT_PATH/$QT_VERSION/qt-everywhere-src-$QT_VERSION"
 
 # 设置安装文件夹目录
-INSTALL_DIR="$QT_PATH/$QT_VERSION-static/$GCC_VERSION"
+INSTALL_DIR="$QT_PATH/$QT_VERSION-shared/$GCC_VERSION"
 
 # 设置build文件夹目录
-BUILD_DIR="$QT_PATH/$QT_VERSION/build-$GCC_VERSION"
+BUILD_DIR="$QT_PATH/$QT_VERSION/build-shared-$GCC_VERSION"
 
 # 显示编译器版本信息
 echo "Using compiler:"
@@ -48,8 +48,7 @@ mkdir -p "$BUILD_DIR" && cd "$BUILD_DIR"
 # 检查configure是否成功
 configure_qt() {
     "$SRC_QT/configure" \
-        -static \
-        -static-runtime \
+        -shared \
         -release \
         -prefix "$INSTALL_DIR" \
         -nomake examples \
@@ -64,7 +63,13 @@ configure_qt() {
         -qt-freetype \
         -openssl-linked \
         -xcb \
-        -platform linux-g++
+        -platform linux-g++ \
+        -opengl desktop \
+        -feature-accessibility \
+        -feature-fontconfig \
+        -feature-harfbuzz \
+        -feature-dbus \
+        -feature-glib
 }
 
 # configure
@@ -91,8 +96,34 @@ fi
 # 复制qt.conf
 cp "$SCRIPT_DIR/qt.conf" "$INSTALL_DIR/bin/"
 
+# 复制GCC运行时库到lib目录
+echo "Copying GCC runtime libraries..."
+mkdir -p "$INSTALL_DIR/lib"
+cp "$GCC_PREFIX/lib64/libstdc++.so.6" "$INSTALL_DIR/lib/" 2>/dev/null || true
+cp "$GCC_PREFIX/lib64/libgcc_s.so.1" "$INSTALL_DIR/lib/" 2>/dev/null || true
+
+# 创建库路径设置脚本
+cat > "$INSTALL_DIR/setup_env.sh" << 'EOF'
+#!/bin/bash
+# 设置Qt环境变量
+QTDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export PATH="$QTDIR/bin:$PATH"
+export LD_LIBRARY_PATH="$QTDIR/lib:$LD_LIBRARY_PATH"
+export QT_PLUGIN_PATH="$QTDIR/plugins"
+export QML_IMPORT_PATH="$QTDIR/qml"
+echo "Qt environment set up for: $QTDIR"
+EOF
+
+chmod +x "$INSTALL_DIR/setup_env.sh"
+
+# 列出生成的动态库
+echo ""
+echo "Generated Qt libraries:"
+find "$INSTALL_DIR/lib" -name "libQt6*.so*" -type f | sort
+
 echo "Build completed successfully!"
 echo "Installation directory: $INSTALL_DIR"
+echo "Run 'source $INSTALL_DIR/setup_env.sh' to set up environment"
 
 # 进入安装目录
 cd "$INSTALL_DIR"

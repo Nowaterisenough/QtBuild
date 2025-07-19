@@ -1,0 +1,90 @@
+name: Build_Qt6.9.1_aarch64-linux-gnu_gcc13.2_static
+
+on: workflow_dispatch
+#on: [push, pull_request]
+
+env:
+  QT_VERSION: 6.9.1
+  QT_VERSION2: 6.9
+  FILE_NAME: static-Release_aarch64_gcc13_2
+
+jobs:
+  ubuntu_aarch64_cross_static_release:
+    runs-on: ubuntu-24.04
+
+    steps:
+    # 检出本仓库
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    # 安装python
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.13'
+        architecture: 'x64'
+
+    # 更新系统并安装依赖
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential cmake ninja-build curl unzip p7zip-full
+        sudo apt-get install -y crossbuild-essential-arm64
+        sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+        sudo apt-get install -y libc6-dev-arm64-cross
+
+    # 安装交叉编译工具链和库
+    - name: Setup ARM64 Cross-compilation Environment
+      run: |
+        # 创建交叉编译工具链目录
+        sudo mkdir -p /opt/aarch64-linux-gnu
+        
+        # 设置符号链接到系统交叉编译器
+        sudo ln -sf /usr/bin/aarch64-linux-gnu-gcc /opt/aarch64-linux-gnu/bin/aarch64-linux-gnu-gcc || true
+        sudo ln -sf /usr/bin/aarch64-linux-gnu-g++ /opt/aarch64-linux-gnu/bin/aarch64-linux-gnu-g++ || true
+        sudo ln -sf /usr/bin/aarch64-linux-gnu-ar /opt/aarch64-linux-gnu/bin/aarch64-linux-gnu-ar || true
+        sudo ln -sf /usr/bin/aarch64-linux-gnu-strip /opt/aarch64-linux-gnu/bin/aarch64-linux-gnu-strip || true
+        sudo ln -sf /usr/bin/aarch64-linux-gnu-objcopy /opt/aarch64-linux-gnu/bin/aarch64-linux-gnu-objcopy || true
+        sudo ln -sf /usr/bin/aarch64-linux-gnu-nm /opt/aarch64-linux-gnu/bin/aarch64-linux-gnu-nm || true
+        sudo ln -sf /usr/bin/aarch64-linux-gnu-ranlib /opt/aarch64-linux-gnu/bin/aarch64-linux-gnu-ranlib || true
+        
+        # 创建目录结构
+        sudo mkdir -p /opt/aarch64-linux-gnu/bin
+        sudo mkdir -p /opt/aarch64-linux-gnu/aarch64-linux-gnu/sysroot
+        
+        # 复制系统根目录
+        sudo cp -r /usr/aarch64-linux-gnu/* /opt/aarch64-linux-gnu/aarch64-linux-gnu/sysroot/ || true
+        
+        # 验证交叉编译器
+        aarch64-linux-gnu-gcc --version
+        aarch64-linux-gnu-g++ --version
+
+    # 构建Qt
+    - name: Build Qt
+      run: |
+        # 创建文件夹
+        cd ..  # Directory: /home/runner/work/QtBuild
+        mkdir -p Qt
+
+        # 创建文件夹
+        cd Qt   # Directory: /home/runner/work/QtBuild/Qt
+        mkdir -p ${{env.QT_VERSION}}
+        mkdir -p ${{env.QT_VERSION}}-static
+
+        # 下载源代码并解压
+        curl -L -o qt-everywhere-src.tar.xz https://download.qt.io/official_releases/qt/${{env.QT_VERSION2}}/${{env.QT_VERSION}}/single/qt-everywhere-src-${{env.QT_VERSION}}.tar.xz
+        tar -xf qt-everywhere-src.tar.xz -C ./${{env.QT_VERSION}}
+
+        # 调用编译脚本
+        bash "/home/runner/work/QtBuild/QtBuild/Qt6Build/Build_Qt6.9.1_aarch64-linux-gnu_gcc13.2_static.sh"
+
+    # 打包
+    - name: Package binaries
+      run: |
+        7z a Qt_${{env.QT_VERSION}}-${{env.FILE_NAME}}.7z ../Qt/${{env.QT_VERSION}}-static -mx=9
+
+    # 上传
+    - uses: actions/upload-artifact@v4
+      with:
+        name: Qt_${{env.QT_VERSION}}-${{env.FILE_NAME}}
+        path: Qt_${{env.QT_VERSION}}-${{env.FILE_NAME}}.7z
