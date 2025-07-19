@@ -1,5 +1,7 @@
 # QtBuild - 从源代码自动构建Qt
 
+> Forked from [yuanpeirong/buildQt](https://github.com/yuanpeirong/buildQt)
+
 [![License](https://img.shields.io/badge/License-Educational%20Use%20Only-red.svg)](LICENSE)
 [![Qt Version](https://img.shields.io/badge/Qt-6.9.1%20%7C%205.15.17-blue.svg)](https://qt.io)
 
