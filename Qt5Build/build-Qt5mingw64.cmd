@@ -5,13 +5,13 @@
 SET QT_VERSION=5.15.17
 
 :: 设置MinGW版本代号
-SET MinGW_VERSION=mingw810_32
+SET MinGW_VERSION=mingw1510_64_UCRT
 
 :: 设置编译器和Perl
-SET PATH=D:\a\buildQt\mingw32\bin;D:\a\buildQt\Strawberry\c\bin;D:\a\buildQt\Strawberry\perl\site\bin;D:\a\buildQt\Strawberry\perl\bin;%PATH%
+SET PATH=D:\a\QtBuild\mingw64\bin;D:\a\QtBuild\Strawberry\c\bin;D:\a\QtBuild\Strawberry\perl\site\bin;D:\a\QtBuild\Strawberry\perl\bin;%PATH%
 
 :: 设置Qt文件夹路径
-SET QT_PATH=D:\a\buildQt\Qt
+SET QT_PATH=D:\a\QtBuild\Qt
 
 :: 设置线程数
 SET NUM_THRED=%NUMBER_OF_PROCESSORS%
@@ -20,6 +20,9 @@ SET NUM_THRED=%NUMBER_OF_PROCESSORS%
 
 :: 设置Qt源代码目录
 SET SRC_QT="%QT_PATH%\%QT_VERSION%\qt-everywhere-src-%QT_VERSION%"
+
+::替换qfilesystemengine_win.cpp(使其可以被高于MinGW GCC8.1.0版本编译)
+copy %~dp0\qfilesystemengine_win.cpp %SRC_QT%\qtbase\src\corelib\io\qfilesystemengine_win.cpp /Y
 
 :: 补充设置qtbase\bin和gnuwin32\bin
 SET PATH=%SRC_QT%\qtbase\bin;%SRC_QT%\gnuwin32\bin;%PATH%

@@ -4,14 +4,14 @@
 :: 设置Qt版本
 SET QT_VERSION=6.9.1
 
-:: 设置MinGW版本代号
-SET MinGW_VERSION=mingw1510_64_UCRT
+:: 设置LLVM-MinGW版本代号
+SET LLVM_MinGW_VERSION=llvm-mingw20.1.6_64_UCRT
 
 :: 设置编译器和Ninja
-SET PATH=D:\a\buildQt\mingw64\bin;D:\a\buildQt\ninja;%PATH%
+SET PATH=D:\a\QtBuild\llvm-mingw-20250528-ucrt-x86_64\bin;D:\a\QtBuild\ninja;%PATH%
 
 :: 设置Qt文件夹路径
-SET QT_PATH=D:\a\buildQt\Qt
+SET QT_PATH=D:\a\QtBuild\Qt
 
 ::----------以下无需修改----------
 
@@ -19,10 +19,10 @@ SET QT_PATH=D:\a\buildQt\Qt
 SET SRC_QT="%QT_PATH%\%QT_VERSION%\qt-everywhere-src-%QT_VERSION%"
 
 :: 设置安装文件夹目录
-SET INSTALL_DIR="%QT_PATH%\%QT_VERSION%-static\%MinGW_VERSION%"
+SET INSTALL_DIR="%QT_PATH%\%QT_VERSION%-static\%LLVM_MinGW_VERSION%"
 
 :: 设置build文件夹目录
-SET BUILD_DIR="%QT_PATH%\%QT_VERSION%\build-%MinGW_VERSION%"
+SET BUILD_DIR="%QT_PATH%\%QT_VERSION%\build-%LLVM_MinGW_VERSION%"
 
 :: 根据需要进行全新构建
 rmdir /s /q "%BUILD_DIR%"
@@ -30,7 +30,7 @@ rmdir /s /q "%BUILD_DIR%"
 mkdir "%BUILD_DIR%" && cd /d "%BUILD_DIR%"
 
 :: configure
-call %SRC_QT%\configure.bat -static -static-runtime -release -prefix %INSTALL_DIR% -nomake examples -nomake tests -skip qtwebengine -opensource -confirm-license -qt-libpng -qt-libjpeg -qt-zlib -qt-pcre -qt-freetype -schannel -platform win32-g++
+call %SRC_QT%\configure.bat -static -static-runtime -release -prefix %INSTALL_DIR% -nomake examples -nomake tests -skip qtwebengine -opensource -confirm-license -qt-libpng -qt-libjpeg -qt-zlib -qt-pcre -qt-freetype -schannel
 
 :: 编译(不要忘记点)
 cmake --build . --parallel
