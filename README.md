@@ -22,13 +22,34 @@
 
 ### Qt 6.9.1 x64
 
-| 编译器 | 版本 | 状态 | 下载链接 |
-|--------|------|------|----------|
-| **MSVC 2022** | v17.13.2 | 支持 | Visual Studio 2022 Developer Command Prompt |
-| **MinGW** | 13.1.0 (官方默认) | 支持 | [mingw1310.7z](https://download.qt.io/online/qtsdkrepository/windows_x86/desktop/tools_mingw1310/qt.tools.win64_mingw1310/13.1.0-202407240918mingw1310.7z) |
-| **MinGW** | 15.1.0 (UCRT) | 支持 | [x86_64-15.1.0-ucrt.7z](https://github.com/niXman/mingw-builds-binaries/releases/download/15.1.0-rt_v12-rev0/x86_64-15.1.0-release-posix-seh-ucrt-rt_v12-rev0.7z) |
-| **LLVM-MinGW** | 17.0.6 (官方默认) | 支持 | [llvm_mingw1706.7z](https://download.qt.io/online/qtsdkrepository/windows_x86/desktop/tools_llvm_mingw1706/qt.tools.win64_llvm_mingw1706/17.0.6-202409091150llvm_mingw1706.7z) |
-| **LLVM-MinGW** | 20.1.6 (UCRT) | 支持 | [llvm-mingw-20250528-ucrt.zip](https://github.com/mstorsjo/llvm-mingw/releases/download/20250528/llvm-mingw-20250528-ucrt-x86_64.zip) |
+#### Windows x64
+
+| 编译器 | 版本 | 静态 | 动态 | 下载链接 |
+|--------|------|------|------|----------|
+| **MSVC 2022** | v17.13.2 | ✅ | ✅ | Visual Studio 2022 Developer Command Prompt |
+| **MinGW** | 13.1.0 (官方默认) | ✅ | ✅ | [mingw1310.7z](https://download.qt.io/online/qtsdkrepository/windows_x86/desktop/tools_mingw1310/qt.tools.win64_mingw1310/13.1.0-202407240918mingw1310.7z) |
+| **MinGW** | 15.1.0 (UCRT) | ✅ | ✅ | [x86_64-15.1.0-ucrt.7z](https://github.com/niXman/mingw-builds-binaries/releases/download/15.1.0-rt_v12-rev0/x86_64-15.1.0-release-posix-seh-ucrt-rt_v12-rev0.7z) |
+| **LLVM-MinGW** | 17.0.6 (官方默认) | ✅ | ✅ | [llvm_mingw1706.7z](https://download.qt.io/online/qtsdkrepository/windows_x86/desktop/tools_llvm_mingw1706/qt.tools.win64_llvm_mingw1706/17.0.6-202409091150llvm_mingw1706.7z) |
+| **LLVM-MinGW** | 20.1.6 (UCRT) | ✅ | ✅ | [llvm-mingw-20250528-ucrt.zip](https://github.com/mstorsjo/llvm-mingw/releases/download/20250528/llvm-mingw-20250528-ucrt-x86_64.zip) |
+
+#### Linux x64
+
+| 编译器 | 版本 | 静态 | 动态 | 说明 |
+|--------|------|------|------|------|
+| **GCC** | 15.1.0 | ✅ | ✅ | 从源代码编译最新GCC |
+
+#### WebAssembly
+
+| 平台 | 工具链 | 版本 | 模式 | 状态 | 说明 |
+|------|--------|------|------|------|------|
+| **WebAssembly** | Emscripten | 3.1.56+ | 多线程 | ✅ | 支持 WebAssembly 多线程模式 |
+
+#### ARM 交叉编译
+
+| 目标架构 | 工具链 | 版本 | 静态 | 动态 | 说明 |
+|----------|--------|------|------|------|------|
+| **ARM32** | arm-linux-gnueabihf | GCC 13.2 | ✅ | ✅ | 适用于树莓派2/3/4 (32位) |
+| **ARM64** | aarch64-linux-gnu | GCC 13.2 | ✅ | ✅ | 适用于树莓派4 (64位) |
 
 ### Qt 5.15.17 x64
 
@@ -69,27 +90,32 @@ cd QtBuild
 ## 构建选项
 
 ### 通用配置
-- **构建类型**：静态库 (Static)
 - **配置模式**：Release
+- **调试信息**：生成独立调试信息文件
 - **跳过模块**：WebEngine (减少构建时间)
-- **包含模块**：Core, GUI, Widgets, Network, SQL 等核心模块
 
 ### 平台特定配置
 
 #### Windows
-- 静态运行时链接
-- 使用 Schannel (Windows原生SSL)
-- 支持 DirectWrite
+- **MSVC**：使用 Schannel (Windows原生SSL)，支持 DirectWrite
+- **MinGW**：使用 OpenSSL，支持 POSIX 线程
+- **静态运行时**：完全自包含的可执行文件
 
 #### Linux
-- 使用 OpenSSL
-- XCB 平台支持
-- FontConfig 支持
+- **静态构建**：包含所有依赖，便于部署
+- **动态构建**：使用系统库，支持 XCB 平台
+- **FontConfig**：字体配置支持
 
 #### WebAssembly
-- Emscripten 工具链
-- 禁用多线程功能
-- 精简模块集合
+- **多线程支持**：支持 WebAssembly 多线程模式
+- **精简模块**：仅包含核心功能
+- **无SSL/D-Bus**：移除不适用的模块
+- **Web优化**：针对Web环境优化
+
+#### ARM 嵌入式
+- **无X11**：使用 Framebuffer 输出
+- **精简配置**：适合嵌入式设备
+- **交叉编译**：针对特定ARM架构优化
 
 ---
 
