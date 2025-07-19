@@ -51,20 +51,21 @@ configure_qt() {
         -static \
         -static-runtime \
         -release \
+        -force-debug-info \
+        -separate-debug-info \
+        -headersclean \
         -prefix "$INSTALL_DIR" \
         -nomake examples \
         -nomake tests \
         -skip qtwebengine \
+        -qt-doubleconversion \
         -opensource \
         -confirm-license \
-        -qt-libpng \
-        -qt-libjpeg \
-        -qt-zlib \
-        -qt-pcre \
-        -qt-freetype \
-        -openssl-linked \
-        -xcb \
-        -platform linux-g++
+        -bundled-xcb-xinput \
+        -platform linux-g++ \
+        -c++std c++20 \
+        -linker gold \
+        -no-libudev
 }
 
 # configure

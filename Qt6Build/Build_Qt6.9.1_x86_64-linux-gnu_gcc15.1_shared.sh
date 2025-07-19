@@ -50,26 +50,21 @@ configure_qt() {
     "$SRC_QT/configure" \
         -shared \
         -release \
+        -force-debug-info \
+        -separate-debug-info \
+        -headersclean \
         -prefix "$INSTALL_DIR" \
         -nomake examples \
         -nomake tests \
         -skip qtwebengine \
+        -qt-doubleconversion \
         -opensource \
         -confirm-license \
-        -qt-libpng \
-        -qt-libjpeg \
-        -qt-zlib \
-        -qt-pcre \
-        -qt-freetype \
-        -openssl-linked \
-        -xcb \
+        -bundled-xcb-xinput \
         -platform linux-g++ \
-        -opengl desktop \
-        -feature-accessibility \
-        -feature-fontconfig \
-        -feature-harfbuzz \
-        -feature-dbus \
-        -feature-glib
+        -c++std c++20 \
+        -linker gold \
+        -no-libudev
 }
 
 # configure
