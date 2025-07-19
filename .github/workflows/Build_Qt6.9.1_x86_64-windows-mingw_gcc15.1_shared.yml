@@ -1,4 +1,4 @@
-name: build_Qt6.9.1_msvc2022
+name: Build_Qt6.9.1_x86_64-windows-mingw_gcc15.1_shared
 
 on: workflow_dispatch
 #on: [push, pull_request]
@@ -6,10 +6,10 @@ on: workflow_dispatch
 env:
   QT_VERSION: 6.9.1
   QT_VERSION2: 6.9
-  FILE_NAME: static-Release_msvc2022_64
+  FILE_NAME: shared-Release_mingw1510_64_UCRT
 
 jobs:
-  windows_msvc_static_release:
+  windows_mingw64_shared_release:
     runs-on: windows-latest
 
     steps:
@@ -24,25 +24,24 @@ jobs:
         python-version: '3.13'
         architecture: 'x64'
 
-    # 安装msvc
-    - name: Add MSBuild to PATH
-      uses: microsoft/setup-msbuild@v2
-      with:
-        msbuild-architecture: x64
+    # 安装 MinGW64    
+    - name: Setup MinGW64
+      run: |
+        cd ..  #Directory: D:\a\QtBuild
+        curl -L -o x86_64-release-posix-seh-ucrt.7z https://github.com/niXman/mingw-builds-binaries/releases/download/15.1.0-rt_v12-rev0/x86_64-15.1.0-release-posix-seh-ucrt-rt_v12-rev0.7z
+        7z x D:\a\QtBuild\x86_64-release-posix-seh-ucrt.7z -oD:\a\QtBuild
 
-    # 安装vsdevenv
-    - name: Setup vsdevenv
-      uses: seanmiddleditch/gha-setup-vsdevenv@master
+    # 安装 Ninja
+    - name: Setup Ninja
+      run: |
+        cd ..  #Directory: D:\a\QtBuild
+        mkdir -p ninja
+        curl -L -o ninja.zip https://github.com/ninja-build/ninja/releases/download/v1.12.1/ninja-win.zip
+        unzip -q ninja.zip -d ./ninja
 
     # 构建Qt
     - name: Build Qt
       run: |
-        #ls     #Directory: D:\a\QtBuild\QtBuild(即仓库目录)
-        #D:\a\QtBuild                                上级目录，这里当做根目录
-        #D:\a\QtBuild\Qt                             Qt目录
-        #D:\a\QtBuild\Qt\${{env.QT_VERSION}}         Qt目录源代码和build文件夹存放目录
-        #D:\a\QtBuild\Qt\${{env.QT_VERSION}}-static  Qt安装目录
-        
         # 创建文件夹
         cd ..  #Directory: D:\a\QtBuild
         mkdir -p Qt
@@ -50,20 +49,19 @@ jobs:
         # 创建文件夹
         cd Qt   #Directory: D:\a\QtBuild\Qt
         mkdir -p ${{env.QT_VERSION}}
-        mkdir -p ${{env.QT_VERSION}}-static
+        mkdir -p ${{env.QT_VERSION}}-shared
 
         # 下载源代码并解压，源代码目录D:\a\QtBuild\Qt\${{env.QT_VERSION}}\XXX
         curl -L -o qt-everywhere-src.zip https://download.qt.io/official_releases/qt/${{env.QT_VERSION2}}/${{env.QT_VERSION}}/single/qt-everywhere-src-${{env.QT_VERSION}}.zip
         unzip -q qt-everywhere-src.zip -d ./${{env.QT_VERSION}}
 
         # 调用编译脚本
-        cmd.exe /c "call `"D:\a\QtBuild\QtBuild\Qt6Build\build-Qt6msvc2022_64.cmd`""
+        cmd.exe /c "call `"D:\a\QtBuild\QtBuild\Qt6Build\Build_Qt6.9.1_x86_64-windows-mingw_gcc15.1_shared.cmd`""
 
     # 打包
     - name: Package binaries
       run: |
-        #ls     #Directory: D:\a\QtBuild\QtBuild(即仓库目录)
-        7z a Qt_${{env.QT_VERSION}}-${{env.FILE_NAME}}.7z ../Qt/${{env.QT_VERSION}}-static -mx=9
+        7z a Qt_${{env.QT_VERSION}}-${{env.FILE_NAME}}.7z ../Qt/${{env.QT_VERSION}}-shared -mx=9
 
     # 上传
     - uses: actions/upload-artifact@v4

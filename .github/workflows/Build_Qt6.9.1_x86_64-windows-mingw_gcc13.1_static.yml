@@ -1,4 +1,4 @@
-name: build_Qt6.9.1_LLVM-MinGW17.0.6
+name: Build_Qt6.9.1_x86_64-windows-mingw_gcc13.1_static
 
 on: workflow_dispatch
 #on: [push, pull_request]
@@ -6,10 +6,10 @@ on: workflow_dispatch
 env:
   QT_VERSION: 6.9.1
   QT_VERSION2: 6.9
-  FILE_NAME: static-Release_llvm-mingw17.0.6_64_UCRT
+  FILE_NAME: static-Release_mingw1310_64
 
 jobs:
-  windows_llvm-mingw_static_release:
+  windows_mingw64_static_release:
     runs-on: windows-latest
 
     steps:
@@ -24,12 +24,12 @@ jobs:
         python-version: '3.13'
         architecture: 'x64'
 
-    # 安装 LLVM-MinGW17.0.6
-    - name: Setup LLVM-MinGW
+    # 安装 MinGW1310_64    
+    - name: Setup MinGW64
       run: |
         cd ..  #Directory: D:\a\QtBuild
-        curl -L -o llvm_mingw1706.7z https://download.qt.io/online/qtsdkrepository/windows_x86/desktop/tools_llvm_mingw1706/qt.tools.win64_llvm_mingw1706/17.0.6-202409091150llvm_mingw1706.7z
-        7z x D:\a\QtBuild\llvm_mingw1706.7z -oD:\a\QtBuild
+        curl -L -o mingw1310.7z https://download.qt.io/online/qtsdkrepository/windows_x86/desktop/tools_mingw1310/qt.tools.win64_mingw1310/13.1.0-202407240918mingw1310.7z
+        7z x D:\a\QtBuild\mingw1310.7z -oD:\a\QtBuild
 
     # 安装 Ninja
     - name: Setup Ninja
@@ -42,12 +42,6 @@ jobs:
     # 构建Qt
     - name: Build Qt
       run: |
-        #ls     #Directory: D:\a\QtBuild\QtBuild(即仓库目录)
-        #D:\a\QtBuild                                上级目录，这里当做根目录
-        #D:\a\QtBuild\Qt                             Qt目录
-        #D:\a\QtBuild\Qt\${{env.QT_VERSION}}         Qt目录源代码和build文件夹存放目录
-        #D:\a\QtBuild\Qt\${{env.QT_VERSION}}-static  Qt安装目录
-        
         # 创建文件夹
         cd ..  #Directory: D:\a\QtBuild
         mkdir -p Qt
@@ -62,12 +56,11 @@ jobs:
         unzip -q qt-everywhere-src.zip -d ./${{env.QT_VERSION}}
 
         # 调用编译脚本
-        cmd.exe /c "call `"D:\a\QtBuild\QtBuild\Qt6Build\build-Qt6llvm-mingw17.0.6.cmd`""
+        cmd.exe /c "call `"D:\a\QtBuild\QtBuild\Qt6Build\Build_Qt6.9.1_x86_64-windows-mingw_gcc13.1_static.cmd`""
 
     # 打包
     - name: Package binaries
       run: |
-        #ls     #Directory: D:\a\QtBuild\QtBuild(即仓库目录)
         7z a Qt_${{env.QT_VERSION}}-${{env.FILE_NAME}}.7z ../Qt/${{env.QT_VERSION}}-static -mx=9
 
     # 上传

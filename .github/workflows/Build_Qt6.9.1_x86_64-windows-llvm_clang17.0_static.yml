@@ -1,4 +1,4 @@
-name: build_Qt6.9.1_LLVM-MinGW
+name: Build_Qt6.9.1_x86_64-windows-llvm_clang17.0_static
 
 on: workflow_dispatch
 #on: [push, pull_request]
@@ -6,7 +6,7 @@ on: workflow_dispatch
 env:
   QT_VERSION: 6.9.1
   QT_VERSION2: 6.9
-  FILE_NAME: static-Release_llvm-mingw20.1.6_64_UCRT
+  FILE_NAME: static-Release_llvm-mingw17.0.6_64_UCRT
 
 jobs:
   windows_llvm-mingw_static_release:
@@ -24,12 +24,12 @@ jobs:
         python-version: '3.13'
         architecture: 'x64'
 
-    # 安装 LLVM-MinGW
+    # 安装 LLVM-MinGW17.0.6
     - name: Setup LLVM-MinGW
       run: |
         cd ..  #Directory: D:\a\QtBuild
-        curl -L -o llvm-mingw.zip https://github.com/mstorsjo/llvm-mingw/releases/download/20250528/llvm-mingw-20250528-ucrt-x86_64.zip
-        unzip -q llvm-mingw.zip -d ./
+        curl -L -o llvm_mingw1706.7z https://download.qt.io/online/qtsdkrepository/windows_x86/desktop/tools_llvm_mingw1706/qt.tools.win64_llvm_mingw1706/17.0.6-202409091150llvm_mingw1706.7z
+        7z x D:\a\QtBuild\llvm_mingw1706.7z -oD:\a\QtBuild
 
     # 安装 Ninja
     - name: Setup Ninja
@@ -42,12 +42,6 @@ jobs:
     # 构建Qt
     - name: Build Qt
       run: |
-        #ls     #Directory: D:\a\QtBuild\QtBuild(即仓库目录)
-        #D:\a\QtBuild                                上级目录，这里当做根目录
-        #D:\a\QtBuild\Qt                             Qt目录
-        #D:\a\QtBuild\Qt\${{env.QT_VERSION}}         Qt目录源代码和build文件夹存放目录
-        #D:\a\QtBuild\Qt\${{env.QT_VERSION}}-static  Qt安装目录
-        
         # 创建文件夹
         cd ..  #Directory: D:\a\QtBuild
         mkdir -p Qt
@@ -62,12 +56,11 @@ jobs:
         unzip -q qt-everywhere-src.zip -d ./${{env.QT_VERSION}}
 
         # 调用编译脚本
-        cmd.exe /c "call `"D:\a\QtBuild\QtBuild\Qt6Build\build-Qt6llvm-mingw.cmd`""
+        cmd.exe /c "call `"D:\a\QtBuild\QtBuild\Qt6Build\Build_Qt6.9.1_x86_64-windows-llvm_clang17.0_static.cmd`""
 
     # 打包
     - name: Package binaries
       run: |
-        #ls     #Directory: D:\a\QtBuild\QtBuild(即仓库目录)
         7z a Qt_${{env.QT_VERSION}}-${{env.FILE_NAME}}.7z ../Qt/${{env.QT_VERSION}}-static -mx=9
 
     # 上传
