@@ -80,7 +80,6 @@ call %SRC_QT%\configure.bat ^
     -qt-zlib ^
     -qt-pcre ^
     -qt-freetype ^
-    -no-feature-thread ^
     -no-dbus ^
     -no-ssl ^
     -no-pch
