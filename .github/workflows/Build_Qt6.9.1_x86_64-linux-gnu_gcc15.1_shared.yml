@@ -92,6 +92,21 @@ jobs:
         # 安装
         echo "Installing GCC..."
         sudo make install
+
+        # 彻底清理GCC构建文件
+        echo "Cleaning up GCC build files..."
+        cd /tmp
+        rm -rf gcc-15.1.0
+        rm -rf gcc-build
+        rm -f gcc-15.1.0.tar.xz
+        
+        # 清理系统临时文件
+        sudo rm -rf /tmp/* 2>/dev/null || true
+        sudo rm -rf /var/tmp/* 2>/dev/null || true
+        
+        # 清理包管理器缓存
+        sudo apt-get clean
+        sudo apt-get autoclean
         
         # 验证安装
         /opt/gcc-15.1.0/bin/gcc --version
@@ -116,6 +131,9 @@ jobs:
         # 下载源代码并解压
         curl -L -o qt-everywhere-src.tar.xz https://download.qt.io/official_releases/qt/${{env.QT_VERSION2}}/${{env.QT_VERSION}}/single/qt-everywhere-src-${{env.QT_VERSION}}.tar.xz
         tar -xf qt-everywhere-src.tar.xz -C ./${{env.QT_VERSION}}
+
+        # 删除源码包节省空间
+        rm qt-everywhere-src.tar.xz
 
         # 调用编译脚本
         bash "/home/runner/work/QtBuild/QtBuild/Qt6Build/Build_Qt6.9.1_x86_64-linux-gnu_gcc15.1_shared.sh"
