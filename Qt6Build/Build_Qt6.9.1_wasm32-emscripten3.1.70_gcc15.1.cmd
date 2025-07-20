@@ -26,20 +26,6 @@ if not exist "%EMSDK_ROOT%\emsdk_env.bat" (
 
 call "%EMSDK_ROOT%\emsdk_env.bat"
 
-:: 验证Emscripten环境
-where emcc >nul 2>&1
-if %errorlevel% neq 0 (
-    echo ERROR: emcc not found in PATH
-    exit /b 1
-)
-
-echo Testing emcc:
-emcc --version
-if %errorlevel% neq 0 (
-    echo ERROR: emcc --version failed
-    exit /b 1
-)
-
 echo set tool paths
 
 :: 设置工具路径
