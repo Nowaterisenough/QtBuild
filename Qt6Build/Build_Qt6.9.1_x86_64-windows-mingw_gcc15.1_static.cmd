@@ -49,6 +49,8 @@ call %SRC_QT%\configure.bat ^
     -qt-zlib ^
     -qt-pcre ^
     -qt-freetype ^
+    -no-sql-psql ^
+    -no-sql-odbc ^
     -schannel ^
     -platform win32-g++ ^
     -opengl desktop
