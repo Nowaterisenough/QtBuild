@@ -39,8 +39,6 @@ call %SRC_QT%\configure.bat ^
     -static ^
     -platform win32-msvc ^
     -release ^
-    -force-debug-info ^
-    -separate-debug-info ^
     -prefix %INSTALL_DIR% ^
     -nomake examples ^
     -nomake tests ^

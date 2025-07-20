@@ -51,8 +51,6 @@ configure_qt() {
         -static \
         -static-runtime \
         -release \
-        -force-debug-info \
-        -separate-debug-info \
         -headersclean \
         -prefix "$INSTALL_DIR" \
         -nomake examples \
