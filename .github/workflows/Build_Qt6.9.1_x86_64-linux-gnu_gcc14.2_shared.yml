@@ -54,9 +54,9 @@ jobs:
         sudo apt-get install -y gcc-14 g++-14
         
         # 创建兼容性目录和符号链接，模拟原来的路径结构
-        sudo mkdir -p /opt/gcc-15.1.0/bin
-        sudo ln -sf /usr/bin/gcc-14 /opt/gcc-15.1.0/bin/gcc
-        sudo ln -sf /usr/bin/g++-14 /opt/gcc-15.1.0/bin/g++
+        sudo mkdir -p /opt/gcc-14.2.0/bin
+        sudo ln -sf /usr/bin/gcc-14 /opt/gcc-14.2.0/bin/gcc
+        sudo ln -sf /usr/bin/g++-14 /opt/gcc-14.2.0/bin/g++
         
         # 设置默认版本
         sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 60
@@ -71,16 +71,16 @@ jobs:
         
         # 验证兼容性路径
         echo "Verifying compatibility paths:"
-        /opt/gcc-15.1.0/bin/gcc --version
-        /opt/gcc-15.1.0/bin/g++ --version
+        /opt/gcc-14.2.0/bin/gcc --version
+        /opt/gcc-14.2.0/bin/g++ --version
 
     # 构建Qt
     - name: Build Qt
       run: |
         # 设置GCC环境变量，确保构建脚本能找到编译器
-        export PATH="/opt/gcc-15.1.0/bin:$PATH"
-        export CC="/opt/gcc-15.1.0/bin/gcc"
-        export CXX="/opt/gcc-15.1.0/bin/g++"
+        export PATH="/opt/gcc-14.2.0/bin:$PATH"
+        export CC="/opt/gcc-14.2.0/bin/gcc"
+        export CXX="/opt/gcc-14.2.0/bin/g++"
         export LD_LIBRARY_PATH="/usr/lib/gcc/x86_64-linux-gnu/14:$LD_LIBRARY_PATH"
         
         # 创建文件夹
