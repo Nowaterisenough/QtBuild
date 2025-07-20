@@ -12,46 +12,56 @@ SET EMSCRIPTEN_VERSION=3.1.70
 
 :: 设置Emscripten SDK路径并激活环境
 SET EMSDK_ROOT=D:\a\QtBuild\emsdk
+echo Activating Emscripten environment...
 call "%EMSDK_ROOT%\emsdk_env.bat"
-
-:: 设置工具路径（MinGW用于一些工具，Ninja用于构建）
-SET PATH=D:\a\QtBuild\mingw64\bin;D:\a\QtBuild\ninja;%PATH%
-
-:: 设置Qt文件夹路径
-SET QT_PATH=D:\a\QtBuild\Qt
-
-::----------以下无需修改----------
-
-:: 设置Qt源代码目录
-SET SRC_QT="%QT_PATH%\%QT_VERSION%\qt-everywhere-src-%QT_VERSION%"
-
-:: 设置安装文件夹目录
-SET INSTALL_DIR="%QT_PATH%\%QT_VERSION%-static\%WASM_VERSION%"
-
-:: 设置build文件夹目录
-SET BUILD_DIR="%QT_PATH%\%QT_VERSION%\build-%WASM_VERSION%"
-
-:: 显示编译器版本信息
-echo Using Emscripten:
-emcc --version
-echo.
 
 :: 验证Emscripten环境
 echo Checking Emscripten environment:
 echo EMSDK: %EMSDK%
 echo EMSCRIPTEN: %EMSCRIPTEN%
-echo.
+where emcc
+emcc --version
+
+:: 设置工具路径
+SET PATH=D:\a\QtBuild\mingw64\bin;D:\a\QtBuild\ninja;%PATH%
+
+:: 设置Qt文件夹路径
+SET QT_PATH=D:\a\QtBuild\Qt
+
+:: 设置Qt源代码目录
+SET SRC_QT=%QT_PATH%\%QT_VERSION%\qt-everywhere-src-%QT_VERSION%
+
+:: 设置安装文件夹目录
+SET INSTALL_DIR=%QT_PATH%\%QT_VERSION%-static\%WASM_VERSION%
+
+:: 设置build文件夹目录
+SET BUILD_DIR=%QT_PATH%\%QT_VERSION%\build-%WASM_VERSION%
+
+:: 显示路径信息
+echo SRC_QT: %SRC_QT%
+echo INSTALL_DIR: %INSTALL_DIR%
+echo BUILD_DIR: %BUILD_DIR%
+
+:: 检查源代码是否存在
+if not exist "%SRC_QT%" (
+    echo ERROR: Qt source directory not found: %SRC_QT%
+    exit /b 1
+)
 
 :: 根据需要进行全新构建
-rmdir /s /q "%BUILD_DIR%" 2>nul
-:: 定位到构建目录：
-mkdir "%BUILD_DIR%" && cd /d "%BUILD_DIR%"
+if exist "%BUILD_DIR%" rmdir /s /q "%BUILD_DIR%"
+
+:: 定位到构建目录
+mkdir "%BUILD_DIR%"
+cd /d "%BUILD_DIR%"
+
+echo Starting Qt configure...
 
 :: configure for WebAssembly
-call %SRC_QT%\configure.bat ^
+call "%SRC_QT%\configure.bat" ^
     -static ^
     -release ^
-    -prefix %INSTALL_DIR% ^
+    -prefix "%INSTALL_DIR%" ^
     -platform wasm-emscripten ^
     -nomake examples ^
     -nomake tests ^
@@ -86,35 +96,40 @@ call %SRC_QT%\configure.bat ^
 
 :: 检查configure是否成功
 if %errorlevel% neq 0 (
-    echo Configure failed!
+    echo Configure failed with error code: %errorlevel%
     exit /b %errorlevel%
 )
 
-:: 编译(不要忘记点)
-echo Starting build...
+echo Configure completed successfully, starting build...
+
+:: 编译
 cmake --build . --parallel
 
 :: 检查编译是否成功
 if %errorlevel% neq 0 (
-    echo Build failed!
+    echo Build failed with error code: %errorlevel%
     exit /b %errorlevel%
 )
 
-:: 安装(不要忘记点)
-echo Installing...
+echo Build completed successfully, starting install...
+
+:: 安装
 cmake --install .
 
 :: 检查安装是否成功
 if %errorlevel% neq 0 (
-    echo Install failed!
+    echo Install failed with error code: %errorlevel%
     exit /b %errorlevel%
 )
 
 :: 复制qt.conf
-copy %~dp0\qt.conf %INSTALL_DIR%\bin
+if exist "%~dp0\qt.conf" copy "%~dp0\qt.conf" "%INSTALL_DIR%\bin\"
 
 echo Build completed successfully!
 echo Installation directory: %INSTALL_DIR%
 
-::@pause
-@cmd /k cd /d %INSTALL_DIR%
+:: 列出生成的文件
+echo Generated files:
+dir "%INSTALL_DIR%" /s
+
+exit /b 0

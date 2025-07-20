@@ -6,7 +6,7 @@ on: workflow_dispatch
 env:
   QT_VERSION: 6.9.1
   QT_VERSION2: 6.9
-  EMSCRIPTEN_VERSION: 3.1.56
+  EMSCRIPTEN_VERSION: 3.1.70
   FILE_NAME: static-Release_wasm32_emscripten
 
 jobs:
