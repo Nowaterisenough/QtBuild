@@ -1,4 +1,4 @@
-name: Build_Qt6.9.1_x86_64-windows-mingw_gcc15.1
+name: Build_Qt6.9.1_x86_64-windows-mingw_gcc15.1_static
 
 on: workflow_dispatch
 #on: [push, pull_request]
