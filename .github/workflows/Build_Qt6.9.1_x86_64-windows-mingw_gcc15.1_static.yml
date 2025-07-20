@@ -56,7 +56,7 @@ jobs:
         unzip -q qt-everywhere-src.zip -d ./${{env.QT_VERSION}}
 
         # 调用编译脚本
-        cmd.exe /c "call `"D:\a\QtBuild\QtBuild\Qt6Build\Build_Qt6.9.1_x86_64-windows-mingw_gcc15.1.cmd`""
+        cmd.exe /c "call `"D:\a\QtBuild\QtBuild\Qt6Build\Build_Qt6.9.1_x86_64-windows-mingw_gcc15.1_static.cmd`""
 
     # 打包
     - name: Package binaries
