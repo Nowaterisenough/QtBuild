@@ -40,8 +40,15 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
+echo set tool paths
+
 :: 设置工具路径
 SET PATH=D:\a\QtBuild\mingw64\bin;D:\a\QtBuild\ninja;%PATH%
+
+echo Tool paths set:
+echo PATH=%PATH%
+
+echo Setting Qt paths...
 
 :: 设置Qt文件夹路径
 SET QT_PATH=D:\a\QtBuild\Qt
