@@ -27,10 +27,10 @@
 | 编译器 | 版本 | 静态 | 动态 | 下载链接 |
 |--------|------|------|------|----------|
 | **MSVC 2022** | v17.13.2 | ✅ | ✅ | Visual Studio 2022 Developer Command Prompt |
-| **MinGW** | 13.1.0 (官方默认) | ✅ | ✅ | [mingw1310.7z](https://download.qt.io/online/qtsdkrepository/windows_x86/desktop/tools_mingw1310/qt.tools.win64_mingw1310/13.1.0-202407240918mingw1310.7z) |
-| **MinGW** | 15.1.0 (UCRT) | ✅ | ✅ | [x86_64-15.1.0-ucrt.7z](https://github.com/niXman/mingw-builds-binaries/releases/download/15.1.0-rt_v12-rev0/x86_64-15.1.0-release-posix-seh-ucrt-rt_v12-rev0.7z) |
-| **LLVM-MinGW** | 17.0.6 (官方默认) | ✅ | ✅ | [llvm_mingw1706.7z](https://download.qt.io/online/qtsdkrepository/windows_x86/desktop/tools_llvm_mingw1706/qt.tools.win64_llvm_mingw1706/17.0.6-202409091150llvm_mingw1706.7z) |
-| **LLVM-MinGW** | 20.1.6 (UCRT) | ✅ | ✅ | [llvm-mingw-20250528-ucrt.zip](https://github.com/mstorsjo/llvm-mingw/releases/download/20250528/llvm-mingw-20250528-ucrt-x86_64.zip) |
+| **MinGW** | 13.1.0 (官方默认) | ✅ | ✅ | [13.1.0-202407240918mingw1310.7z](https://download.qt.io/online/qtsdkrepository/windows_x86/desktop/tools_mingw1310/qt.tools.win64_mingw1310/13.1.0-202407240918mingw1310.7z) |
+| **MinGW** | 15.1.0 | ✅ | ✅ | [x86_64-15.1.0-release-posix-seh-ucrt-rt_v12-rev0.7z](https://github.com/niXman/mingw-builds-binaries/releases/download/15.1.0-rt_v12-rev0/x86_64-15.1.0-release-posix-seh-ucrt-rt_v12-rev0.7z) |
+| **LLVM-MinGW** | 17.0.6 (官方默认) | ✅ | ✅ | [17.0.6-202409091150llvm_mingw1706.7z](https://download.qt.io/online/qtsdkrepository/windows_x86/desktop/tools_llvm_mingw1706/qt.tools.win64_llvm_mingw1706/17.0.6-202409091150llvm_mingw1706.7z) |
+| **LLVM-MinGW** | 20.1.6 | ✅ | ✅ | [llvm-mingw-20250528-ucrt-x86_64.zip](https://github.com/mstorsjo/llvm-mingw/releases/download/20250528/llvm-mingw-20250528-ucrt-x86_64.zip) |
 
 #### Linux x64
 
@@ -42,7 +42,7 @@
 
 | 平台 | 工具链 | 版本 | 模式 | 状态 | 说明 |
 |------|--------|------|------|------|------|
-| **WebAssembly** | Emscripten | 3.1.56+ | 多线程 | ✅ | 支持 WebAssembly 多线程模式 |
+| **WebAssembly** | Emscripten | 3.1.70 | 多线程 | ✅ | 支持 WebAssembly 多线程模式 |
 
 #### ARM 交叉编译
 
