@@ -77,7 +77,7 @@ call "%SRC_QT%\configure.bat" ^
     -qt-host-path "%HOST_QT_DIR%" ^
     -nomake examples ^
     -nomake tests ^
-    -submodules qtbase qtdeclarative ^
+    -submodules qtbase,qtdeclarative ^
     -c++std c++20 ^
     -opensource ^
     -confirm-license ^
