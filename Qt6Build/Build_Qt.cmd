@@ -27,7 +27,7 @@ rmdir /s /q %BUILD_DIR% 2>nul
 mkdir "%BUILD_DIR%" && cd /d "%BUILD_DIR%"
 
 REM 配置参数
-set CFG_OPTIONS=-%LINK_TYPE -%BUILD_TYPE -prefix %INSTALL_DIR% -nomake examples -nomake tests -c++std c++20 -headersclean -skip qtwebengine -opensource -confirm-license -qt-libpng -qt-libjpeg -qt-zlib -qt-pcre -qt-freetype -no-sql-psql -no-sql-odbc -schannel -platform win32-g++ -opengl desktop
+set CFG_OPTIONS=-%LINK_TYPE -prefix %INSTALL_DIR% -nomake examples -nomake tests -c++std c++20 -headersclean -skip qtwebengine -opensource -confirm-license -qt-libpng -qt-libjpeg -qt-zlib -qt-pcre -qt-freetype -no-sql-psql -no-sql-odbc -schannel -platform win32-g++ -opengl desktop
 
 REM static 不能分离调试信息
 if "%LINK_TYPE%"=="shared" (
