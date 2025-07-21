@@ -1,0 +1,92 @@
+name: Build Qt Matrix
+
+on:
+  workflow_dispatch:
+    inputs:
+      qt_version:
+        description: 'QT Version'
+        required: true
+        default: '6.9.1'
+      gcc_version:
+        description: 'GCC Version'
+        required: true
+        default: '15.1.0'
+
+env:
+  QT_VERSION: ${{ github.event.inputs.qt_version || '6.9.1' }}
+  GCC_VERSION: ${{ github.event.inputs.gcc_version || '15.1.0' }}
+
+jobs:
+  build:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        link_type: [static, shared]
+        build_type: [release, debug, release-sepdbg]
+        # 你也可以在这里加入更多Qt/GCC版本的组合矩阵
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          architecture: 'x64'
+
+      - name: Setup MinGW64
+        run: |
+          cd ..
+          curl -L -o x86_64-release-posix-seh-ucrt.7z https://github.com/niXman/mingw-builds-binaries/releases/download/${{ env.GCC_VERSION }}-rt_v12-rev0/x86_64-${{ env.GCC_VERSION }}-release-posix-seh-ucrt-rt_v12-rev0.7z
+          7z x D:\a\QtBuild\x86_64-release-posix-seh-ucrt.7z -oD:\a\QtBuild
+
+      - name: Setup Ninja
+        run: |
+          cd ..
+          mkdir -p ninja
+          curl -L -o ninja.zip https://github.com/ninja-build/ninja/releases/download/v1.12.1/ninja-win.zip
+          unzip -q ninja.zip -d ./ninja
+
+      - name: Prepare directories and source
+        run: |
+          cd ..
+          mkdir -p Qt
+          cd Qt
+          mkdir -p ${{ env.QT_VERSION }}
+          mkdir -p ${{ env.QT_VERSION }}-${{ matrix.link_type }}
+          curl -L -o qt-everywhere-src.zip https://download.qt.io/official_releases/qt/${{ env.QT_VERSION }}.substring(0,3)/${{ env.QT_VERSION }}/single/qt-everywhere-src-${{ env.QT_VERSION }}.zip
+          unzip -q qt-everywhere-src.zip -d ./${{ env.QT_VERSION }}
+
+      # 判断参数
+      - name: Run build script
+        shell: cmd
+        run: |
+          setlocal enableextensions enabledelayedexpansion
+
+          REM 传递参数
+          set QT_VERSION=${{ env.QT_VERSION }}
+          set GCC_VERSION=${{ env.GCC_VERSION }}
+          set BUILD_TYPE=${{ matrix.build_type }}
+          set LINK_TYPE=${{ matrix.link_type }}
+
+          if "%BUILD_TYPE%"=="release-sepdbg" (
+            set BUILD_TYPE=release
+            if "%LINK_TYPE%"=="shared" (
+              set SEPARATE_DEBUG=true
+            ) else (
+              set SEPARATE_DEBUG=false
+            )
+          ) else (
+            set SEPARATE_DEBUG=false
+          )
+
+          call D:\a\QtBuild\QtBuild\Qt6Build\Build_Qt.cmd %QT_VERSION% %GCC_VERSION% %BUILD_TYPE% %LINK_TYPE% %SEPARATE_DEBUG%
+
+      - name: Package binaries
+        run: |
+          7z a Qt_${{ env.QT_VERSION }}-${{ matrix.link_type }}-${{ matrix.build_type }}_mingw${{ env.GCC_VERSION }}_64_UCRT.7z ../Qt/${{ env.QT_VERSION }}-${{ matrix.link_type }} -mx=9
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Qt_${{ env.QT_VERSION }}-${{ matrix.link_type }}-${{ matrix.build_type }}_mingw${{ env.GCC_VERSION }}_64_UCRT
+          path: Qt_${{ env.QT_VERSION }}-${{ matrix.link_type }}-${{ matrix.build_type }}_mingw${{ env.GCC_VERSION }}_64_UCRT.7z
