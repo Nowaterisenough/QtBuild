@@ -49,6 +49,17 @@ jobs:
         .\emsdk.bat install ${{env.EMSCRIPTEN_VERSION}}
         .\emsdk.bat activate ${{env.EMSCRIPTEN_VERSION}}
 
+    # 下载Host Qt
+    - name: Download Host Qt
+      run: |
+        cd ..  #Directory: D:\a\QtBuild
+        mkdir -p Qt/${{env.QT_VERSION}}-host
+        cd Qt/${{env.QT_VERSION}}-host
+        
+        # 下载你提供的Host Qt
+        curl -L -o host-qt.7z "https://github.com/yuanpeirong/buildQt/releases/download/Qt6.9.1_rev0/Qt_6.9.1-static-Release_mingw1510_64_UCRT.7z"
+        7z x host-qt.7z
+
     # 构建Qt
     - name: Build Qt
       run: |

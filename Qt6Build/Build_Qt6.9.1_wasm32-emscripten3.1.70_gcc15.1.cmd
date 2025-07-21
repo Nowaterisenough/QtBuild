@@ -45,6 +45,9 @@ SET SRC_QT=%QT_PATH%\%QT_VERSION%\qt-everywhere-src-%QT_VERSION%
 :: 设置安装文件夹目录
 SET INSTALL_DIR=%QT_PATH%\%QT_VERSION%-static\%WASM_VERSION%
 
+:: 设置Host Qt目录
+SET HOST_QT_DIR=%QT_PATH%\%QT_VERSION%-host
+
 :: 设置build文件夹目录
 SET BUILD_DIR=%QT_PATH%\%QT_VERSION%\build-%WASM_VERSION%
 
@@ -53,6 +56,15 @@ if not exist "%SRC_QT%\configure.bat" (
     echo ERROR: Qt source not found at %SRC_QT%
     exit /b 1
 )
+
+:: 检查Host Qt是否存在
+if not exist "%HOST_QT_DIR%\bin\qmake.exe" (
+    echo ERROR: Host Qt not found at %HOST_QT_DIR%
+    echo Please ensure Host Qt is downloaded and extracted to %HOST_QT_DIR%
+    exit /b 1
+)
+
+echo Host Qt found at: %HOST_QT_DIR%
 
 :: 清理并创建构建目录
 if exist "%BUILD_DIR%" (
@@ -63,12 +75,13 @@ cd /d "%BUILD_DIR%"
 
 echo Starting Qt configure...
 
-:: configure for WebAssembly
+:: configure for WebAssembly with Host Qt
 call "%SRC_QT%\configure.bat" ^
     -static ^
     -release ^
     -prefix "%INSTALL_DIR%" ^
     -platform wasm-emscripten ^
+    -qt-host-path "%HOST_QT_DIR%" ^
     -nomake examples ^
     -nomake tests ^
     -skip qtwebengine ^
