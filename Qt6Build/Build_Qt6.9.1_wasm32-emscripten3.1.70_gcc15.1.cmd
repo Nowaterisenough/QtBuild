@@ -81,6 +81,7 @@ call "%SRC_QT%\configure.bat" ^
     -skip qtserialbus ^
     -skip qtlocation ^
     -skip qtcharts ^
+    -skip qtspeech ^
     -skip qtdatavis3d ^
     -skip qtquick3dphysics ^
     -skip qtlottie ^
