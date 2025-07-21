@@ -62,22 +62,16 @@ jobs:
 
     # 构建Qt
     - name: Build Qt
+      shell: cmd
       run: |
-        # 创建文件夹
-        cd ..  #Directory: D:\a\QtBuild
-        mkdir -p Qt
-
-        # 创建文件夹
-        cd Qt   #Directory: D:\a\QtBuild\Qt
-        mkdir -p ${{env.QT_VERSION}}
-        mkdir -p ${{env.QT_VERSION}}-static
-
-        # 下载源代码并解压，源代码目录D:\a\QtBuild\Qt\${{env.QT_VERSION}}\XXX
-        curl -L -o qt-everywhere-src.zip https://download.qt.io/official_releases/qt/${{env.QT_VERSION2}}/${{env.QT_VERSION}}/single/qt-everywhere-src-${{env.QT_VERSION}}.zip
-        unzip -q qt-everywhere-src.zip -d ./${{env.QT_VERSION}}
-
-        # 调用编译脚本
-        cmd.exe /c "call `"D:\a\QtBuild\QtBuild\Qt6Build\Build_Qt6.9.1_wasm32-emscripten3.1.70_gcc15.1.cmd`""
+        cd ..
+        if not exist Qt mkdir Qt
+        cd Qt
+        if not exist %QT_VERSION% mkdir %QT_VERSION%
+        if not exist %QT_VERSION%-static mkdir %QT_VERSION%-static
+        curl -L -o qt-everywhere-src.zip https://download.qt.io/official_releases/qt/%QT_VERSION2%/%QT_VERSION%/single/qt-everywhere-src-%QT_VERSION%.zip
+        powershell -command "Expand-Archive -Path qt-everywhere-src.zip -DestinationPath ./%QT_VERSION% -Force"
+        call "D:\a\QtBuild\QtBuild\Qt6Build\Build_Qt6.9.1_wasm32-emscripten3.1.70_gcc15.1.cmd"
 
     # 打包
     - name: Package binaries
