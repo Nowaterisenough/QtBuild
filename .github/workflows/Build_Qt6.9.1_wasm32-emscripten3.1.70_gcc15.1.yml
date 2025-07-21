@@ -12,6 +12,7 @@ env:
 jobs:
   windows_wasm_static_release:
     runs-on: windows-latest
+    timeout-minutes: 480  # 8小时超时
 
     steps:
     # 检出本仓库
@@ -30,15 +31,15 @@ jobs:
       run: |
         cd ..  #Directory: D:\a\QtBuild
         curl -L -o x86_64-release-posix-seh-ucrt.7z https://github.com/niXman/mingw-builds-binaries/releases/download/15.1.0-rt_v12-rev0/x86_64-15.1.0-release-posix-seh-ucrt-rt_v12-rev0.7z
-        7z x D:\a\QtBuild\x86_64-release-posix-seh-ucrt.7z -oD:\a\QtBuild
+        7z x x86_64-release-posix-seh-ucrt.7z -oD:\a\QtBuild
 
     # 安装 Ninja
     - name: Setup Ninja
       run: |
         cd ..  #Directory: D:\a\QtBuild
-        mkdir -p ninja
+        New-Item -ItemType Directory -Force -Path ninja
         curl -L -o ninja.zip https://github.com/ninja-build/ninja/releases/download/v1.12.1/ninja-win.zip
-        unzip -q ninja.zip -d ./ninja
+        Expand-Archive -Path ninja.zip -DestinationPath ./ninja -Force
 
     # 安装 Emscripten SDK
     - name: Setup Emscripten
@@ -53,24 +54,42 @@ jobs:
     - name: Download Host Qt
       run: |
         cd ..  #Directory: D:\a\QtBuild
-        mkdir -p Qt/${{env.QT_VERSION}}-host
+        New-Item -ItemType Directory -Force -Path Qt/${{env.QT_VERSION}}-host
         cd Qt/${{env.QT_VERSION}}-host
         
         # 下载你提供的Host Qt
         curl -L -o host-qt.7z "https://github.com/yuanpeirong/buildQt/releases/download/Qt6.9.1_rev0/Qt_6.9.1-static-Release_mingw1510_64_UCRT.7z"
         7z x host-qt.7z
 
+    # 创建目录结构
+    - name: Create directories
+      run: |
+        cd ..  #Directory: D:\a\QtBuild
+        New-Item -ItemType Directory -Force -Path Qt
+        New-Item -ItemType Directory -Force -Path Qt/${{env.QT_VERSION}}
+        New-Item -ItemType Directory -Force -Path Qt/${{env.QT_VERSION}}-static
+
+    # 下载 Qt 源码
+    - name: Download Qt Source
+      run: |
+        cd ../Qt  #Directory: D:\a\QtBuild\Qt
+        echo "Downloading Qt source..."
+        curl -L -o qt-everywhere-src-${{env.QT_VERSION}}.zip https://download.qt.io/official_releases/qt/${{env.QT_VERSION2}}/${{env.QT_VERSION}}/single/qt-everywhere-src-${{env.QT_VERSION}}.zip
+        
+        echo "Download completed. File size:"
+        Get-ChildItem qt-everywhere-src-${{env.QT_VERSION}}.zip | Select-Object Name, Length
+        
+        echo "Extracting Qt source..."
+        7z x qt-everywhere-src-${{env.QT_VERSION}}.zip -o${{env.QT_VERSION}} -y
+        
+        echo "Extraction completed. Checking contents:"
+        Get-ChildItem ${{env.QT_VERSION}} | Select-Object Name
+
     # 构建Qt
     - name: Build Qt
+      timeout-minutes: 360  # 6小时超时
       shell: cmd
       run: |
-        cd ..
-        if not exist Qt mkdir Qt
-        cd Qt
-        if not exist %QT_VERSION% mkdir %QT_VERSION%
-        if not exist %QT_VERSION%-static mkdir %QT_VERSION%-static
-        curl -L -o qt-everywhere-src.zip https://download.qt.io/official_releases/qt/%QT_VERSION2%/%QT_VERSION%/single/qt-everywhere-src-%QT_VERSION%.zip
-        powershell -command "Expand-Archive -Path qt-everywhere-src.zip -DestinationPath ./%QT_VERSION% -Force"
         call "D:\a\QtBuild\QtBuild\Qt6Build\Build_Qt6.9.1_wasm32-emscripten3.1.70_gcc15.1.cmd"
 
     # 打包
