@@ -73,7 +73,7 @@ call "%SRC_QT%\configure.bat" ^
     -release ^
     -prefix "%INSTALL_DIR%" ^
     -platform wasm-emscripten ^
-    -no-warnings-are-errors
+    -no-warnings-are-errors ^
     -qt-host-path "%HOST_QT_DIR%" ^
     -nomake examples ^
     -nomake tests ^
