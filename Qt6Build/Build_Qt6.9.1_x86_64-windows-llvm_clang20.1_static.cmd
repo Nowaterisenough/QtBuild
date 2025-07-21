@@ -44,7 +44,6 @@ call %SRC_QT%\configure.bat ^
     -nomake examples ^
     -nomake tests ^
     -c++std c++20 ^
-    -headersclean ^
     -skip qtwebengine ^
     -opensource ^
     -confirm-license ^
