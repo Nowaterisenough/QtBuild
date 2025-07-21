@@ -36,9 +36,8 @@ jobs:
     - name: Setup Ninja
       run: |
         cd ..  #Directory: D:\a\QtBuild
-        New-Item -ItemType Directory -Force -Path ninja
         curl -L -o ninja.zip https://github.com/ninja-build/ninja/releases/download/v1.12.1/ninja-win.zip
-        7z x ninja.zip -o./ninja
+        7z x ninja.zip -oninja
 
     # 安装 Emscripten SDK
     - name: Setup Emscripten
@@ -58,7 +57,7 @@ jobs:
         
         # 下载Host Qt并解压到正确位置
         curl -L -o host-qt.7z "https://github.com/yuanpeirong/buildQt/releases/download/Qt6.9.1_rev0/Qt_6.9.1-static-Release_mingw1510_64_UCRT.7z"
-        7z x host-qt.7z -y
+        7z x host-qt.7z
         
         # 移动到正确的目录结构
         if (Test-Path "6.9.1-static\mingw1510_64_UCRT") {
