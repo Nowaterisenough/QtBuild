@@ -97,6 +97,7 @@ call "%SRC_QT%\configure.bat" ^
     -skip qtvirtualkeyboard ^
     -skip qtwayland ^
     -skip qtwebview ^
+    -skip qtnetworkauth ^
     -opensource ^
     -confirm-license ^
     -qt-libpng ^
@@ -106,7 +107,8 @@ call "%SRC_QT%\configure.bat" ^
     -qt-freetype ^
     -no-dbus ^
     -no-ssl ^
-    -no-pch
+    -no-pch ^
+    -no-feature-network
 
 IF ERRORLEVEL 1 (
     echo Error: Configure failed
