@@ -22,17 +22,7 @@ echo =====================================
 :: 设置Emscripten SDK路径并激活环境
 SET EMSDK_ROOT=D:\a\QtBuild\emsdk
 echo Setting up Emscripten environment...
-
-if not exist "%EMSDK_ROOT%\emsdk_env.bat" (
-    echo Error: emsdk_env.bat not found at %EMSDK_ROOT%
-    exit /b 1
-)
-
 call "%EMSDK_ROOT%\emsdk_env.bat"
-if %errorlevel% neq 0 (
-    echo Error: Failed to activate Emscripten environment
-    exit /b %errorlevel%
-)
 
 :: 设置工具路径
 SET PATH=D:\a\QtBuild\mingw64\bin;D:\a\QtBuild\ninja;%PATH%
@@ -67,34 +57,9 @@ echo Host Qt Dir: %HOST_QT_DIR%
 echo ================================
 echo.
 
-:: 检查源代码是否存在
-if not exist "%SRC_QT%\configure.bat" (
-    echo Error: Qt source not found at %SRC_QT%
-    exit /b 1
-)
-
-:: 检查Host Qt是否存在
-if not exist "%HOST_QT_DIR%\bin\qmake.exe" (
-    echo Error: Host Qt not found at %HOST_QT_DIR%
-    exit /b 1
-)
-
-:: 验证关键工具
-where ninja >nul 2>&1
-if %errorlevel% neq 0 (
-    echo Error: Ninja not found
-    exit /b 1
-)
-
-where emcc >nul 2>&1
-if %errorlevel% neq 0 (
-    echo Error: Emscripten compiler not found
-    exit /b 1
-)
-
 :: 根据需要进行全新构建
 echo Cleaning previous build...
-if exist "%BUILD_DIR%" rmdir /s /q "%BUILD_DIR%"
+IF EXIST "%BUILD_DIR%" rmdir /s /q "%BUILD_DIR%"
 
 :: 定位到构建目录
 echo Creating build directory...
@@ -143,32 +108,32 @@ call "%SRC_QT%\configure.bat" ^
     -no-ssl ^
     -no-pch
 
-if %errorlevel% neq 0 (
+IF ERRORLEVEL 1 (
     echo Error: Configure failed
-    exit /b %errorlevel%
+    exit /b 1
 )
 
 :: 编译
 echo Starting build...
 cmake --build . --parallel 4
 
-if %errorlevel% neq 0 (
+IF ERRORLEVEL 1 (
     echo Error: Build failed
-    exit /b %errorlevel%
+    exit /b 1
 )
 
 :: 安装
 echo Installing...
 cmake --install .
 
-if %errorlevel% neq 0 (
+IF ERRORLEVEL 1 (
     echo Error: Install failed
-    exit /b %errorlevel%
+    exit /b 1
 )
 
 :: 复制qt.conf
-if exist "%~dp0qt.conf" (
-    copy "%~dp0qt.conf" "%INSTALL_DIR%\bin\"
+IF EXIST "%~dp0qt.conf" (
+    copy "%~dp0qt.conf" "%INSTALL_DIR%\bin" > nul
 )
 
 :: 创建构建信息文件

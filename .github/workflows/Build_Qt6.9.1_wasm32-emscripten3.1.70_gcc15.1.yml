@@ -38,7 +38,7 @@ jobs:
         cd ..  #Directory: D:\a\QtBuild
         New-Item -ItemType Directory -Force -Path ninja
         curl -L -o ninja.zip https://github.com/ninja-build/ninja/releases/download/v1.12.1/ninja-win.zip
-        Expand-Archive -Path ninja.zip -DestinationPath ./ninja -Force
+        7z x ninja.zip -o./ninja
 
     # 安装 Emscripten SDK
     - name: Setup Emscripten
@@ -69,22 +69,18 @@ jobs:
 
     # 构建Qt
     - name: Build Qt
+      shell: cmd
       run: |
-        # 创建文件夹
-        cd ..  #Directory: D:\a\QtBuild
-        New-Item -ItemType Directory -Force -Path Qt
-
-        # 创建文件夹
-        cd Qt   #Directory: D:\a\QtBuild\Qt
-        New-Item -ItemType Directory -Force -Path ${{env.QT_VERSION}}
-        New-Item -ItemType Directory -Force -Path "${{env.QT_VERSION}}-static"
-
-        # 下载源代码并解压
-        curl -L -o qt-everywhere-src.zip https://download.qt.io/official_releases/qt/${{env.QT_VERSION2}}/${{env.QT_VERSION}}/single/qt-everywhere-src-${{env.QT_VERSION}}.zip
-        Expand-Archive -Path qt-everywhere-src.zip -DestinationPath ./${{env.QT_VERSION}} -Force
-
-        # 调用编译脚本
-        cmd.exe /c "call `"D:\a\QtBuild\QtBuild\Qt6Build\Build_Qt6.9.1_wasm32-emscripten3.1.70_gcc15.1.cmd`""
+        cd ..
+        if not exist Qt mkdir Qt
+        cd Qt
+        if not exist %QT_VERSION% mkdir %QT_VERSION%
+        if not exist %QT_VERSION%-static mkdir %QT_VERSION%-static
+        
+        curl -L -o qt-everywhere-src.zip https://download.qt.io/official_releases/qt/%QT_VERSION2%/%QT_VERSION%/single/qt-everywhere-src-%QT_VERSION%.zip
+        7z x qt-everywhere-src.zip -o%QT_VERSION%
+        
+        call "D:\a\QtBuild\QtBuild\Qt6Build\Build_Qt6.9.1_wasm32-emscripten3.1.70_gcc15.1.cmd"
 
     # 打包
     - name: Package binaries
