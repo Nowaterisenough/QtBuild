@@ -55,6 +55,14 @@ jobs:
           curl -L -o ninja.zip https://github.com/ninja-build/ninja/releases/download/v1.12.1/ninja-win.zip
           unzip -q ninja.zip -d ./ninja
 
+      - name: Setup Protobuf (for QtGRPC)
+        run: |
+          cd ..
+          curl -L -o protoc-win64.zip https://github.com/protocolbuffers/protobuf/releases/download/v30.2/protoc-30.2-win64.zip
+          unzip -q protoc-win64.zip -d ./protoc
+          echo "D:\a\QtBuild\protoc\bin" >> $env:GITHUB_PATH
+        shell: pwsh
+
       - name: Prepare directories and source
         run: |
           cd ..
@@ -86,13 +94,21 @@ jobs:
             set SEPARATE_DEBUG=false
           )
 
-          call D:\a\QtBuild\QtBuild\Qt6Build\Build_Qt.cmd %QT_VERSION% %GCC_VERSION% %BUILD_TYPE% %LINK_TYPE% %SEPARATE_DEBUG%
+          call D:\a\QtBuild\QtBuild\Qt6Build\Build_Qt.cmd !QT_VERSION! !GCC_VERSION! !BUILD_TYPE! !LINK_TYPE! !SEPARATE_DEBUG!
 
       - name: Package binaries
         run: |
-          7z a Qt_${{ env.QT_VERSION }}-${{ matrix.link_type }}-${{ matrix.build_type }}_mingw${{ env.GCC_VERSION }}_64_UCRT.7z ../Qt/${{ env.QT_VERSION }}-${{ matrix.link_type }} -mx=9
+          cd ..
+          $linkType = "${{ matrix.link_type }}"
+          $buildType = "${{ matrix.build_type }}"
+          $qtVersion = "${{ env.QT_VERSION }}"
+          $gccVersion = "${{ env.GCC_VERSION }}"
+          
+          $archiveName = "Qt_${qtVersion}-${linkType}-${buildType}_mingw${gccVersion}_64_UCRT.7z"
+          7z a $archiveName "Qt\$qtVersion-$linkType" -mx=9
+        shell: pwsh
 
       - uses: actions/upload-artifact@v4
         with:
           name: Qt_${{ env.QT_VERSION }}-${{ matrix.link_type }}-${{ matrix.build_type }}_mingw${{ env.GCC_VERSION }}_64_UCRT
-          path: Qt_${{ env.QT_VERSION }}-${{ matrix.link_type }}-${{ matrix.build_type }}_mingw${{ env.GCC_VERSION }}_64_UCRT.7z
+          path: ../Qt_${{ env.QT_VERSION }}-${{ matrix.link_type }}-${{ matrix.build_type }}_mingw${{ env.GCC_VERSION }}_64_UCRT.7z
