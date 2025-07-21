@@ -82,7 +82,6 @@ call "%SRC_QT%\configure.bat" ^
     -nomake examples ^
     -nomake tests ^
     -skip qtwebengine ^
-    -skip qtwebkit ^
     -opensource ^
     -confirm-license ^
     -qt-libpng ^

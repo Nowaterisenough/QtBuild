@@ -9,7 +9,7 @@ SET QT_VERSION=6.9.1
 SET WASM_VERSION=wasm32_emscripten
 
 :: 设置Emscripten版本
-SET EMSCRIPTEN_VERSION=3.1.70
+SET EMSCRIPTEN_VERSION=4.0.11
 
 echo =====================================
 echo Qt WebAssembly Build Configuration
