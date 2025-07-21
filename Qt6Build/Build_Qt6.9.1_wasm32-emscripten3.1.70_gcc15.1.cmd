@@ -72,7 +72,7 @@ call "%SRC_QT%\configure.bat" ^
     -static ^
     -release ^
     -prefix "%INSTALL_DIR%" ^
-    -platform wasm-emscripten ^
+    -xplatform wasm-emscripten ^
     -qt-host-path "%HOST_QT_DIR%" ^
     -nomake examples ^
     -nomake tests ^
@@ -87,8 +87,7 @@ call "%SRC_QT%\configure.bat" ^
     -qt-freetype ^
     -no-dbus ^
     -no-ssl ^
-    -no-pch ^
-    -no-feature-network
+    -no-pch
 
 IF ERRORLEVEL 1 (
     echo Error: Configure failed
