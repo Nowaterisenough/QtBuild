@@ -98,6 +98,11 @@ call "%SRC_QT%\configure.bat" ^
     -skip qtwayland ^
     -skip qtwebview ^
     -skip qtnetworkauth ^
+    -skip qtcoap ^
+    -skip qtconnectivity ^
+    -skip qthttpserver ^
+    -skip qtmqtt ^
+    -skip qtopcua ^
     -opensource ^
     -confirm-license ^
     -qt-libpng ^
