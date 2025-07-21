@@ -57,6 +57,54 @@ echo Host Qt Dir: %HOST_QT_DIR%
 echo ================================
 echo.
 
+:: 修复qwasmsocket.cpp文件的头文件包含问题
+echo Patching qwasmsocket.cpp...
+SET QWASMSOCKET_FILE=%SRC_QT%\qtbase\src\corelib\platform\wasm\qwasmsocket.cpp
+
+if exist "%QWASMSOCKET_FILE%" (
+    echo Backing up original qwasmsocket.cpp...
+    copy "%QWASMSOCKET_FILE%" "%QWASMSOCKET_FILE%.bak" > nul
+    
+    echo Applying patch to qwasmsocket.cpp...
+    
+    :: 创建临时PowerShell脚本来修复文件
+    (
+    echo $file = "%QWASMSOCKET_FILE%"
+    echo $content = Get-Content $file -Raw
+    echo if ^($content -notmatch "#include <QtCore/qcoreapplication.h>"^) {
+    echo     $lines = Get-Content $file
+    echo     $newLines = @^(^)
+    echo     $includeAdded = $false
+    echo     foreach ^($line in $lines^) {
+    echo         if ^($line -match "^#include" -and -not $includeAdded^) {
+    echo             $newLines += $line
+    echo             if ^($line -match "qobject.h"^) {
+    echo                 $newLines += "#include <QtCore/qcoreapplication.h>"
+    echo                 $newLines += "#include <QtCore/qevent.h>"
+    echo                 $includeAdded = $true
+    echo             }
+    echo         } else {
+    echo             $newLines += $line
+    echo         }
+    echo     }
+    echo     if ^(-not $includeAdded^) {
+    echo         $newLines = @^("#include <QtCore/qcoreapplication.h>", "#include <QtCore/qevent.h>"^) + $newLines
+    echo     }
+    echo     $newLines ^| Set-Content $file -Encoding UTF8
+    echo     Write-Host "Patched qwasmsocket.cpp successfully"
+    echo } else {
+    echo     Write-Host "qwasmsocket.cpp already patched"
+    echo }
+    ) > fix_qwasmsocket.ps1
+    
+    powershell -ExecutionPolicy Bypass -File fix_qwasmsocket.ps1
+    del fix_qwasmsocket.ps1
+    
+    echo Patch applied successfully.
+) else (
+    echo Warning: qwasmsocket.cpp not found at %QWASMSOCKET_FILE%
+)
+
 :: 根据需要进行全新构建
 echo Cleaning previous build...
 IF EXIST "%BUILD_DIR%" rmdir /s /q "%BUILD_DIR%"
@@ -87,7 +135,8 @@ call "%SRC_QT%\configure.bat" ^
     -qt-freetype ^
     -no-dbus ^
     -no-ssl ^
-    -no-pch
+    -no-pch ^
+    -no-feature-network
 
 IF ERRORLEVEL 1 (
     echo Error: Configure failed
