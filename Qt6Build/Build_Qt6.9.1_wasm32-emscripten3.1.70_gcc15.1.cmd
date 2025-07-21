@@ -18,29 +18,24 @@ echo Qt Version: %QT_VERSION%
 echo WASM Version: %WASM_VERSION%
 echo Emscripten Version: %EMSCRIPTEN_VERSION%
 echo =====================================
-echo.
 
 :: 设置Emscripten SDK路径并激活环境
 SET EMSDK_ROOT=D:\a\QtBuild\emsdk
-echo [INFO] Activating Emscripten environment...
+echo Setting up Emscripten environment...
 
 if not exist "%EMSDK_ROOT%\emsdk_env.bat" (
-    echo [ERROR] emsdk_env.bat not found at %EMSDK_ROOT%
+    echo Error: emsdk_env.bat not found at %EMSDK_ROOT%
     exit /b 1
 )
 
 call "%EMSDK_ROOT%\emsdk_env.bat"
 if %errorlevel% neq 0 (
-    echo [ERROR] Failed to activate Emscripten environment
+    echo Error: Failed to activate Emscripten environment
     exit /b %errorlevel%
 )
 
-echo [INFO] Emscripten environment activated successfully
-
 :: 设置工具路径
 SET PATH=D:\a\QtBuild\mingw64\bin;D:\a\QtBuild\ninja;%PATH%
-
-echo [INFO] Tool paths configured
 
 :: 设置Qt文件夹路径
 SET QT_PATH=D:\a\QtBuild\Qt
@@ -51,100 +46,63 @@ SET SRC_QT=%QT_PATH%\%QT_VERSION%\qt-everywhere-src-%QT_VERSION%
 :: 设置安装文件夹目录
 SET INSTALL_DIR=%QT_PATH%\%QT_VERSION%-static\%WASM_VERSION%
 
-:: 设置Host Qt目录 - 修正路径检查
+:: 设置Host Qt目录
 SET HOST_QT_DIR=%QT_PATH%\%QT_VERSION%-host
 
 :: 设置build文件夹目录
 SET BUILD_DIR=%QT_PATH%\%QT_VERSION%\build-%WASM_VERSION%
 
-echo [INFO] Checking dependencies...
-echo [DEBUG] Expected Qt source path: %SRC_QT%
-echo [DEBUG] Expected Host Qt path: %HOST_QT_DIR%
+:: 显示配置信息
+echo.
+echo ================================
+echo Qt6 WebAssembly Build Configuration
+echo ================================
+echo Qt Version: %QT_VERSION%
+echo Platform: WebAssembly (Emscripten %EMSCRIPTEN_VERSION%)
+echo Build Type: Static Release
+echo Source Dir: %SRC_QT%
+echo Build Dir: %BUILD_DIR%
+echo Install Dir: %INSTALL_DIR%
+echo Host Qt Dir: %HOST_QT_DIR%
+echo ================================
+echo.
 
-:: 检查源代码是否存在，如果不存在则显示详细信息
+:: 检查源代码是否存在
 if not exist "%SRC_QT%\configure.bat" (
-    echo [ERROR] Qt source not found at %SRC_QT%
-    echo Expected configure.bat at: %SRC_QT%\configure.bat
-    echo.
-    echo [DEBUG] Checking directory structure:
-    if exist "%QT_PATH%" (
-        echo Qt directory exists, contents:
-        dir /b "%QT_PATH%"
-        if exist "%QT_PATH%\%QT_VERSION%" (
-            echo %QT_VERSION% directory exists, contents:
-            dir /b "%QT_PATH%\%QT_VERSION%"
-        )
-    ) else (
-        echo Qt directory does not exist: %QT_PATH%
-    )
-    exit /b 1
-)
-echo [INFO] Qt source found at: %SRC_QT%
-
-:: 检查Host Qt是否存在，改进路径检测
-echo [DEBUG] Looking for Host Qt at: %HOST_QT_DIR%
-if exist "%HOST_QT_DIR%" (
-    echo [DEBUG] Host Qt directory exists, checking for qmake...
-    dir /s /b "%HOST_QT_DIR%\*qmake.exe" 2>nul
-    if exist "%HOST_QT_DIR%\bin\qmake.exe" (
-        echo [INFO] Host Qt found at: %HOST_QT_DIR%
-    ) else (
-        :: 检查是否在子目录中
-        for /d %%d in ("%HOST_QT_DIR%\*") do (
-            if exist "%%d\bin\qmake.exe" (
-                echo [INFO] Host Qt found in subdirectory: %%d
-                SET HOST_QT_DIR=%%d
-                goto :host_qt_found
-            )
-        )
-        echo [ERROR] qmake.exe not found in Host Qt directory
-        echo Contents of %HOST_QT_DIR%:
-        dir /b "%HOST_QT_DIR%"
-        exit /b 1
-    )
-) else (
-    echo [ERROR] Host Qt directory not found: %HOST_QT_DIR%
+    echo Error: Qt source not found at %SRC_QT%
     exit /b 1
 )
 
-:host_qt_found
+:: 检查Host Qt是否存在
+if not exist "%HOST_QT_DIR%\bin\qmake.exe" (
+    echo Error: Host Qt not found at %HOST_QT_DIR%
+    exit /b 1
+)
 
 :: 验证关键工具
 where ninja >nul 2>&1
 if %errorlevel% neq 0 (
-    echo [ERROR] Ninja not found in PATH
+    echo Error: Ninja not found
     exit /b 1
 )
-echo [INFO] Ninja found
 
-:: 验证 Emscripten 编译器
 where emcc >nul 2>&1
 if %errorlevel% neq 0 (
-    echo [ERROR] Emscripten compiler (emcc) not found in PATH
+    echo Error: Emscripten compiler not found
     exit /b 1
 )
-echo [INFO] Emscripten compiler found
 
-:: 清理并创建构建目录
-echo [INFO] Preparing build directory...
-if exist "%BUILD_DIR%" (
-    echo [INFO] Removing existing build directory...
-    rmdir /s /q "%BUILD_DIR%"
-)
+:: 根据需要进行全新构建
+echo Cleaning previous build...
+if exist "%BUILD_DIR%" rmdir /s /q "%BUILD_DIR%"
+
+:: 定位到构建目录
+echo Creating build directory...
 mkdir "%BUILD_DIR%"
-if %errorlevel% neq 0 (
-    echo [ERROR] Failed to create build directory
-    exit /b %errorlevel%
-)
-
 cd /d "%BUILD_DIR%"
-echo [INFO] Changed to build directory: %BUILD_DIR%
 
-echo.
-echo [INFO] Starting Qt configure...
-echo =====================================
-
-:: configure for WebAssembly with Host Qt
+:: configure
+echo Starting Qt configure...
 call "%SRC_QT%\configure.bat" ^
     -static ^
     -release ^
@@ -186,44 +144,38 @@ call "%SRC_QT%\configure.bat" ^
     -no-pch
 
 if %errorlevel% neq 0 (
-    echo [ERROR] Configure failed with exit code %errorlevel%
+    echo Error: Configure failed
     exit /b %errorlevel%
 )
-echo [INFO] Configure completed successfully
 
-echo.
-echo [INFO] Starting build...
-echo =====================================
+:: 编译
+echo Starting build...
 cmake --build . --parallel 4
 
 if %errorlevel% neq 0 (
-    echo [ERROR] Build failed with exit code %errorlevel%
+    echo Error: Build failed
     exit /b %errorlevel%
 )
-echo [INFO] Build completed successfully
 
-echo.
-echo [INFO] Installing...
-echo =====================================
+:: 安装
+echo Installing...
 cmake --install .
 
 if %errorlevel% neq 0 (
-    echo [ERROR] Install failed with exit code %errorlevel%
+    echo Error: Install failed
     exit /b %errorlevel%
 )
-echo [INFO] Install completed successfully
 
 :: 复制qt.conf
-if exist "%~dp0\qt.conf" (
-    echo [INFO] Copying qt.conf...
-    copy "%~dp0\qt.conf" "%INSTALL_DIR%\bin\"
+if exist "%~dp0qt.conf" (
+    copy "%~dp0qt.conf" "%INSTALL_DIR%\bin\"
 )
 
 :: 创建构建信息文件
-echo [INFO] Creating build info...
+echo Creating build info...
 (
-echo Qt WebAssembly Build Information
-echo ================================
+echo Qt6 WebAssembly Build Information
+echo ==================================
 echo Qt Version: %QT_VERSION%
 echo Platform: WebAssembly ^(Emscripten %EMSCRIPTEN_VERSION%^)
 echo Build Type: Static Release
@@ -235,9 +187,9 @@ echo Build completed successfully!
 ) > "%INSTALL_DIR%\build-info.txt"
 
 echo.
-echo =====================================
-echo [SUCCESS] Build completed successfully!
+echo ================================
+echo Build completed successfully!
 echo Installation directory: %INSTALL_DIR%
-echo =====================================
+echo ================================
 
-exit /b 0
+cd /d "%INSTALL_DIR%"

@@ -12,7 +12,6 @@ env:
 jobs:
   windows_wasm_static_release:
     runs-on: windows-latest
-    timeout-minutes: 480  # 8小时超时
 
     steps:
     # 检出本仓库
@@ -57,55 +56,35 @@ jobs:
         New-Item -ItemType Directory -Force -Path Qt/${{env.QT_VERSION}}-host
         cd Qt/${{env.QT_VERSION}}-host
         
-        # 下载你提供的Host Qt
+        # 下载Host Qt并解压到正确位置
         curl -L -o host-qt.7z "https://github.com/yuanpeirong/buildQt/releases/download/Qt6.9.1_rev0/Qt_6.9.1-static-Release_mingw1510_64_UCRT.7z"
-        echo "Extracting Host Qt..."
         7z x host-qt.7z -y
         
-        echo "Host Qt contents:"
-        Get-ChildItem . -Recurse -Depth 2 | Select-Object Name, FullName
-
-      # 下载Host Qt
-    - name: Download Host Qt
-      run: |
-        cd ..  #Directory: D:\a\QtBuild
-        New-Item -ItemType Directory -Force -Path Qt/${{env.QT_VERSION}}-host
-        cd Qt/${{env.QT_VERSION}}-host
-        
-        # 下载你提供的Host Qt
-        curl -L -o host-qt.7z "https://github.com/yuanpeirong/buildQt/releases/download/Qt6.9.1_rev0/Qt_6.9.1-static-Release_mingw1510_64_UCRT.7z"
-        echo "Extracting Host Qt..."
-        7z x host-qt.7z -y
-        
-        echo "Host Qt archive contents:"
-        Get-ChildItem . -Recurse -Depth 3 | Select-Object FullName
-        
-        # 将嵌套的目录结构展平到当前目录
+        # 移动到正确的目录结构
         if (Test-Path "6.9.1-static\mingw1510_64_UCRT") {
-            echo "Moving Host Qt from nested directory..."
             Get-ChildItem "6.9.1-static\mingw1510_64_UCRT\*" | Move-Item -Destination . -Force
             Remove-Item -Path "6.9.1-static" -Recurse -Force
-            Remove-Item -Path "host-qt.7z" -Force
         }
-        
-        echo "Final Host Qt structure:"
-        Get-ChildItem . -Depth 2 | Select-Object Name, FullName
-        
-        # 验证 qmake 是否存在
-        if (Test-Path "bin\qmake.exe") {
-            echo "✓ qmake.exe found at correct location"
-        } else {
-            echo "✗ qmake.exe still not at expected location"
-            echo "Available qmake locations:"
-            Get-ChildItem . -Recurse -Filter "qmake.exe" | Select-Object FullName
-        }
+        Remove-Item host-qt.7z
 
     # 构建Qt
     - name: Build Qt
-      timeout-minutes: 360  # 6小时超时
-      shell: cmd
       run: |
-        call "D:\a\QtBuild\QtBuild\Qt6Build\Build_Qt6.9.1_wasm32-emscripten3.1.70_gcc15.1.cmd"
+        # 创建文件夹
+        cd ..  #Directory: D:\a\QtBuild
+        New-Item -ItemType Directory -Force -Path Qt
+
+        # 创建文件夹
+        cd Qt   #Directory: D:\a\QtBuild\Qt
+        New-Item -ItemType Directory -Force -Path ${{env.QT_VERSION}}
+        New-Item -ItemType Directory -Force -Path "${{env.QT_VERSION}}-static"
+
+        # 下载源代码并解压
+        curl -L -o qt-everywhere-src.zip https://download.qt.io/official_releases/qt/${{env.QT_VERSION2}}/${{env.QT_VERSION}}/single/qt-everywhere-src-${{env.QT_VERSION}}.zip
+        Expand-Archive -Path qt-everywhere-src.zip -DestinationPath ./${{env.QT_VERSION}} -Force
+
+        # 调用编译脚本
+        cmd.exe /c "call `"D:\a\QtBuild\QtBuild\Qt6Build\Build_Qt6.9.1_wasm32-emscripten3.1.70_gcc15.1.cmd`""
 
     # 打包
     - name: Package binaries
