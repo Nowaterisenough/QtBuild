@@ -51,29 +51,63 @@ SET SRC_QT=%QT_PATH%\%QT_VERSION%\qt-everywhere-src-%QT_VERSION%
 :: 设置安装文件夹目录
 SET INSTALL_DIR=%QT_PATH%\%QT_VERSION%-static\%WASM_VERSION%
 
-:: 设置Host Qt目录
+:: 设置Host Qt目录 - 修正路径检查
 SET HOST_QT_DIR=%QT_PATH%\%QT_VERSION%-host
 
 :: 设置build文件夹目录
 SET BUILD_DIR=%QT_PATH%\%QT_VERSION%\build-%WASM_VERSION%
 
 echo [INFO] Checking dependencies...
+echo [DEBUG] Expected Qt source path: %SRC_QT%
+echo [DEBUG] Expected Host Qt path: %HOST_QT_DIR%
 
-:: 检查源代码是否存在
+:: 检查源代码是否存在，如果不存在则显示详细信息
 if not exist "%SRC_QT%\configure.bat" (
     echo [ERROR] Qt source not found at %SRC_QT%
     echo Expected configure.bat at: %SRC_QT%\configure.bat
+    echo.
+    echo [DEBUG] Checking directory structure:
+    if exist "%QT_PATH%" (
+        echo Qt directory exists, contents:
+        dir /b "%QT_PATH%"
+        if exist "%QT_PATH%\%QT_VERSION%" (
+            echo %QT_VERSION% directory exists, contents:
+            dir /b "%QT_PATH%\%QT_VERSION%"
+        )
+    ) else (
+        echo Qt directory does not exist: %QT_PATH%
+    )
     exit /b 1
 )
 echo [INFO] Qt source found at: %SRC_QT%
 
-:: 检查Host Qt是否存在
-if not exist "%HOST_QT_DIR%\bin\qmake.exe" (
-    echo [ERROR] Host Qt not found at %HOST_QT_DIR%
-    echo Please ensure Host Qt is downloaded and extracted to %HOST_QT_DIR%
+:: 检查Host Qt是否存在，改进路径检测
+echo [DEBUG] Looking for Host Qt at: %HOST_QT_DIR%
+if exist "%HOST_QT_DIR%" (
+    echo [DEBUG] Host Qt directory exists, checking for qmake...
+    dir /s /b "%HOST_QT_DIR%\*qmake.exe" 2>nul
+    if exist "%HOST_QT_DIR%\bin\qmake.exe" (
+        echo [INFO] Host Qt found at: %HOST_QT_DIR%
+    ) else (
+        :: 检查是否在子目录中
+        for /d %%d in ("%HOST_QT_DIR%\*") do (
+            if exist "%%d\bin\qmake.exe" (
+                echo [INFO] Host Qt found in subdirectory: %%d
+                SET HOST_QT_DIR=%%d
+                goto :host_qt_found
+            )
+        )
+        echo [ERROR] qmake.exe not found in Host Qt directory
+        echo Contents of %HOST_QT_DIR%:
+        dir /b "%HOST_QT_DIR%"
+        exit /b 1
+    )
+) else (
+    echo [ERROR] Host Qt directory not found: %HOST_QT_DIR%
     exit /b 1
 )
-echo [INFO] Host Qt found at: %HOST_QT_DIR%
+
+:host_qt_found
 
 :: 验证关键工具
 where ninja >nul 2>&1

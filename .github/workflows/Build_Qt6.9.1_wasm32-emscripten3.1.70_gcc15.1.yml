@@ -59,31 +59,49 @@ jobs:
         
         # 下载你提供的Host Qt
         curl -L -o host-qt.7z "https://github.com/yuanpeirong/buildQt/releases/download/Qt6.9.1_rev0/Qt_6.9.1-static-Release_mingw1510_64_UCRT.7z"
-        7z x host-qt.7z
+        echo "Extracting Host Qt..."
+        7z x host-qt.7z -y
+        
+        echo "Host Qt contents:"
+        Get-ChildItem . -Recurse -Depth 2 | Select-Object Name, FullName
 
-    # 创建目录结构
-    - name: Create directories
+    # 创建目录结构并下载Qt源码
+    - name: Download and Extract Qt Source
       run: |
         cd ..  #Directory: D:\a\QtBuild
         New-Item -ItemType Directory -Force -Path Qt
         New-Item -ItemType Directory -Force -Path Qt/${{env.QT_VERSION}}
         New-Item -ItemType Directory -Force -Path Qt/${{env.QT_VERSION}}-static
-
-    # 下载 Qt 源码
-    - name: Download Qt Source
-      run: |
-        cd ../Qt  #Directory: D:\a\QtBuild\Qt
+        
+        cd Qt  #Directory: D:\a\QtBuild\Qt
+        
         echo "Downloading Qt source..."
         curl -L -o qt-everywhere-src-${{env.QT_VERSION}}.zip https://download.qt.io/official_releases/qt/${{env.QT_VERSION2}}/${{env.QT_VERSION}}/single/qt-everywhere-src-${{env.QT_VERSION}}.zip
         
-        echo "Download completed. File size:"
+        echo "Download completed. File info:"
         Get-ChildItem qt-everywhere-src-${{env.QT_VERSION}}.zip | Select-Object Name, Length
         
-        echo "Extracting Qt source..."
-        7z x qt-everywhere-src-${{env.QT_VERSION}}.zip -o${{env.QT_VERSION}} -y
+        echo "Extracting Qt source to temporary location..."
+        7z x qt-everywhere-src-${{env.QT_VERSION}}.zip -otemp -y
         
-        echo "Extraction completed. Checking contents:"
-        Get-ChildItem ${{env.QT_VERSION}} | Select-Object Name
+        echo "Contents of temp directory:"
+        Get-ChildItem temp | Select-Object Name
+        
+        echo "Moving extracted contents to correct location..."
+        Move-Item "temp\qt-everywhere-src-${{env.QT_VERSION}}" "${{env.QT_VERSION}}\qt-everywhere-src-${{env.QT_VERSION}}"
+        
+        echo "Cleaning up..."
+        Remove-Item -Path temp -Recurse -Force
+        Remove-Item qt-everywhere-src-${{env.QT_VERSION}}.zip
+        
+        echo "Verifying Qt source structure:"
+        if (Test-Path "${{env.QT_VERSION}}\qt-everywhere-src-${{env.QT_VERSION}}\configure.bat") {
+            echo "✓ configure.bat found at correct location"
+        } else {
+            echo "✗ configure.bat NOT found at expected location"
+            echo "Directory contents:"
+            Get-ChildItem "${{env.QT_VERSION}}" -Recurse -Depth 2 | Select-Object Name, FullName
+        }
 
     # 构建Qt
     - name: Build Qt
