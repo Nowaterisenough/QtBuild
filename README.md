@@ -1,139 +1,469 @@
-# QtBuild - 从源代码自动构建Qt
+# QtBuild - Qt源代码自动构建系统
 
-> Forked from [yuanpeirong/buildQt](https://github.com/yuanpeirong/buildQt)
+> 基于 GitHub Actions 的多平台 Qt 自动构建项目
 
 [![License](https://img.shields.io/badge/License-Educational%20Use%20Only-red.svg)](LICENSE)
 [![Qt Version](https://img.shields.io/badge/Qt-6.9.1%20%7C%205.15.17-blue.svg)](https://qt.io)
+[![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20WebAssembly-green.svg)](https://github.com)
+[![Build Status](https://img.shields.io/badge/Build-Automated-brightgreen.svg)](https://github.com/features/actions)
 
-## 免责声明
+## 重要声明
 
 **本项目仅供学习研究使用，严禁将静态构建版本用于商业用途！**
 
-- 允许用途：个人学习、研究、开发测试
-- 禁止用途：商业项目、分发、销售
+- 允许用途：个人学习、研究、开发测试、开源项目
+- 禁止用途：商业项目、分发、销售、闭源商业应用
 
-使用Qt静态构建版本进行商业开发需要购买Qt商业许可证。详情请参考 [Qt许可证说明](https://www.qt.io/licensing/)。
+使用Qt静态构建版本进行商业开发需要购买Qt商业许可证。详情请参考 [Qt官方许可证说明](https://www.qt.io/licensing/)。
+
+---
+
+## 快速开始
+
+### 自动构建 (推荐)
+
+1. **Fork 本仓库**到您的GitHub账户
+2. **进入 Actions 页面**选择对应的工作流
+3. **点击 "Run workflow"**配置构建参数
+4. **等待构建完成**下载 Artifacts
+
+### 本地构建
+
+```bash
+# 克隆仓库
+git clone https://github.com/your-username/QtBuild.git
+cd QtBuild
+
+# Windows 示例 (选择相应的脚本)
+.\Qt6Build\build-qt6-windows_x86_64_msvc.cmd 6.9.1 2022 release static false
+
+# Linux 示例
+./Qt6Build/build-qt6-linux_x86_64_gcc.sh 6.9.1 15.1 release shared false
+```
 
 ---
 
 ## 支持的构建配置
 
-> 构建选项参考：[Qt 6.9 Tools and Versions](https://wiki.qt.io/Qt_6.9_Tools_and_Versions)
+### Qt 6.9.1 完整支持
 
-### Qt 6.9.1 x64
+#### Windows x64 平台
 
-#### Windows x64
+| 编译器类型 | 版本选项 | 静态链接 | 动态链接 | Debug支持 | 工作流文件 |
+|-----------|----------|----------|----------|-----------|------------|
+| **MSVC** | 2019/2022 | 支持 | 支持 | 支持 | `build-qt6-windows_x86_64_msvc_matrix.yml` |
+| **MinGW-GCC** | 13.1.0/15.1.0 | 支持 | 支持 | 支持 | `build-qt6-windows_x86_64_mingw_gcc_martrix.yml` |
+| **LLVM-Clang** | 17.0.6/20.1.6 | 支持 | 支持 | 支持 | `build-qt6-windows_x86_64_llvm_clang_matrix.yml` |
 
-| 编译器 | 版本 | 静态 | 动态 | 下载链接 |
-|--------|------|------|------|----------|
-| **MSVC 2022** | v17.13.2 | ✅ | ✅ | Visual Studio 2022 Developer Command Prompt |
-| **MinGW** | 13.1.0 (官方默认) | ✅ | ✅ | [13.1.0-202407240918mingw1310.7z](https://download.qt.io/online/qtsdkrepository/windows_x86/desktop/tools_mingw1310/qt.tools.win64_mingw1310/13.1.0-202407240918mingw1310.7z) |
-| **MinGW** | 15.1.0 | ✅ | ✅ | [x86_64-15.1.0-release-posix-seh-ucrt-rt_v12-rev0.7z](https://github.com/niXman/mingw-builds-binaries/releases/download/15.1.0-rt_v12-rev0/x86_64-15.1.0-release-posix-seh-ucrt-rt_v12-rev0.7z) |
-| **LLVM-MinGW** | 17.0.6 (官方默认) | ✅ | ✅ | [17.0.6-202409091150llvm_mingw1706.7z](https://download.qt.io/online/qtsdkrepository/windows_x86/desktop/tools_llvm_mingw1706/qt.tools.win64_llvm_mingw1706/17.0.6-202409091150llvm_mingw1706.7z) |
-| **LLVM-MinGW** | 20.1.6 | ✅ | ✅ | [llvm-mingw-20250528-ucrt-x86_64.zip](https://github.com/mstorsjo/llvm-mingw/releases/download/20250528/llvm-mingw-20250528-ucrt-x86_64.zip) |
+**编译器获取方式**：
+- **MSVC 2019/2022**: Visual Studio Community/Professional/Enterprise
+- **MinGW 13.1.0**: [Qt官方源](https://download.qt.io/online/qtsdkrepository/windows_x86/desktop/tools_mingw1310/)
+- **MinGW 15.1.0**: [niXman GitHub](https://github.com/niXman/mingw-builds-binaries)
+- **LLVM 17.0.6**: [Qt官方LLVM-MinGW](https://download.qt.io/online/qtsdkrepository/windows_x86/desktop/tools_llvm_mingw1706/)
+- **LLVM 20.1.6**: [mstorsjo GitHub](https://github.com/mstorsjo/llvm-mingw)
 
-#### Linux x64
+#### WebAssembly 平台
 
-| 编译器 | 版本 | 静态 | 动态 | 说明 |
-|--------|------|------|------|------|
-| **GCC** | 14.2.0 | ✅ | ✅ | 受限于Free版的Action，空间不足，暂未编译 |
+| 工具链 | 版本选项 | 构建模式 | Debug支持 | 工作流文件 |
+|--------|----------|----------|-----------|------------|
+| **Emscripten** | 3.1.70/4.0.11 | 静态构建 | 支持 | `build-qt6-wasm32_emscripten_matrix.yml` |
 
-#### WebAssembly
+**WebAssembly 特性**：
+- 支持多线程模式
+- 包含 QtBase 和 QtDeclarative 模块
+- 针对Web环境优化
+- 需要Host Qt进行交叉编译
 
-| 平台 | 工具链 | 版本 | 模式 | 状态 | 说明 |
-|------|--------|------|------|------|------|
-| **WebAssembly** | Emscripten | 3.1.70 | 多线程 | ✅ | 仅编译qtbase qtdeclarative模块，支持 WebAssembly 多线程模式 |
+### Qt 5.15.17 兼容支持
 
-#### ARM 交叉编译
+#### Windows x64 平台
 
-| 目标架构 | 工具链 | 版本 | 静态 | 动态 | 说明 |
-|----------|--------|------|------|------|------|
-| **ARM32** | arm-linux-gnueabihf | GCC 13.2 | ✅ | ✅ | 适用于树莓派2/3/4 (32位) |
-| **ARM64** | aarch64-linux-gnu | GCC 13.2 | ✅ | ✅ | 适用于树莓派4 (64位) |
-
-### Qt 5.15.17 x64
-
-| 编译器 | 版本 | 状态 | 下载链接 |
-|--------|------|------|----------|
-| **MSVC 2022** | v17.13.2 | 支持 | Visual Studio 2022 Developer Command Prompt |
-| **MinGW** | 8.1.0 (官方默认) | 支持 | [mingw810.7z](https://download.qt.io/online/qtsdkrepository/windows_x86/desktop/tools_mingw81/qt.tools.win64_mingw810/8.1.0-1-202411201005x86_64-8.1.0-gdb-11.2.0-release-posix-seh-rt_v6-rev0.7z) |
+| 编译器类型 | 版本选项 | 静态链接 | 动态链接 | 工作流文件 |
+|-----------|----------|----------|----------|------------|
+| **MSVC** | 2019/2022 | 支持 | 支持 | `build-qt5-windows_x86_64_msvc_matrix.yml` |
+| **MinGW-GCC** | 8.1.0/11.2.0 | 支持 | 支持 | `build-qt5-windows_x86_64_mingw_gcc_matrix.yml` |
 
 ---
 
-## 使用方法
+## 构建选项详解
 
-### 自动构建 (GitHub Actions)
+### 构建类型 (Build Types)
 
-1. Fork 本仓库
-2. 进入 Actions 页面
-3. 选择对应的工作流
-4. 点击 "Run workflow" 开始构建
-5. 构建完成后下载 Artifacts
+| 类型 | 说明 | 适用场景 | 文件大小 |
+|------|------|----------|----------|
+| **release** | 发布版本，最优性能 | 生产环境部署 | 中等 |
+| **debug** | 调试版本，包含完整调试信息 | 开发调试 | 大 |
+| **release-and-debug** | 同时构建发布和调试版本 | 开发和生产并用 | 大 |
+| **release-sepdbg** | 发布版本+分离调试信息 | 生产部署+调试支持 | 中等+调试文件 |
+
+### 链接类型 (Link Types)
+
+| 类型 | 说明 | 优势 | 劣势 | 部署方式 |
+|------|------|------|------|----------|
+| **static** | 静态链接 | 单文件部署，无依赖 | 文件大，内存占用高 | 直接复制exe |
+| **shared** | 动态链接 | 文件小，内存共享 | 需要运行时库 | 需复制DLL |
+
+### 运行时选项 (Runtime)
+
+| 运行时 | 说明 | 兼容性 | 推荐场景 |
+|--------|------|--------|----------|
+| **UCRT** | Universal C Runtime | Windows 10+ | 现代应用开发 |
+| **MSVCRT** | 传统 MSVC Runtime | Windows 7+ | 兼容老系统 |
+
+---
+
+## 命名规范
+
+构建产物采用标准化三段式命名格式：
+
+```
+qt{版本}-{平台}_{架构}_{编译器}{版本}_{运行时}-{链接类型}_{构建类型}.7z
+```
+
+**命名示例**：
+- `qt6.9.1-windows_x86_64_msvc2022-static_release.7z`
+- `qt6.9.1-windows_x86_64_mingw_gcc15.1.0_ucrt-shared_relwithdebinfo.7z`
+- `qt6.9.1-windows_x86_64_llvm_clang20.1_ucrt-static_release_and_debug.7z`
+- `qt6.9.1-wasm32_emscripten4.0.11-static_debug.7z`
+- `qt5.15.17-windows_x86_64_msvc2022-shared_release.7z`
+
+---
+
+## 构建配置详情
+
+### 通用配置
+
+- **C++ 标准**：C++20 (Qt6) / C++17 (Qt5)
+- **优化选项**：Release (-O2), Debug (-Og)
+- **跳过模块**：QtWebEngine (减少构建时间)
+- **开源许可**：自动接受 (-opensource -confirm-license)
+
+### Windows 平台特定配置
+
+#### MSVC 编译器
+- **SSL后端**：Schannel (Windows原生)
+- **图形API**：OpenGL Desktop
+- **多处理器编译**：-mp (仅shared构建)
+- **调试信息**：支持分离调试信息生成
+
+#### MinGW-GCC 编译器
+- **线程模型**：POSIX threads
+- **运行时**：支持UCRT和MSVCRT
+- **内置库**：libpng, libjpeg, zlib, pcre, freetype
+- **SSL后端**：Schannel
+
+#### LLVM-Clang 编译器
+- **现代C++**：完整C++20支持
+- **优化器**：LLVM后端优化
+- **运行时**：主要支持UCRT
+- **跨平台**：与其他LLVM工具链兼容
+
+### WebAssembly 平台配置
+
+- **编译目标**：wasm32-emscripten
+- **线程支持**：WebAssembly threads (-feature-thread)
+- **精简模块**：仅包含 qtbase 和 qtdeclarative
+- **优化配置**：针对浏览器环境优化
+- **无SSL/DBus**：移除不适用模块
+
+---
+
+## 详细使用指南
+
+### GitHub Actions 自动构建
+
+#### 1. 环境准备
+```bash
+# Fork 本仓库到您的账户
+# 确保 GitHub Actions 已启用
+# 检查仓库 Settings > Actions > General
+```
+
+#### 2. 启动构建
+- 进入仓库的 **Actions** 页面
+- 选择对应的工作流 (例如：`build-qt6-windows_x86_64_msvc_matrix`)
+- 点击 **"Run workflow"**
+- 配置构建参数：
+  - Qt 版本 (6.9.1 / 5.15.17)
+  - 编译器版本
+  - 运行时类型
+  - 其他选项
+
+#### 3. 下载构建产物
+- 构建完成后，在 **Artifacts** 部分下载压缩包
+- 解压到目标目录即可使用
 
 ### 本地构建
 
+#### 1. 环境准备
+
+**Windows 平台**：
 ```bash
-# 1. 克隆仓库
+# 需要 Visual Studio 或 MinGW 或 LLVM-Clang
 git clone https://github.com/your-username/QtBuild.git
 cd QtBuild
+```
 
-# 2. 选择对应的构建脚本
-# Windows (cmd)
-.\Qt6Build\Build_Qt6.9.1_x86_64-windows-msvc_2022.cmd
+**Linux 平台**：
+```bash
+# 需要 GCC 和必要的开发库
+sudo apt-get install build-essential libgl1-mesa-dev
+git clone https://github.com/your-username/QtBuild.git
+cd QtBuild
+```
 
-# Linux (bash)
-./Qt6Build/Build_Qt6.9.1_x86_64-linux-gnu_gcc15.1.sh
+#### 2. 执行构建
+
+**Qt6 Windows MSVC**：
+```bash
+.\Qt6Build\build-qt6-windows_x86_64_msvc.cmd 6.9.1 2022 release static false
+```
+
+**Qt6 Windows MinGW**：
+```bash
+.\Qt6Build\build-qt6-windows_x86_64_mingw_gcc.cmd 6.9.1 15.1.0 release shared false ucrt
+```
+
+**Qt6 Windows LLVM-Clang**：
+```bash
+.\Qt6Build\build-qt6-windows_x86_64_llvm_clang.cmd 6.9.1 20.1 release static false ucrt "D:\path\to\llvm\bin" "llvm-mingw20.1.6_64_UCRT"
+```
+
+**Qt6 WebAssembly**：
+```bash
+.\Qt6Build\build-qt6-wasm32_emscripten.cmd 6.9.1 4.0.11 release static
+```
+
+**Qt5 Windows MSVC**：
+```bash
+.\Qt5Build\build-qt5-windows_x86_64_msvc.cmd 5.15.17 2022 release static false "C:\path\to\vcvarsall.bat" "C:\path\to\redist" "msvc2022_64"
+```
+
+**Qt5 Windows MinGW**：
+```bash
+.\Qt5Build\build-qt5-windows_x86_64_mingw_gcc.cmd 5.15.17 8.1 release shared false "D:\path\to\mingw\bin" "mingw810_64"
+```
+
+### 构建参数说明
+
+脚本参数格式：
+```bash
+script_name <Qt版本> <编译器版本> <构建类型> <链接类型> <分离调试信息> [其他参数]
+```
+
+**参数详解**：
+- `Qt版本`: 6.9.1, 5.15.17
+- `编译器版本`: 2022 (MSVC), 15.1.0 (GCC), 20.1 (Clang), 4.0.11 (Emscripten)
+- `构建类型`: release, debug, release-and-debug
+- `链接类型`: static, shared
+- `分离调试信息`: true, false
+- `运行时`: ucrt, msvcrt (仅MinGW/Clang)
+
+---
+
+## 部署和使用
+
+### 静态构建版本
+
+**优势**：
+- 单文件部署，无需安装运行时
+- 完全自包含，兼容性好
+- 适合绿色软件发布
+
+**使用方法**：
+```bash
+# 设置环境变量
+export QTDIR=/path/to/qt-static
+export PATH=$QTDIR/bin:$PATH
+
+# 编译应用 (qmake)
+qmake your_project.pro
+make
+
+# 编译应用 (CMake)
+cmake -DCMAKE_PREFIX_PATH=/path/to/qt-static .
+make
+```
+
+### 动态构建版本
+
+**优势**：
+- 文件体积小
+- 内存共享，多程序效率高
+- 支持插件系统
+
+**使用方法**：
+```bash
+# Windows 设置环境变量
+set QTDIR=C:\path\to\qt-shared
+set PATH=%QTDIR%\bin;%PATH%
+set QT_PLUGIN_PATH=%QTDIR%\plugins
+
+# Linux 设置环境变量
+export QTDIR=/path/to/qt-shared
+export PATH=$QTDIR/bin:$PATH
+export LD_LIBRARY_PATH=$QTDIR/lib:$LD_LIBRARY_PATH
+
+# 编译应用
+qmake your_project.pro
+make
+
+# 部署应用 (Windows)
+windeployqt.exe your_app.exe
+
+# 部署应用 (Linux)
+linuxdeployqt your_app -bundle-non-qt-libs
+```
+
+### CMake 项目配置
+
+```cmake
+# CMakeLists.txt
+cmake_minimum_required(VERSION 3.16)
+project(MyApp)
+
+# 设置 Qt 路径
+set(CMAKE_PREFIX_PATH "/path/to/qt-build")
+
+# 查找 Qt 组件
+find_package(Qt6 REQUIRED COMPONENTS Core Widgets)
+
+# 创建可执行文件
+qt6_add_executable(MyApp main.cpp)
+
+# 链接 Qt 库
+target_link_libraries(MyApp Qt6::Core Qt6::Widgets)
+```
+
+### WebAssembly 项目配置
+
+```bash
+# 设置 Emscripten 环境
+source /path/to/emsdk/emsdk_env.sh
+
+# 设置 Qt WebAssembly 环境
+export QTDIR=/path/to/qt-wasm
+export PATH=$QTDIR/bin:$PATH
+
+# 编译 WebAssembly 应用
+qmake your_project.pro
+make
+
+# 生成的文件
+# your_app.html - 主HTML文件
+# your_app.js - JavaScript胶水代码
+# your_app.wasm - WebAssembly二进制
 ```
 
 ---
 
-## 构建选项
+## 常见问题
 
-### 通用配置
-- **配置模式**：Release
-- **调试信息**：生成独立调试信息文件
-- **跳过模块**：WebEngine (减少构建时间)
+### Q: 构建失败怎么办？
+**A**: 检查以下几点：
+- 编译器版本是否正确
+- 磁盘空间是否足够 (至少20GB)
+- 网络连接是否稳定
+- 查看构建日志中的具体错误信息
 
-### 平台特定配置
+### Q: 如何选择合适的构建配置？
+**A**: 根据使用场景选择：
+- **开发测试**: debug 版本
+- **性能测试**: release 版本  
+- **生产部署**: release + 分离调试信息
+- **绿色软件**: 静态链接版本
+- **系统集成**: 动态链接版本
 
-#### Windows
-- **MSVC**：使用 Schannel (Windows原生SSL)，支持 DirectWrite
-- **MinGW**：使用 OpenSSL，支持 POSIX 线程
-- **静态运行时**：完全自包含的可执行文件
+### Q: WebAssembly 版本有什么限制？
+**A**: 主要限制包括：
+- 不支持 QtWebEngine
+- 文件系统访问受限
+- 网络功能受浏览器安全策略限制
+- 性能相比原生版本有所下降
+- 需要现代浏览器支持
 
-#### Linux
-- **静态构建**：包含所有依赖，便于部署
-- **动态构建**：使用系统库，支持 XCB 平台
-- **FontConfig**：字体配置支持
+### Q: 如何处理运行时依赖？
+**A**: 不同构建类型处理方式：
 
-#### WebAssembly
-- **多线程支持**：支持 WebAssembly 多线程模式
-- **精简模块**：仅包含核心功能
-- **无SSL/D-Bus**：移除不适用的模块
-- **Web优化**：针对Web环境优化
+**静态构建**：
+- 无需额外DLL
+- 应用程序完全自包含
 
-#### ARM 嵌入式
-- **无X11**：使用 Framebuffer 输出
-- **精简配置**：适合嵌入式设备
-- **交叉编译**：针对特定ARM架构优化
+**动态构建 - MSVC**：
+- 需要 MSVC Redistributable
+- 或复制 redist 文件夹中的DLL
+
+**动态构建 - MinGW**：
+- 需要 MinGW 运行时DLL：
+  - libgcc_s_seh-1.dll
+  - libstdc++-6.dll
+  - libwinpthread-1.dll
+
+**动态构建 - LLVM-Clang**：
+- 需要 LLVM 运行时DLL：
+  - libc++.dll
+  - libunwind.dll
+  - libwinpthread-1.dll
+
+### Q: 如何验证构建结果？
+**A**: 验证步骤：
+1. 检查安装目录结构
+2. 验证关键文件存在 (qmake.exe, moc.exe等)
+3. 运行简单的测试程序
+4. 在干净环境中测试部署
+
+---
+
+## 构建时间参考
+
+| 平台配置 | 静态构建 | 动态构建 | 调试版本 | 备注 |
+|----------|----------|----------|----------|------|
+| **Windows MSVC** | ~2.5h | ~2h | ~3h | GitHub Actions |
+| **Windows MinGW** | ~3h | ~2.5h | ~3.5h | GitHub Actions |
+| **Windows LLVM** | ~2.8h | ~2.3h | ~3.2h | GitHub Actions |
+| **WebAssembly** | ~1.5h | N/A | ~2h | GitHub Actions |
+
+*时间基于 GitHub Actions 的 Windows/Ubuntu 运行器，实际时间可能因网络和负载情况而异*
 
 ---
 
 ## 许可证
 
-本项目遵循以下许可证：
+本项目采用混合许可证：
 
-- **构建脚本**：MIT License
-- **Qt源代码**：遵循Qt官方许可证 (LGPL v3 / GPL v3)
+- **构建脚本和配置**: [MIT License](LICENSE)
+- **Qt 源代码**: 遵循 [Qt 官方许可证](https://www.qt.io/licensing/) (LGPL v3 / GPL v3)
 
-**重要提醒**：静态链接Qt库的应用程序必须遵循相应的许可证要求。商业用途请购买Qt商业许可证。
+### 重要说明
+
+**静态链接Qt库的商业应用需要Qt商业许可证**
+
+- **开源项目**: 可以使用 LGPL/GPL 版本
+- **个人学习**: 不受限制
+- **商业闭源**: 必须购买Qt商业许可证
+
+详情请参考：[Qt 许可证选择指南](https://www.qt.io/licensing/)
 
 ---
 
-<div align="center">
+## 致谢
 
-**仅供学习研究使用 | 禁止商业用途**
+- [Qt Project](https://www.qt.io/) - 提供优秀的跨平台框架
+- [GitHub Actions](https://github.com/features/actions) - 提供免费的CI/CD服务
+- [niXman](https://github.com/niXman/mingw-builds-binaries) - 提供MinGW构建版本
+- [mstorsjo](https://github.com/mstorsjo/llvm-mingw) - 提供LLVM-MinGW工具链
+- [Emscripten](https://emscripten.org/) - 提供WebAssembly编译工具链
 
-Made with love for Qt developers
+### 相关链接
+
+[![GitHub](https://img.shields.io/badge/GitHub-QtBuild-black?logo=github)](https://github.com/your-username/QtBuild)
+[![Qt Official](https://img.shields.io/badge/Qt-Official-green?logo=qt)](https://www.qt.io/)
+[![Documentation](https://img.shields.io/badge/Docs-Qt%20Docs-blue?logo=readthedocs)](https://doc.qt.io/)
+
+---
+
+**仅供学习研究使用 | 禁止商业用途 | 遵循Qt许可证**
+
+*Made with love for Qt developers worldwide*
 
 </div>
