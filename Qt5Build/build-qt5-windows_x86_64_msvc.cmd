@@ -85,9 +85,7 @@ REM 配置参数
 set CFG_OPTIONS=-%LINK_TYPE% -prefix "%INSTALL_DIR%" -nomake examples -nomake tests -skip qtwebengine -opensource -confirm-license -qt-libpng -qt-libjpeg -qt-zlib -qt-pcre -qt-freetype -schannel -opengl desktop -platform win32-msvc -silent
 
 REM 根据构建类型添加相应选项
-if "%BUILD_TYPE%"=="release-and-debug" (
-    set CFG_OPTIONS=%CFG_OPTIONS% -debug-and-release
-) else if "%BUILD_TYPE%"=="debug" (
+if "%BUILD_TYPE%"=="debug" (
     set CFG_OPTIONS=%CFG_OPTIONS% -debug
 ) else (
     set CFG_OPTIONS=%CFG_OPTIONS% -release

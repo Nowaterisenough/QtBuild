@@ -36,7 +36,7 @@ jobs:
     strategy:
       matrix:
         link_type: [static, shared]
-        build_type: [release, release-and-debug, release-sepdbg]
+        build_type: [release, debug, release-sepdbg]
     steps:
       - name: 检出代码仓库
         uses: actions/checkout@v4
@@ -134,8 +134,8 @@ jobs:
             ) else (
               set SEPARATE_DEBUG=false
             )
-          ) else if "%BUILD_TYPE%"=="release-and-debug" (
-            set BUILD_TYPE=release-and-debug
+          ) else if "%BUILD_TYPE%"=="debug" (
+            set BUILD_TYPE=debug
             set SEPARATE_DEBUG=false
           ) else (
             set SEPARATE_DEBUG=false
@@ -153,7 +153,7 @@ jobs:
           # 规范化构建类型名称 (小写)
           $buildTypeNormalized = switch ($buildType) {
             "release" { "release" }
-            "release-and-debug" { "release_and_debug" }
+            "debug" { "debug" }
             "release-sepdbg" { "relwithdebinfo" }
             default { $buildType.ToLower() }
           }
@@ -186,5 +186,5 @@ jobs:
       - name: 上传构建产物
         uses: actions/upload-artifact@v4
         with:
-          name: qt${{ env.QT_VERSION }}-windows_x86_64_msvc${{ env.MSVC_VERSION }}-${{ matrix.link_type }}_${{ matrix.build_type == 'release' && 'release' || matrix.build_type == 'release-and-debug' && 'releaseanddebug' || 'relwithdebinfo' }}
+          name: qt${{ env.QT_VERSION }}-windows_x86_64_msvc${{ env.MSVC_VERSION }}-${{ matrix.link_type }}_${{ matrix.build_type == 'release' && 'release' || matrix.build_type == 'debug' && 'debug' || 'relwithdebinfo' }}
           path: ${{ env.ARCHIVE_NAME }}

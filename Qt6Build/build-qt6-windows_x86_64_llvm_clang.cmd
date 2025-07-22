@@ -130,9 +130,7 @@ REM 配置参数 - 使用正确的平台
 set CFG_OPTIONS=-%LINK_TYPE% -prefix "%TEMP_INSTALL_DIR%" -platform win32-clang-g++ -nomake examples -nomake tests -c++std c++20 -skip qtwebengine -opensource -confirm-license -qt-libpng -qt-libjpeg -qt-zlib -qt-pcre -qt-freetype -schannel -opengl desktop
 
 REM 根据构建类型添加相应选项
-if "%BUILD_TYPE%"=="release-and-debug" (
-    set CFG_OPTIONS=%CFG_OPTIONS% -debug-and-release
-) else if "%BUILD_TYPE%"=="debug" (
+if "%BUILD_TYPE%"=="debug" (
     set CFG_OPTIONS=%CFG_OPTIONS% -debug
 ) else (
     set CFG_OPTIONS=%CFG_OPTIONS% -release
