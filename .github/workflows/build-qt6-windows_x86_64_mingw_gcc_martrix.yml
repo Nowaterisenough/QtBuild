@@ -1,4 +1,4 @@
-name: build-qt6-windows_x86_64_mingw_gcc_ucrt_martrix
+name: build-qt6-windows_x86_64_mingw_gcc_martrix
 
 on:
   workflow_dispatch:
@@ -200,7 +200,7 @@ jobs:
             set SEPARATE_DEBUG=false
           )
 
-          call D:\a\QtBuild\QtBuild\Qt6Build\build-qt6-windows_x86_64_mingw_gcc_ucrt.cmd !QT_VERSION! !GCC_VERSION! !BUILD_TYPE! !LINK_TYPE! !SEPARATE_DEBUG! !RUNTIME!
+          call D:\a\QtBuild\QtBuild\Qt6Build\build-qt6-windows_x86_64_mingw_gcc.cmd !QT_VERSION! !GCC_VERSION! !BUILD_TYPE! !LINK_TYPE! !SEPARATE_DEBUG! !RUNTIME!
 
       - name: Package binaries
         run: |
