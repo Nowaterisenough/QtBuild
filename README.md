@@ -1,6 +1,6 @@
 # QtBuild - Qt源代码自动构建系统
 
-> 基于 GitHub Actions 的多平台 Qt 自动构建项目
+> Fork自 yuanpeirong/buildQt 基于 GitHub Actions 的 Qt 自动构建项目
 
 [![License](https://img.shields.io/badge/License-Educational%20Use%20Only-red.svg)](LICENSE)
 [![Qt Version](https://img.shields.io/badge/Qt-6.9.1%20%7C%205.15.17-blue.svg)](https://qt.io)
