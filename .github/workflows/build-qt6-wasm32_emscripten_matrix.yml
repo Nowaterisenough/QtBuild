@@ -1,0 +1,171 @@
+name: build-qt6-wasm32_emscripten_matrix
+
+on:
+  workflow_dispatch:
+    inputs:
+      qt_version:
+        description: 'Qt版本'
+        required: true
+        default: '6.9.1'
+      emscripten_version:
+        description: 'Emscripten版本'
+        required: true
+        default: '4.0.11'
+        type: choice
+        options:
+        - '3.1.70'
+        - '4.0.11'
+      host_qt_url:
+        description: 'Host Qt下载地址'
+        required: false
+        default: 'https://github.com/yuanpeirong/buildQt/releases/download/Qt6.9.1_rev0/Qt_6.9.1-static-Release_mingw1510_64_UCRT.7z'
+
+env:
+  QT_VERSION: ${{ github.event.inputs.qt_version || '6.9.1' }}
+  EMSCRIPTEN_VERSION: ${{ github.event.inputs.emscripten_version || '4.0.11' }}
+  HOST_QT_URL: ${{ github.event.inputs.host_qt_url || 'https://github.com/yuanpeirong/buildQt/releases/download/Qt6.9.1_rev0/Qt_6.9.1-static-Release_mingw1510_64_UCRT.7z' }}
+
+jobs:
+  build:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        # WebAssembly 只支持静态构建
+        link_type: [static]
+        build_type: [release]
+    steps:
+      - name: 检出代码仓库
+        uses: actions/checkout@v4
+
+      - name: 设置Python环境
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          architecture: 'x64'
+
+      - name: 提取Qt主次版本号
+        id: qt_version
+        run: |
+          $version = "${{ env.QT_VERSION }}"
+          $parts = $version.Split('.')
+          $major_minor = "$($parts[0]).$($parts[1])"
+          echo "major_minor=$major_minor" >> $env:GITHUB_OUTPUT
+        shell: pwsh
+
+      - name: 设置MinGW工具链
+        run: |
+          cd ..
+          Write-Host "Downloading MinGW for build tools..."
+          curl -L -o x86_64-release-posix-seh-ucrt.7z https://github.com/niXman/mingw-builds-binaries/releases/download/15.1.0-rt_v12-rev0/x86_64-15.1.0-release-posix-seh-ucrt-rt_v12-rev0.7z
+          7z x x86_64-release-posix-seh-ucrt.7z
+        shell: pwsh
+
+      - name: 设置Ninja构建工具
+        run: |
+          cd ..
+          mkdir ninja
+          curl -L -o ninja.zip https://github.com/ninja-build/ninja/releases/download/v1.12.1/ninja-win.zip
+          7z x ninja.zip -oninja
+
+      - name: 设置Emscripten SDK
+        run: |
+          cd ..
+          Write-Host "Setting up Emscripten SDK version ${{ env.EMSCRIPTEN_VERSION }}..."
+          git clone --depth 1 https://github.com/emscripten-core/emsdk.git
+          cd emsdk
+          .\emsdk.bat install ${{ env.EMSCRIPTEN_VERSION }}
+          .\emsdk.bat activate ${{ env.EMSCRIPTEN_VERSION }}
+        shell: pwsh
+
+      - name: 下载Host Qt
+        run: |
+          cd ..
+          Write-Host "Downloading Host Qt..."
+          New-Item -ItemType Directory -Force -Path "Qt/${{ env.QT_VERSION }}-host"
+          cd "Qt/${{ env.QT_VERSION }}-host"
+          
+          # 下载Host Qt并解压到正确位置
+          curl -L -o host-qt.7z "${{ env.HOST_QT_URL }}"
+          7z x host-qt.7z
+          
+          # 移动到正确的目录结构
+          if (Test-Path "${{ env.QT_VERSION }}-static") {
+            $subDir = Get-ChildItem "${{ env.QT_VERSION }}-static" | Select-Object -First 1
+            if ($subDir) {
+              Get-ChildItem "${{ env.QT_VERSION }}-static\$($subDir.Name)\*" | Move-Item -Destination . -Force
+              Remove-Item -Path "${{ env.QT_VERSION }}-static" -Recurse -Force
+            }
+          }
+          Remove-Item host-qt.7z -ErrorAction SilentlyContinue
+          
+          Write-Host "Host Qt setup completed."
+        shell: pwsh
+
+      - name: 准备目录和源码
+        run: |
+          cd ..
+          mkdir Qt -ErrorAction SilentlyContinue
+          cd Qt
+          mkdir "${{ env.QT_VERSION }}" -ErrorAction SilentlyContinue
+          mkdir "${{ env.QT_VERSION }}-${{ matrix.link_type }}" -ErrorAction SilentlyContinue
+          
+          Write-Host "Downloading Qt source code..."
+          curl -L -o qt-everywhere-src.zip "https://download.qt.io/official_releases/qt/${{ steps.qt_version.outputs.major_minor }}/${{ env.QT_VERSION }}/single/qt-everywhere-src-${{ env.QT_VERSION }}.zip"
+          7z x qt-everywhere-src.zip -o"${{ env.QT_VERSION }}"
+        shell: pwsh
+
+      - name: 执行构建脚本
+        shell: cmd
+        run: |
+          setlocal enableextensions enabledelayedexpansion
+
+          set QT_VERSION=${{ env.QT_VERSION }}
+          set EMSCRIPTEN_VERSION=${{ env.EMSCRIPTEN_VERSION }}
+          set BUILD_TYPE=${{ matrix.build_type }}
+          set LINK_TYPE=${{ matrix.link_type }}
+
+          call D:\a\QtBuild\QtBuild\Qt6Build\build-qt6-wasm32_emscripten.cmd !QT_VERSION! !EMSCRIPTEN_VERSION! !BUILD_TYPE! !LINK_TYPE!
+
+      - name: 打包二进制文件
+        run: |
+          $linkType = "${{ matrix.link_type }}"
+          $buildType = "${{ matrix.build_type }}"
+          $qtVersion = "${{ env.QT_VERSION }}"
+          $emscriptenVersion = "${{ env.EMSCRIPTEN_VERSION }}"
+          
+          # 规范化构建类型名称 (小写)
+          $buildTypeNormalized = switch ($buildType) {
+            "release" { "release" }
+            "debug" { "debug" }
+            default { $buildType.ToLower() }
+          }
+          
+          # 规范化链接类型名称 (小写)
+          $linkTypeNormalized = switch ($linkType) {
+            "static" { "static" }
+            default { $linkType.ToLower() }
+          }
+          
+          # 三段式命名格式：软件名-平台架构编译器-配置类型
+          $archiveName = "qt${qtVersion}-wasm32_emscripten${emscriptenVersion}-${linkTypeNormalized}_${buildTypeNormalized}.7z"
+          $sourcePath = "D:\a\QtBuild\Qt\$qtVersion-$linkType"
+          
+          # 检查源目录是否存在
+          if (Test-Path $sourcePath) {
+            7z a $archiveName $sourcePath -mx=9
+            echo "Archive created: $archiveName"
+            echo "Source path: $sourcePath"
+            
+            # 输出到环境变量供后续步骤使用
+            echo "ARCHIVE_NAME=$archiveName" >> $env:GITHUB_ENV
+          } else {
+            echo "Error: Source path does not exist: $sourcePath"
+            exit 1
+          }
+        shell: pwsh
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: qt${{ env.QT_VERSION }}-wasm32_emscripten${{ env.EMSCRIPTEN_VERSION }}-${{ matrix.link_type }}_${{ matrix.build_type }}
+          path: ${{ env.ARCHIVE_NAME }}

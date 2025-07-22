@@ -1,0 +1,203 @@
+name: build-qt6-windows_x86_64_llvm_clang_matrix
+
+on:
+  workflow_dispatch:
+    inputs:
+      qt_version:
+        description: 'Qt版本'
+        required: true
+        default: '6.9.1'
+      clang_version:
+        description: 'Clang版本'
+        required: true
+        default: '20.1'
+        type: choice
+        options:
+        - '17.0'
+        - '20.1'
+      runtime:
+        description: '运行时 (ucrt/msvcrt)'
+        required: true
+        default: 'ucrt'
+        type: choice
+        options:
+        - ucrt
+        - msvcrt
+
+env:
+  QT_VERSION: ${{ github.event.inputs.qt_version || '6.9.1' }}
+  CLANG_VERSION: ${{ github.event.inputs.clang_version || '20.1' }}
+  RUNTIME: ${{ github.event.inputs.runtime || 'ucrt' }}
+
+jobs:
+  build:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        link_type: [static, shared]
+        build_type: [release, release-and-debug, release-sepdbg]
+    steps:
+      - name: 检出代码仓库
+        uses: actions/checkout@v4
+
+      - name: 设置Python环境
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          architecture: 'x64'
+
+      - name: 提取Qt主次版本号
+        id: qt_version
+        run: |
+          $version = "${{ env.QT_VERSION }}"
+          $parts = $version.Split('.')
+          $major_minor = "$($parts[0]).$($parts[1])"
+          echo "major_minor=$major_minor" >> $env:GITHUB_OUTPUT
+        shell: pwsh
+
+      - name: 获取LLVM-MinGW信息
+        id: llvm_info
+        run: |
+          $clangVersion = "${{ env.CLANG_VERSION }}"
+          $runtime = "${{ env.RUNTIME }}".ToLower()
+          
+          if ($clangVersion -eq "17.0") {
+            # 使用Qt官方源
+            $downloadUrl = "https://download.qt.io/online/qtsdkrepository/windows_x86/desktop/tools_llvm_mingw1706/qt.tools.win64_llvm_mingw1706/17.0.6-202409091150llvm_mingw1706.7z"
+            $fileName = "llvm_mingw1706.7z"
+            $extractPath = "Tools"
+            $binPath = "D:\a\QtBuild\Tools\llvm-mingw1706_64\bin"
+            $versionCode = "llvm-mingw17.0.6_64_UCRT"
+          } else {
+            # 使用GitHub源
+            $downloadUrl = "https://github.com/mstorsjo/llvm-mingw/releases/download/20250528/llvm-mingw-20250528-ucrt-x86_64.zip"
+            $fileName = "llvm-mingw.zip"
+            $extractPath = ""
+            $binPath = "D:\a\QtBuild\llvm-mingw-20250528-ucrt-x86_64\bin"
+            $versionCode = "llvm-mingw20.1.6_64_UCRT"
+          }
+          
+          echo "download_url=$downloadUrl" >> $env:GITHUB_OUTPUT
+          echo "file_name=$fileName" >> $env:GITHUB_OUTPUT
+          echo "extract_path=$extractPath" >> $env:GITHUB_OUTPUT
+          echo "bin_path=$binPath" >> $env:GITHUB_OUTPUT
+          echo "version_code=$versionCode" >> $env:GITHUB_OUTPUT
+        shell: pwsh
+
+      - name: 设置LLVM-MinGW编译器
+        run: |
+          cd ..
+          $downloadUrl = "${{ steps.llvm_info.outputs.download_url }}"
+          $fileName = "${{ steps.llvm_info.outputs.file_name }}"
+          $extractPath = "${{ steps.llvm_info.outputs.extract_path }}"
+          
+          Write-Host "Downloading LLVM-MinGW from: $downloadUrl"
+          curl -L -o $fileName $downloadUrl
+          
+          if ($fileName.EndsWith(".7z")) {
+            if ($extractPath) {
+              7z x $fileName -o$extractPath
+            } else {
+              7z x $fileName
+            }
+          } else {
+            if ($extractPath) {
+              unzip -q $fileName -d $extractPath
+            } else {
+              unzip -q $fileName
+            }
+          }
+        shell: pwsh
+
+      - name: 设置Ninja构建工具
+        run: |
+          cd ..
+          mkdir ninja
+          curl -L -o ninja.zip https://github.com/ninja-build/ninja/releases/download/v1.12.1/ninja-win.zip
+          unzip -q ninja.zip -d ./ninja
+
+      - name: 准备目录和源码
+        run: |
+          cd ..
+          mkdir Qt
+          cd Qt
+          mkdir "${{ env.QT_VERSION }}"
+          mkdir "${{ env.QT_VERSION }}-${{ matrix.link_type }}"
+          curl -L -o qt-everywhere-src.zip "https://download.qt.io/official_releases/qt/${{ steps.qt_version.outputs.major_minor }}/${{ env.QT_VERSION }}/single/qt-everywhere-src-${{ env.QT_VERSION }}.zip"
+          unzip -q qt-everywhere-src.zip -d "./${{ env.QT_VERSION }}"
+
+      - name: 执行构建脚本
+        shell: cmd
+        run: |
+          setlocal enableextensions enabledelayedexpansion
+
+          set QT_VERSION=${{ env.QT_VERSION }}
+          set CLANG_VERSION=${{ env.CLANG_VERSION }}
+          set BUILD_TYPE=${{ matrix.build_type }}
+          set LINK_TYPE=${{ matrix.link_type }}
+          set RUNTIME=${{ env.RUNTIME }}
+          set BIN_PATH=${{ steps.llvm_info.outputs.bin_path }}
+          set VERSION_CODE=${{ steps.llvm_info.outputs.version_code }}
+
+          if "%BUILD_TYPE%"=="release-sepdbg" (
+            set BUILD_TYPE=release
+            if "%LINK_TYPE%"=="shared" (
+              set SEPARATE_DEBUG=true
+            ) else (
+              set SEPARATE_DEBUG=false
+            )
+          ) else if "%BUILD_TYPE%"=="release-and-debug" (
+            set BUILD_TYPE=release-and-debug
+            set SEPARATE_DEBUG=false
+          ) else (
+            set SEPARATE_DEBUG=false
+          )
+
+          call D:\a\QtBuild\QtBuild\Qt6Build\build-qt6-windows_x86_64_llvm_clang.cmd !QT_VERSION! !CLANG_VERSION! !BUILD_TYPE! !LINK_TYPE! !SEPARATE_DEBUG! !RUNTIME! "!BIN_PATH!" "!VERSION_CODE!"
+
+      - name: 打包二进制文件
+        run: |
+          $linkType = "${{ matrix.link_type }}"
+          $buildType = "${{ matrix.build_type }}"
+          $qtVersion = "${{ env.QT_VERSION }}"
+          $clangVersion = "${{ env.CLANG_VERSION }}"
+          $runtime = "${{ env.RUNTIME }}".ToLower()
+          
+          # 规范化构建类型名称 (小写)
+          $buildTypeNormalized = switch ($buildType) {
+            "release" { "release" }
+            "release-and-debug" { "release_and_debug" }
+            "release-sepdbg" { "relwithdebinfo" }
+            default { $buildType.ToLower() }
+          }
+          
+          # 规范化链接类型名称 (小写)
+          $linkTypeNormalized = switch ($linkType) {
+            "static" { "static" }
+            "shared" { "shared" }
+            default { $linkType.ToLower() }
+          }
+          
+          # 三段式命名格式：软件名-平台架构编译器-配置类型
+          $archiveName = "qt${qtVersion}-windows_x86_64_llvm_clang${clangVersion}_${runtime}-${linkTypeNormalized}_${buildTypeNormalized}.7z"
+          $sourcePath = "D:\a\QtBuild\Qt\$qtVersion-$linkType"
+          
+          # 检查源目录是否存在
+          if (Test-Path $sourcePath) {
+            7z a $archiveName $sourcePath -mx=9
+            echo "Archive created: $archiveName"
+            echo "Source path: $sourcePath"
+            
+            # 输出到环境变量供后续步骤使用
+            echo "ARCHIVE_NAME=$archiveName" >> $env:GITHUB_ENV
+          } else {
+            echo "Error: Source path does not exist: $sourcePath"
+            exit 1
+          }
+        shell: pwsh
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: qt${{ env.QT_VERSION }}-windows_x86_64_llvm_clang${{ env.CLANG_VERSION }}_${{ env.RUNTIME }}-${{ matrix.link_type }}_${{ matrix.build_type == 'release' && 'release' || matrix.build_type == 'release-and-debug' && 'releaseanddebug' || 'relwithdebinfo' }}
+          path: ${{ env.ARCHIVE_NAME }}
