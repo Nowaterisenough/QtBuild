@@ -175,7 +175,7 @@ qt{版本}-{平台}_{架构}_{编译器}{版本}_{运行时}-{链接类型}_{构
 **Windows 平台**：
 ```bash
 # 需要 Visual Studio 或 MinGW 或 LLVM-Clang
-git clone https://github.com/your-username/QtBuild.git
+git clone https://github.com/NoWaterisEnough/QtBuild.git
 cd QtBuild
 ```
 
@@ -183,7 +183,7 @@ cd QtBuild
 ```bash
 # 需要 GCC 和必要的开发库
 sudo apt-get install build-essential libgl1-mesa-dev
-git clone https://github.com/your-username/QtBuild.git
+git clone https://github.com/NoWaterisEnough/QtBuild.git
 cd QtBuild
 ```
 
@@ -431,7 +431,7 @@ make
 
 ### 相关链接
 
-[![GitHub](https://img.shields.io/badge/GitHub-QtBuild-black?logo=github)](https://github.com/your-username/QtBuild)
+[![GitHub](https://img.shields.io/badge/GitHub-QtBuild-black?logo=github)](https://github.com/NoWaterisEnough/QtBuild)
 [![Qt Official](https://img.shields.io/badge/Qt-Official-green?logo=qt)](https://www.qt.io/)
 [![Documentation](https://img.shields.io/badge/Docs-Qt%20Docs-blue?logo=readthedocs)](https://doc.qt.io/)
 
