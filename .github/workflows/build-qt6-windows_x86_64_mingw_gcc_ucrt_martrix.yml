@@ -11,10 +11,19 @@ on:
         description: 'GCC Version'
         required: true
         default: '15.1.0'
+      runtime:
+        description: 'Runtime (ucrt/msvcrt)'
+        required: true
+        default: 'ucrt'
+        type: choice
+        options:
+        - ucrt
+        - msvcrt
 
 env:
   QT_VERSION: ${{ github.event.inputs.qt_version || '6.9.1' }}
   GCC_VERSION: ${{ github.event.inputs.gcc_version || '15.1.0' }}
+  RUNTIME: ${{ github.event.inputs.runtime || 'ucrt' }}
 
 jobs:
   build:
@@ -47,6 +56,7 @@ jobs:
         run: |
           try {
             $gccVersion = "${{ env.GCC_VERSION }}"
+            $runtime = "${{ env.RUNTIME }}"
             
             # 获取所有 releases
             $releasesUrl = "https://api.github.com/repos/niXman/mingw-builds-binaries/releases"
@@ -69,7 +79,7 @@ jobs:
                 $rev = $matches[2]
                 
                 # 查找对应的资源文件
-                $assetName = "x86_64-$gccVersion-release-posix-seh-ucrt-rt_$rt-$rev.7z"
+                $assetName = "x86_64-$gccVersion-release-posix-seh-$runtime-rt_$rt-$rev.7z"
                 $asset = $targetRelease.assets | Where-Object { $_.name -eq $assetName }
                 
                 if ($asset) {
@@ -112,6 +122,7 @@ jobs:
           } else {
             # 后备方案：使用静态映射表
             $gccVersion = "${{ env.GCC_VERSION }}"
+            $runtime = "${{ env.RUNTIME }}"
             $versionMap = @{
               "15.1.0" = @{ rt = "rt_v12"; rev = "rev0" }
               "14.2.0" = @{ rt = "rt_v12"; rev = "rev2" }
@@ -129,7 +140,7 @@ jobs:
               $rev = "rev0"
             }
             
-            $fileName = "x86_64-$gccVersion-release-posix-seh-ucrt-$rt-$rev.7z"
+            $fileName = "x86_64-$gccVersion-release-posix-seh-$runtime-$rt-$rev.7z"
             $downloadUrl = "https://github.com/niXman/mingw-builds-binaries/releases/download/$gccVersion-$rt-$rev/$fileName"
             
             Write-Host "Downloading from fallback: $downloadUrl"
@@ -173,6 +184,7 @@ jobs:
           set GCC_VERSION=${{ env.GCC_VERSION }}
           set BUILD_TYPE=${{ matrix.build_type }}
           set LINK_TYPE=${{ matrix.link_type }}
+          set RUNTIME=${{ env.RUNTIME }}
 
           if "%BUILD_TYPE%"=="release-sepdbg" (
             set BUILD_TYPE=release
@@ -188,7 +200,7 @@ jobs:
             set SEPARATE_DEBUG=false
           )
 
-          call D:\a\QtBuild\QtBuild\Qt6Build\build-qt6-windows_x86_64_mingw_gcc_ucrt.cmd !QT_VERSION! !GCC_VERSION! !BUILD_TYPE! !LINK_TYPE! !SEPARATE_DEBUG!
+          call D:\a\QtBuild\QtBuild\Qt6Build\build-qt6-windows_x86_64_mingw_gcc_ucrt.cmd !QT_VERSION! !GCC_VERSION! !BUILD_TYPE! !LINK_TYPE! !SEPARATE_DEBUG! !RUNTIME!
 
       - name: Package binaries
         run: |
@@ -196,24 +208,25 @@ jobs:
           $buildType = "${{ matrix.build_type }}"
           $qtVersion = "${{ env.QT_VERSION }}"
           $gccVersion = "${{ env.GCC_VERSION }}"
+          $runtime = "${{ env.RUNTIME }}".ToUpper()
           
-          # 规范化构建类型名称
+          # 规范化构建类型名称 (小写)
           $buildTypeNormalized = switch ($buildType) {
-            "release" { "Release" }
-            "release-and-debug" { "ReleaseAndDebug" }
-            "release-sepdbg" { "RelWithDebInfo" }
-            default { $buildType }
+            "release" { "release" }
+            "release-and-debug" { "release_and_debug" }
+            "release-sepdbg" { "relwithdebinfo" }
+            default { $buildType.ToLower() }
           }
           
-          # 规范化链接类型名称
+          # 规范化链接类型名称 (小写)
           $linkTypeNormalized = switch ($linkType) {
-            "static" { "Static" }
-            "shared" { "Shared" }
-            default { $linkType }
+            "static" { "static" }
+            "shared" { "shared" }
+            default { $linkType.ToLower() }
           }
           
-          # 三段式命名格式：软件名-平台架构编译器-配置类型
-          $archiveName = "Qt${qtVersion}-Windows_x86_64_MinGW_GCC${gccVersion}_UCRT-${linkTypeNormalized}_${buildTypeNormalized}.7z"
+          # 三段式命名格式 (全小写)：软件名-平台架构编译器-配置类型
+          $archiveName = "qt${qtVersion}-windows_x86_64_mingw_gcc${gccVersion}_${runtime.ToLower()}-${linkTypeNormalized}_${buildTypeNormalized}.7z"
           $sourcePath = "D:\a\QtBuild\Qt\$qtVersion-$linkType"
           
           # 检查源目录是否存在
@@ -232,5 +245,5 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Qt${{ env.QT_VERSION }}-Windows_x86_64_MinGW_GCC${{ env.GCC_VERSION }}_UCRT-${{ matrix.link_type == 'static' && 'Static' || 'Shared' }}_${{ matrix.build_type == 'release' && 'Release' || matrix.build_type == 'release-and-debug' && 'ReleaseAndDebug' || 'RelWithDebInfo' }}
+          name: qt${{ env.QT_VERSION }}-windows_x86_64_mingw_gcc${{ env.GCC_VERSION }}_${{ env.RUNTIME }}-${{ matrix.link_type }}_${{ matrix.build_type == 'release' && 'release' || matrix.build_type == 'release-and-debug' && 'releaseanddebug' || 'relwithdebinfo' }}
           path: ${{ env.ARCHIVE_NAME }}

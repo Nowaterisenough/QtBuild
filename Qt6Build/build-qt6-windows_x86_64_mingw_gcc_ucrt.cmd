@@ -2,17 +2,24 @@
 @chcp 65001
 @cd /d %~dp0
 
-REM 参数依次为: Qt版本, GCC版本, BUILD_TYPE, LINK_TYPE, SEPARATE_DEBUG
+REM 参数依次为: Qt版本, GCC版本, BUILD_TYPE, LINK_TYPE, SEPARATE_DEBUG, RUNTIME
 set QT_VERSION=%1
 set GCC_VERSION=%2
 set BUILD_TYPE=%3
 set LINK_TYPE=%4
 set SEPARATE_DEBUG=%5
+set RUNTIME=%6
 
-REM 例如: 6.9.1  15.1.0  release  static  false
+REM 例如: 6.9.1  15.1.0  release  static  false  ucrt
 
 set QT_VERSION2=%QT_VERSION:~0,3%
-set MinGW_VERSION=mingw%GCC_VERSION:_=%%_64_UCRT
+
+REM 直接根据 runtime 设置，不需要转换函数
+if /i "%RUNTIME%"=="ucrt" (
+    set MinGW_VERSION=mingw%GCC_VERSION:_=%%_64_UCRT
+) else (
+    set MinGW_VERSION=mingw%GCC_VERSION:_=%%_64_MSVCRT
+)
 
 set PATH=D:\a\QtBuild\mingw64\bin;D:\a\QtBuild\ninja;D:\a\QtBuild\protoc\bin;%PATH%
 set QT_PATH=D:\a\QtBuild\Qt
