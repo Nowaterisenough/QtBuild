@@ -1,0 +1,236 @@
+name: build-qt6-windows_x86_64_mingw_gcc_ucrt_martrix
+
+on:
+  workflow_dispatch:
+    inputs:
+      qt_version:
+        description: 'QT Version'
+        required: true
+        default: '6.9.1'
+      gcc_version:
+        description: 'GCC Version'
+        required: true
+        default: '15.1.0'
+
+env:
+  QT_VERSION: ${{ github.event.inputs.qt_version || '6.9.1' }}
+  GCC_VERSION: ${{ github.event.inputs.gcc_version || '15.1.0' }}
+
+jobs:
+  build:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        link_type: [static, shared]
+        build_type: [release, release-and-debug, release-sepdbg]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          architecture: 'x64'
+
+      - name: Extract Qt major.minor version
+        id: qt_version
+        run: |
+          $version = "${{ env.QT_VERSION }}"
+          $parts = $version.Split('.')
+          $major_minor = "$($parts[0]).$($parts[1])"
+          echo "major_minor=$major_minor" >> $env:GITHUB_OUTPUT
+        shell: pwsh
+
+      - name: Get MinGW release info
+        id: mingw_release
+        run: |
+          try {
+            $gccVersion = "${{ env.GCC_VERSION }}"
+            
+            # 获取所有 releases
+            $releasesUrl = "https://api.github.com/repos/niXman/mingw-builds-binaries/releases"
+            $releases = Invoke-RestMethod -Uri $releasesUrl -Headers @{ "User-Agent" = "GitHub-Actions" }
+            
+            # 查找匹配的 GCC 版本
+            $targetRelease = $null
+            foreach ($release in $releases) {
+              if ($release.tag_name -like "$gccVersion-*") {
+                $targetRelease = $release
+                break
+              }
+            }
+            
+            if ($targetRelease) {
+              # 提取 rt 和 rev 信息
+              $tagName = $targetRelease.tag_name
+              if ($tagName -match "$gccVersion-rt_(v\d+)-(rev\d+)") {
+                $rt = $matches[1]
+                $rev = $matches[2]
+                
+                # 查找对应的资源文件
+                $assetName = "x86_64-$gccVersion-release-posix-seh-ucrt-$rt-$rev.7z"
+                $asset = $targetRelease.assets | Where-Object { $_.name -eq $assetName }
+                
+                if ($asset) {
+                  echo "download_url=$($asset.browser_download_url)" >> $env:GITHUB_OUTPUT
+                  echo "file_name=$assetName" >> $env:GITHUB_OUTPUT
+                  echo "rt_version=$rt" >> $env:GITHUB_OUTPUT
+                  echo "revision=$rev" >> $env:GITHUB_OUTPUT
+                  echo "found=true" >> $env:GITHUB_OUTPUT
+                  Write-Host "Found release: $tagName"
+                  Write-Host "Asset: $assetName"
+                  Write-Host "URL: $($asset.browser_download_url)"
+                } else {
+                  echo "found=false" >> $env:GITHUB_OUTPUT
+                  Write-Host "Asset not found: $assetName"
+                }
+              } else {
+                echo "found=false" >> $env:GITHUB_OUTPUT
+                Write-Host "Could not parse tag name: $tagName"
+              }
+            } else {
+              echo "found=false" >> $env:GITHUB_OUTPUT
+              Write-Host "No release found for GCC $gccVersion"
+            }
+          } catch {
+            Write-Host "Error: $_"
+            echo "found=false" >> $env:GITHUB_OUTPUT
+          }
+        shell: pwsh
+
+      - name: Setup MinGW64
+        run: |
+          cd ..
+          
+          if ("${{ steps.mingw_release.outputs.found }}" -eq "true") {
+            # 使用动态获取的信息
+            $downloadUrl = "${{ steps.mingw_release.outputs.download_url }}"
+            $fileName = "${{ steps.mingw_release.outputs.file_name }}"
+            Write-Host "Downloading from API result: $downloadUrl"
+            curl -L -o $fileName $downloadUrl
+          } else {
+            # 后备方案：使用静态映射表
+            $gccVersion = "${{ env.GCC_VERSION }}"
+            $versionMap = @{
+              "15.1.0" = @{ rt = "v12"; rev = "rev0" }
+              "14.2.0" = @{ rt = "v12"; rev = "rev2" }
+              "14.1.0" = @{ rt = "v12"; rev = "rev0" }
+              "13.2.0" = @{ rt = "v11"; rev = "rev1" }
+              "13.1.0" = @{ rt = "v11"; rev = "rev1" }
+              "12.2.0" = @{ rt = "v10"; rev = "rev2" }
+            }
+            
+            if ($versionMap.ContainsKey($gccVersion)) {
+              $rt = $versionMap[$gccVersion].rt
+              $rev = $versionMap[$gccVersion].rev
+            } else {
+              $rt = "v12"
+              $rev = "rev0"
+            }
+            
+            $fileName = "x86_64-$gccVersion-release-posix-seh-ucrt-$rt-$rev.7z"
+            $downloadUrl = "https://github.com/niXman/mingw-builds-binaries/releases/download/$gccVersion-$rt-$rev/$fileName"
+            
+            Write-Host "Downloading from fallback: $downloadUrl"
+            curl -L -o $fileName $downloadUrl
+          }
+          
+          7z x $fileName
+        shell: pwsh
+
+      - name: Setup Ninja
+        run: |
+          cd ..
+          mkdir ninja
+          curl -L -o ninja.zip https://github.com/ninja-build/ninja/releases/download/v1.12.1/ninja-win.zip
+          unzip -q ninja.zip -d ./ninja
+
+      - name: Setup Protobuf (for QtGRPC)
+        run: |
+          cd ..
+          curl -L -o protoc-win64.zip https://github.com/protocolbuffers/protobuf/releases/download/v30.2/protoc-30.2-win64.zip
+          unzip -q protoc-win64.zip -d ./protoc
+          echo "D:\a\QtBuild\protoc\bin" >> $env:GITHUB_PATH
+        shell: pwsh
+
+      - name: Prepare directories and source
+        run: |
+          cd ..
+          mkdir Qt
+          cd Qt
+          mkdir "${{ env.QT_VERSION }}"
+          mkdir "${{ env.QT_VERSION }}-${{ matrix.link_type }}"
+          curl -L -o qt-everywhere-src.zip "https://download.qt.io/official_releases/qt/${{ steps.qt_version.outputs.major_minor }}/${{ env.QT_VERSION }}/single/qt-everywhere-src-${{ env.QT_VERSION }}.zip"
+          unzip -q qt-everywhere-src.zip -d "./${{ env.QT_VERSION }}"
+
+      - name: Run build script
+        shell: cmd
+        run: |
+          setlocal enableextensions enabledelayedexpansion
+
+          set QT_VERSION=${{ env.QT_VERSION }}
+          set GCC_VERSION=${{ env.GCC_VERSION }}
+          set BUILD_TYPE=${{ matrix.build_type }}
+          set LINK_TYPE=${{ matrix.link_type }}
+
+          if "%BUILD_TYPE%"=="release-sepdbg" (
+            set BUILD_TYPE=release
+            if "%LINK_TYPE%"=="shared" (
+              set SEPARATE_DEBUG=true
+            ) else (
+              set SEPARATE_DEBUG=false
+            )
+          ) else if "%BUILD_TYPE%"=="release-and-debug" (
+            set BUILD_TYPE=release-and-debug
+            set SEPARATE_DEBUG=false
+          ) else (
+            set SEPARATE_DEBUG=false
+          )
+
+          call D:\a\QtBuild\QtBuild\Qt6Build\build-qt6-windows_x86_64_mingw_gcc_ucrt.cmd !QT_VERSION! !GCC_VERSION! !BUILD_TYPE! !LINK_TYPE! !SEPARATE_DEBUG!
+
+      - name: Package binaries
+        run: |
+          $linkType = "${{ matrix.link_type }}"
+          $buildType = "${{ matrix.build_type }}"
+          $qtVersion = "${{ env.QT_VERSION }}"
+          $gccVersion = "${{ env.GCC_VERSION }}"
+          
+          # 规范化构建类型名称
+          $buildTypeNormalized = switch ($buildType) {
+            "release" { "Release" }
+            "release-and-debug" { "ReleaseAndDebug" }
+            "release-sepdbg" { "RelWithDebInfo" }
+            default { $buildType }
+          }
+          
+          # 规范化链接类型名称
+          $linkTypeNormalized = switch ($linkType) {
+            "static" { "Static" }
+            "shared" { "Shared" }
+            default { $linkType }
+          }
+          
+          # 三段式命名格式：软件名-平台架构编译器-配置类型
+          $archiveName = "Qt${qtVersion}-Windows_x86_64_MinGW_GCC${gccVersion}_UCRT-${linkTypeNormalized}_${buildTypeNormalized}.7z"
+          $sourcePath = "D:\a\QtBuild\Qt\$qtVersion-$linkType"
+          
+          # 检查源目录是否存在
+          if (Test-Path $sourcePath) {
+            7z a $archiveName $sourcePath -mx=9
+            echo "Archive created: $archiveName"
+            echo "Source path: $sourcePath"
+            
+            # 输出到环境变量供后续步骤使用
+            echo "ARCHIVE_NAME=$archiveName" >> $env:GITHUB_ENV
+          } else {
+            echo "Error: Source path does not exist: $sourcePath"
+            exit 1
+          }
+        shell: pwsh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Qt${{ env.QT_VERSION }}-Windows_x86_64_MinGW_GCC${{ env.GCC_VERSION }}_UCRT-${{ matrix.link_type == 'static' && 'Static' || 'Shared' }}_${{ matrix.build_type == 'release' && 'Release' || matrix.build_type == 'release-and-debug' && 'ReleaseAndDebug' || 'RelWithDebInfo' }}
+          path: ${{ env.ARCHIVE_NAME }}
