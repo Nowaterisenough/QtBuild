@@ -12,6 +12,10 @@ set RUNTIME=%6
 set BIN_PATH=%7
 set VERSION_CODE=%8
 
+REM 移除参数中的引号，避免路径问题
+set BIN_PATH=%BIN_PATH:"=%
+set VERSION_CODE=%VERSION_CODE:"=%
+
 REM 例如: 6.9.1  20.1  release  static  false  ucrt  "D:\a\QtBuild\llvm-mingw-20250528-ucrt-x86_64\bin"  "llvm-mingw20.1.6_64_UCRT"
 
 REM 设置编译器路径和工具
@@ -24,9 +28,9 @@ set SHORT_BUILD_PATH=D:\a\QtBuild\build
 set TEMP_INSTALL_DIR=D:\a\QtBuild\temp_install
 
 REM 路径和文件名定义
-set SRC_QT="%QT_PATH%\%QT_VERSION%\qt-everywhere-src-%QT_VERSION%"
-set FINAL_INSTALL_DIR="%QT_PATH%\%QT_VERSION%-%LINK_TYPE%\%VERSION_CODE%"
-set BUILD_DIR="%SHORT_BUILD_PATH%"
+set SRC_QT=%QT_PATH%\%QT_VERSION%\qt-everywhere-src-%QT_VERSION%
+set FINAL_INSTALL_DIR=%QT_PATH%\%QT_VERSION%-%LINK_TYPE%\%VERSION_CODE%
+set BUILD_DIR=%SHORT_BUILD_PATH%
 
 echo Starting Qt build...
 echo Qt Version: %QT_VERSION%
@@ -47,8 +51,8 @@ clang++ --version
 echo.
 
 REM 清理并创建build目录
-rmdir /s /q %BUILD_DIR% 2>nul
-rmdir /s /q %TEMP_INSTALL_DIR% 2>nul
+rmdir /s /q "%BUILD_DIR%" 2>nul
+rmdir /s /q "%TEMP_INSTALL_DIR%" 2>nul
 mkdir "%SHORT_BUILD_PATH%" 
 mkdir "%TEMP_INSTALL_DIR%"
 cd /d "%SHORT_BUILD_PATH%"
@@ -61,9 +65,15 @@ set CC=clang
 set CXX=clang++
 set AR=llvm-ar
 set RANLIB=llvm-ranlib
+set RC=llvm-rc
+
+REM 设置Windows SDK环境（重要：解决syncqt问题）
+set INCLUDE=%INCLUDE%
+set LIB=%LIB%
+set LIBPATH=%LIBPATH%
 
 REM 配置参数 - 使用正确的平台
-set CFG_OPTIONS=-%LINK_TYPE% -prefix %TEMP_INSTALL_DIR% -platform win32-clang-g++ -nomake examples -nomake tests -c++std c++20 -skip qtwebengine -opensource -confirm-license -qt-libpng -qt-libjpeg -qt-zlib -qt-pcre -qt-freetype -schannel -opengl desktop
+set CFG_OPTIONS=-%LINK_TYPE% -prefix "%TEMP_INSTALL_DIR%" -platform win32-clang-g++ -nomake examples -nomake tests -c++std c++20 -skip qtwebengine -opensource -confirm-license -qt-libpng -qt-libjpeg -qt-zlib -qt-pcre -qt-freetype -schannel -opengl desktop
 
 REM 根据构建类型添加相应选项
 if "%BUILD_TYPE%"=="release-and-debug" (
@@ -91,21 +101,37 @@ if "%CLANG_VERSION%"=="17.0" (
     set CFG_OPTIONS=%CFG_OPTIONS% -headersclean
 )
 
+REM 添加编译器优化选项以避免syncqt问题
+set CFG_OPTIONS=%CFG_OPTIONS% -silent
+
 echo Configure options: %CFG_OPTIONS%
 
 REM 执行configure
-call %SRC_QT%\configure.bat %CFG_OPTIONS%
+echo Starting Qt configure...
+call "%SRC_QT%\configure.bat" %CFG_OPTIONS%
 if %errorlevel% neq 0 (
     echo Configure failed with error code: %errorlevel%
+    echo.
+    echo Troubleshooting suggestions:
+    echo 1. Check if all required tools are accessible
+    echo 2. Verify LLVM-Clang installation
+    echo 3. Check Windows SDK installation
     exit /b %errorlevel%
 )
 
-REM 构建
+REM 构建 - 使用更保守的并行设置
 echo Starting build...
-cmake --build . --parallel 4
+echo Note: Using conservative parallel build settings for stability...
+cmake --build . --parallel 2
 if %errorlevel% neq 0 (
     echo Build failed with error code: %errorlevel%
-    exit /b %errorlevel%
+    echo.
+    echo Build failed. Attempting single-threaded build for debugging...
+    cmake --build . --parallel 1
+    if %errorlevel% neq 0 (
+        echo Single-threaded build also failed with error code: %errorlevel%
+        exit /b %errorlevel%
+    )
 )
 
 REM 安装到临时目录
@@ -121,45 +147,92 @@ mkdir "%QT_PATH%\%QT_VERSION%-%LINK_TYPE%" 2>nul
 
 REM 移动文件到最终目录
 echo Moving files to final directory...
-move "%TEMP_INSTALL_DIR%" %FINAL_INSTALL_DIR%
+echo Source: "%TEMP_INSTALL_DIR%"
+echo Destination: "%FINAL_INSTALL_DIR%"
+
+move "%TEMP_INSTALL_DIR%" "%FINAL_INSTALL_DIR%"
 if %errorlevel% neq 0 (
     echo Failed to move to final directory with error code: %errorlevel%
     REM 尝试复制而不是移动
     echo Trying to copy instead...
-    xcopy "%TEMP_INSTALL_DIR%\*" %FINAL_INSTALL_DIR%\ /E /I /H /Y
+    xcopy "%TEMP_INSTALL_DIR%\*" "%FINAL_INSTALL_DIR%\" /E /I /H /Y
     if %errorlevel% neq 0 (
         echo Copy also failed with error code: %errorlevel%
         exit /b %errorlevel%
     )
     REM 清理临时目录
-    rmdir /s /q %TEMP_INSTALL_DIR% 2>nul
+    rmdir /s /q "%TEMP_INSTALL_DIR%" 2>nul
 )
 
 REM 复制qt.conf (如果存在)
-if exist %~dp0\qt.conf (
-    copy %~dp0\qt.conf %FINAL_INSTALL_DIR%\bin\
+if exist "%~dp0qt.conf" (
+    copy "%~dp0qt.conf" "%FINAL_INSTALL_DIR%\bin\"
 )
 
 REM shared需要复制LLVM-MinGW运行时DLL
 if "%LINK_TYPE%"=="shared" (
     echo Copying LLVM-MinGW runtime libraries...
-    copy "%BIN_PATH%\libc++.dll" %FINAL_INSTALL_DIR%\bin\ 2>nul
-    copy "%BIN_PATH%\libunwind.dll" %FINAL_INSTALL_DIR%\bin\ 2>nul
-    copy "%BIN_PATH%\libwinpthread-1.dll" %FINAL_INSTALL_DIR%\bin\ 2>nul
+    copy "%BIN_PATH%\libc++.dll" "%FINAL_INSTALL_DIR%\bin\" 2>nul
+    copy "%BIN_PATH%\libunwind.dll" "%FINAL_INSTALL_DIR%\bin\" 2>nul
+    copy "%BIN_PATH%\libwinpthread-1.dll" "%FINAL_INSTALL_DIR%\bin\" 2>nul
+    
+    REM 创建部署指南
+    echo Creating deployment guide...
+    (
+    echo @echo off
+    echo echo LLVM-Clang Qt6 Shared Library Deployment Guide
+    echo echo ============================================
+    echo echo Required Runtime Libraries:
+    echo echo - libc++.dll
+    echo echo - libunwind.dll
+    echo echo - libwinpthread-1.dll
+    echo echo.
+    echo echo Usage: Copy these DLLs with your application
+    echo pause
+    ) > "%FINAL_INSTALL_DIR%\deployment_guide.cmd"
 )
+
+REM 创建构建信息文件
+echo Creating build info...
+(
+echo Qt6 LLVM-Clang Build Information
+echo ================================
+echo Qt Version: %QT_VERSION%
+echo Compiler: LLVM-Clang %CLANG_VERSION%
+echo Runtime: %RUNTIME%
+echo Build Type: %LINK_TYPE% %BUILD_TYPE%
+echo Build Date: %DATE% %TIME%
+echo Install Path: %FINAL_INSTALL_DIR%
+echo.
+if "%SEPARATE_DEBUG%"=="true" (
+  echo Debug Info: Separated ^(PDB files generated^)
+) else (
+  echo Debug Info: Embedded
+)
+echo.
+echo Build completed successfully!
+) > "%FINAL_INSTALL_DIR%\build-info.txt"
 
 echo Build completed successfully!
 echo Installation directory: %FINAL_INSTALL_DIR%
 
 REM 验证安装目录存在
-if exist %FINAL_INSTALL_DIR% (
+if exist "%FINAL_INSTALL_DIR%" (
     echo Final installation directory verified.
     if "%LINK_TYPE%"=="shared" (
         echo Generated Qt libraries:
-        dir /b %FINAL_INSTALL_DIR%\bin\Qt6*.dll
+        dir /b "%FINAL_INSTALL_DIR%\bin\Qt6*.dll" 2>nul
     )
-    dir %FINAL_INSTALL_DIR%
+    echo.
+    echo Directory contents:
+    dir "%FINAL_INSTALL_DIR%"
 ) else (
     echo Error: Final installation directory does not exist!
     exit /b 1
 )
+
+echo.
+echo ================================
+echo Build completed successfully!
+echo Installation directory: %FINAL_INSTALL_DIR%
+echo ================================

@@ -1,0 +1,201 @@
+name: build-qt5-windows_x86_64_mingw_gcc_matrix
+
+on:
+  workflow_dispatch:
+    inputs:
+      qt_version:
+        description: 'Qt版本'
+        required: true
+        default: '5.15.17'
+      gcc_version:
+        description: 'GCC版本'
+        required: true
+        default: '8.1'
+        type: choice
+        options:
+        - '8.1'
+        - '11.2'
+      mingw_source:
+        description: 'MinGW来源'
+        required: true
+        default: 'qt_official'
+        type: choice
+        options:
+        - qt_official
+        - niXman
+
+env:
+  QT_VERSION: ${{ github.event.inputs.qt_version || '5.15.17' }}
+  GCC_VERSION: ${{ github.event.inputs.gcc_version || '8.1' }}
+  MINGW_SOURCE: ${{ github.event.inputs.mingw_source || 'qt_official' }}
+
+jobs:
+  build:
+    runs-on: windows-2022
+    strategy:
+      matrix:
+        link_type: [static, shared]
+        build_type: [release, release-and-debug, release-sepdbg]
+    steps:
+      - name: 检出代码仓库
+        uses: actions/checkout@v4
+
+      - name: 设置Python环境
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          architecture: 'x64'
+
+      - name: 提取Qt主次版本号
+        id: qt_version
+        run: |
+          $version = "${{ env.QT_VERSION }}"
+          $parts = $version.Split('.')
+          $major_minor = "$($parts[0]).$($parts[1])"
+          echo "major_minor=$major_minor" >> $env:GITHUB_OUTPUT
+        shell: pwsh
+
+      - name: 获取MinGW信息
+        id: mingw_info
+        run: |
+          $gccVersion = "${{ env.GCC_VERSION }}"
+          $mingwSource = "${{ env.MINGW_SOURCE }}"
+          
+          if ($mingwSource -eq "qt_official") {
+            if ($gccVersion -eq "8.1") {
+              $downloadUrl = "https://download.qt.io/online/qtsdkrepository/windows_x86/desktop/tools_mingw81/qt.tools.win64_mingw810/8.1.0-1-202411201005x86_64-8.1.0-gdb-11.2.0-release-posix-seh-rt_v6-rev0.7z"
+              $extractPath = "D:\a\QtBuild\mingw64"
+              $binPath = "D:\a\QtBuild\mingw64\bin"
+              $versionCode = "mingw810_64"
+            } else {
+              $downloadUrl = "https://download.qt.io/online/qtsdkrepository/windows_x86/desktop/tools_mingw90/qt.tools.win64_mingw900/9.0.0-1-202203221220x86_64-11.2.0-release-posix-seh-rt_v9-rev1.7z"
+              $extractPath = "D:\a\QtBuild\mingw64"
+              $binPath = "D:\a\QtBuild\mingw64\bin"
+              $versionCode = "mingw1120_64"
+            }
+          } else {
+            # niXman builds
+            if ($gccVersion -eq "8.1") {
+              $downloadUrl = "https://github.com/niXman/mingw-builds-binaries/releases/download/8.1.0-rt_v6-rev0/x86_64-8.1.0-release-posix-seh-rt_v6-rev0.7z"
+              $extractPath = "D:\a\QtBuild"
+              $binPath = "D:\a\QtBuild\mingw64\bin"
+              $versionCode = "mingw810_64_nixman"
+            } else {
+              $downloadUrl = "https://github.com/niXman/mingw-builds-binaries/releases/download/11.2.0-rt_v9-rev1/x86_64-11.2.0-release-posix-seh-rt_v9-rev1.7z"
+              $extractPath = "D:\a\QtBuild"
+              $binPath = "D:\a\QtBuild\mingw64\bin"
+              $versionCode = "mingw1120_64_nixman"
+            }
+          }
+          
+          echo "download_url=$downloadUrl" >> $env:GITHUB_OUTPUT
+          echo "extract_path=$extractPath" >> $env:GITHUB_OUTPUT
+          echo "bin_path=$binPath" >> $env:GITHUB_OUTPUT
+          echo "version_code=$versionCode" >> $env:GITHUB_OUTPUT
+        shell: pwsh
+
+      - name: 设置Perl环境
+        run: |
+          cd ..
+          Write-Host "Downloading Strawberry Perl..."
+          curl -L -o strawberry-perl-64bit-portable.zip https://github.com/StrawberryPerl/Perl-Dist-Strawberry/releases/download/SP_54001_64bit_UCRT/strawberry-perl-5.40.0.1-64bit-portable.zip
+          Expand-Archive -Path strawberry-perl-64bit-portable.zip -DestinationPath ./Strawberry -Force
+        shell: pwsh
+
+      - name: 设置MinGW编译器
+        run: |
+          cd ..
+          $downloadUrl = "${{ steps.mingw_info.outputs.download_url }}"
+          $extractPath = "${{ steps.mingw_info.outputs.extract_path }}"
+          
+          Write-Host "Downloading MinGW from: $downloadUrl"
+          curl -L -o mingw.7z $downloadUrl
+          7z x mingw.7z -o"$extractPath"
+        shell: pwsh
+
+      - name: 准备目录和源码
+        run: |
+          cd ..
+          mkdir Qt
+          cd Qt
+          mkdir "${{ env.QT_VERSION }}"
+          mkdir "${{ env.QT_VERSION }}-${{ matrix.link_type }}"
+          
+          Write-Host "Downloading Qt5 source code..."
+          curl -L -o qt-everywhere-opensource-src.zip "https://download.qt.io/archive/qt/${{ steps.qt_version.outputs.major_minor }}/${{ env.QT_VERSION }}/single/qt-everywhere-opensource-src-${{ env.QT_VERSION }}.zip"
+          Expand-Archive -Path qt-everywhere-opensource-src.zip -DestinationPath "./${{ env.QT_VERSION }}" -Force
+        shell: pwsh
+
+      - name: 执行构建脚本
+        shell: cmd
+        run: |
+          setlocal enableextensions enabledelayedexpansion
+
+          set QT_VERSION=${{ env.QT_VERSION }}
+          set GCC_VERSION=${{ env.GCC_VERSION }}
+          set BUILD_TYPE=${{ matrix.build_type }}
+          set LINK_TYPE=${{ matrix.link_type }}
+          set BIN_PATH=${{ steps.mingw_info.outputs.bin_path }}
+          set VERSION_CODE=${{ steps.mingw_info.outputs.version_code }}
+
+          if "%BUILD_TYPE%"=="release-sepdbg" (
+            set BUILD_TYPE=release
+            if "%LINK_TYPE%"=="shared" (
+              set SEPARATE_DEBUG=true
+            ) else (
+              set SEPARATE_DEBUG=false
+            )
+          ) else if "%BUILD_TYPE%"=="release-and-debug" (
+            set BUILD_TYPE=release-and-debug
+            set SEPARATE_DEBUG=false
+          ) else (
+            set SEPARATE_DEBUG=false
+          )
+
+          call D:\a\QtBuild\QtBuild\Qt5Build\build-qt5-windows_x86_64_mingw_gcc.cmd !QT_VERSION! !GCC_VERSION! !BUILD_TYPE! !LINK_TYPE! !SEPARATE_DEBUG! "!BIN_PATH!" "!VERSION_CODE!"
+
+      - name: 打包二进制文件
+        run: |
+          $linkType = "${{ matrix.link_type }}"
+          $buildType = "${{ matrix.build_type }}"
+          $qtVersion = "${{ env.QT_VERSION }}"
+          $gccVersion = "${{ env.GCC_VERSION }}"
+          
+          # 规范化构建类型名称 (小写)
+          $buildTypeNormalized = switch ($buildType) {
+            "release" { "release" }
+            "release-and-debug" { "release_and_debug" }
+            "release-sepdbg" { "relwithdebinfo" }
+            default { $buildType.ToLower() }
+          }
+          
+          # 规范化链接类型名称 (小写)
+          $linkTypeNormalized = switch ($linkType) {
+            "static" { "static" }
+            "shared" { "shared" }
+            default { $linkType.ToLower() }
+          }
+          
+          # 三段式命名格式：软件名-平台架构编译器-配置类型
+          $archiveName = "qt${qtVersion}-windows_x86_64_mingw_gcc${gccVersion}-${linkTypeNormalized}_${buildTypeNormalized}.7z"
+          $sourcePath = "D:\a\QtBuild\Qt\$qtVersion-$linkType"
+          
+          # 检查源目录是否存在
+          if (Test-Path $sourcePath) {
+            7z a $archiveName $sourcePath -mx=9
+            echo "Archive created: $archiveName"
+            echo "Source path: $sourcePath"
+            
+            # 输出到环境变量供后续步骤使用
+            echo "ARCHIVE_NAME=$archiveName" >> $env:GITHUB_ENV
+          } else {
+            echo "Error: Source path does not exist: $sourcePath"
+            exit 1
+          }
+        shell: pwsh
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: qt${{ env.QT_VERSION }}-windows_x86_64_mingw_gcc${{ env.GCC_VERSION }}-${{ matrix.link_type }}_${{ matrix.build_type == 'release' && 'release' || matrix.build_type == 'release-and-debug' && 'releaseanddebug' || 'relwithdebinfo' }}
+          path: ${{ env.ARCHIVE_NAME }}
