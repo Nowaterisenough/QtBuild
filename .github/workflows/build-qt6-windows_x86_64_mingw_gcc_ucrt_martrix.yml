@@ -55,7 +55,7 @@ jobs:
             # 查找匹配的 GCC 版本
             $targetRelease = $null
             foreach ($release in $releases) {
-              if ($release.tag_name -like "$gccVersion-*") {
+              if ($release.tag_name -like "$gccVersion-rt_v*") {
                 $targetRelease = $release
                 break
               }
@@ -69,7 +69,7 @@ jobs:
                 $rev = $matches[2]
                 
                 # 查找对应的资源文件
-                $assetName = "x86_64-$gccVersion-release-posix-seh-ucrt-$rt-$rev.7z"
+                $assetName = "x86_64-$gccVersion-release-posix-seh-ucrt-rt_$rt-$rev.7z"
                 $asset = $targetRelease.assets | Where-Object { $_.name -eq $assetName }
                 
                 if ($asset) {
@@ -113,19 +113,19 @@ jobs:
             # 后备方案：使用静态映射表
             $gccVersion = "${{ env.GCC_VERSION }}"
             $versionMap = @{
-              "15.1.0" = @{ rt = "v12"; rev = "rev0" }
-              "14.2.0" = @{ rt = "v12"; rev = "rev2" }
-              "14.1.0" = @{ rt = "v12"; rev = "rev0" }
-              "13.2.0" = @{ rt = "v11"; rev = "rev1" }
-              "13.1.0" = @{ rt = "v11"; rev = "rev1" }
-              "12.2.0" = @{ rt = "v10"; rev = "rev2" }
+              "15.1.0" = @{ rt = "rt_v12"; rev = "rev0" }
+              "14.2.0" = @{ rt = "rt_v12"; rev = "rev2" }
+              "14.1.0" = @{ rt = "rt_v12"; rev = "rev0" }
+              "13.2.0" = @{ rt = "rt_v11"; rev = "rev1" }
+              "13.1.0" = @{ rt = "rt_v11"; rev = "rev1" }
+              "12.2.0" = @{ rt = "rt_v10"; rev = "rev2" }
             }
             
             if ($versionMap.ContainsKey($gccVersion)) {
               $rt = $versionMap[$gccVersion].rt
               $rev = $versionMap[$gccVersion].rev
             } else {
-              $rt = "v12"
+              $rt = "rt_v12"
               $rev = "rev0"
             }
             
