@@ -70,9 +70,15 @@ set CFG_OPTIONS=-%LINK_TYPE% -prefix %TEMP_INSTALL_DIR% -platform wasm-emscripte
 
 REM 根据构建类型添加相应选项
 if "%BUILD_TYPE%"=="debug" (
-    set CFG_OPTIONS=%CFG_OPTIONS% -debug
+    set CFG_OPTIONS=%CFG_OPTIONS% -debug -force-debug-info
+    echo Building DEBUG version for WebAssembly...
+    echo WARNING: Debug builds are significantly larger and slower
+) else if "%BUILD_TYPE%"=="release-and-debug" (
+    set CFG_OPTIONS=%CFG_OPTIONS% -debug-and-release
+    echo Building RELEASE-AND-DEBUG version for WebAssembly...
 ) else (
     set CFG_OPTIONS=%CFG_OPTIONS% -release
+    echo Building RELEASE version for WebAssembly...
 )
 
 echo Configure options: %CFG_OPTIONS%
@@ -87,7 +93,12 @@ if %errorlevel% neq 0 (
 
 REM 构建
 echo Starting build...
-cmake --build . --parallel 4
+REM Debug版本使用较少的并行进程以避免内存问题
+if "%BUILD_TYPE%"=="debug" (
+    cmake --build . --parallel 2
+) else (
+    cmake --build . --parallel 4
+)
 if %errorlevel% neq 0 (
     echo Build failed with error code: %errorlevel%
     exit /b %errorlevel%
@@ -137,6 +148,20 @@ echo Build Date: %DATE% %TIME%
 echo Install Path: %FINAL_INSTALL_DIR%
 echo Host Qt Path: %HOST_QT_DIR%
 echo.
+if "%BUILD_TYPE%"=="debug" (
+  echo NOTE: This is a DEBUG build for WebAssembly
+  echo - WASM files will be significantly larger
+  echo - Runtime performance will be reduced
+  echo - Recommended for development and debugging only
+  echo - Use release builds for production deployment
+  echo.
+)
+if "%BUILD_TYPE%"=="release-and-debug" (
+  echo NOTE: This build includes both RELEASE and DEBUG versions
+  echo - Use debug version for development
+  echo - Use release version for production
+  echo.
+)
 echo Build completed successfully!
 ) > %FINAL_INSTALL_DIR%\build-info.txt
 
@@ -146,7 +171,17 @@ echo Installation directory: %FINAL_INSTALL_DIR%
 REM 验证安装目录存在
 if exist %FINAL_INSTALL_DIR% (
     echo Final installation directory verified.
+    echo.
+    echo Directory contents:
     dir %FINAL_INSTALL_DIR%
+    echo.
+    if "%BUILD_TYPE%"=="debug" (
+        echo DEBUG BUILD NOTES:
+        echo - The generated WASM files will be much larger than release builds
+        echo - Loading and execution will be slower in browsers
+        echo - Use this build for development and debugging purposes only
+        echo.
+    )
 ) else (
     echo Error: Final installation directory does not exist!
     exit /b 1
