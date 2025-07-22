@@ -2,7 +2,7 @@
 
 > Fork自 yuanpeirong/buildQt 基于 GitHub Actions 的 Qt 自动构建项目
 
-[![License](https://img.shields.io/badge/License-Educational%20Use%20Only-red.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Qt Version](https://img.shields.io/badge/Qt-6.9.1%20%7C%205.15.17-blue.svg)](https://qt.io)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20WebAssembly-green.svg)](https://github.com)
 [![Build Status](https://img.shields.io/badge/Build-Automated-brightgreen.svg)](https://github.com/features/actions)
@@ -438,7 +438,5 @@ make
 ---
 
 **仅供学习研究使用 | 禁止商业用途 | 遵循Qt许可证**
-
-*Made with love for Qt developers worldwide*
 
 </div>
