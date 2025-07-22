@@ -1,0 +1,137 @@
+name: build-qt6-windows_x86_64_msvc_matrix
+
+on:
+  workflow_dispatch:
+    inputs:
+      qt_version:
+        description: 'Qt版本'
+        required: true
+        default: '6.9.1'
+      msvc_version:
+        description: 'MSVC版本'
+        required: true
+        default: '2022'
+        type: choice
+        options:
+        - '2019'
+        - '2022'
+
+env:
+  QT_VERSION: ${{ github.event.inputs.qt_version || '6.9.1' }}
+  MSVC_VERSION: ${{ github.event.inputs.msvc_version || '2022' }}
+
+jobs:
+  build:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        link_type: [static, shared]
+        build_type: [release, release-and-debug, release-sepdbg]
+    steps:
+      - name: 检出代码仓库
+        uses: actions/checkout@v4
+
+      - name: 设置Python环境
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          architecture: 'x64'
+
+      - name: 提取Qt主次版本号
+        id: qt_version
+        run: |
+          $version = "${{ env.QT_VERSION }}"
+          $parts = $version.Split('.')
+          $major_minor = "$($parts[0]).$($parts[1])"
+          echo "major_minor=$major_minor" >> $env:GITHUB_OUTPUT
+        shell: pwsh
+
+      - name: 设置MSBuild
+        uses: microsoft/setup-msbuild@v2
+        with:
+          msbuild-architecture: x64
+
+      - name: 设置MSVC开发环境
+        uses: seanmiddleditch/gha-setup-vsdevenv@master
+
+      - name: 准备目录和源码
+        run: |
+          cd ..
+          mkdir Qt
+          cd Qt
+          mkdir "${{ env.QT_VERSION }}"
+          mkdir "${{ env.QT_VERSION }}-${{ matrix.link_type }}"
+          curl -L -o qt-everywhere-src.zip "https://download.qt.io/official_releases/qt/${{ steps.qt_version.outputs.major_minor }}/${{ env.QT_VERSION }}/single/qt-everywhere-src-${{ env.QT_VERSION }}.zip"
+          unzip -q qt-everywhere-src.zip -d "./${{ env.QT_VERSION }}"
+
+      - name: 执行构建脚本
+        shell: cmd
+        run: |
+          setlocal enableextensions enabledelayedexpansion
+
+          set QT_VERSION=${{ env.QT_VERSION }}
+          set MSVC_VERSION=${{ env.MSVC_VERSION }}
+          set BUILD_TYPE=${{ matrix.build_type }}
+          set LINK_TYPE=${{ matrix.link_type }}
+
+          if "%BUILD_TYPE%"=="release-sepdbg" (
+            set BUILD_TYPE=release
+            if "%LINK_TYPE%"=="shared" (
+              set SEPARATE_DEBUG=true
+            ) else (
+              set SEPARATE_DEBUG=false
+            )
+          ) else if "%BUILD_TYPE%"=="release-and-debug" (
+            set BUILD_TYPE=release-and-debug
+            set SEPARATE_DEBUG=false
+          ) else (
+            set SEPARATE_DEBUG=false
+          )
+
+          call D:\a\QtBuild\QtBuild\Qt6Build\build-qt6-windows_x86_64_msvc.cmd !QT_VERSION! !MSVC_VERSION! !BUILD_TYPE! !LINK_TYPE! !SEPARATE_DEBUG!
+
+      - name: 打包二进制文件
+        run: |
+          $linkType = "${{ matrix.link_type }}"
+          $buildType = "${{ matrix.build_type }}"
+          $qtVersion = "${{ env.QT_VERSION }}"
+          $msvcVersion = "${{ env.MSVC_VERSION }}"
+          
+          # 规范化构建类型名称 (小写)
+          $buildTypeNormalized = switch ($buildType) {
+            "release" { "release" }
+            "release-and-debug" { "release_and_debug" }
+            "release-sepdbg" { "relwithdebinfo" }
+            default { $buildType.ToLower() }
+          }
+          
+          # 规范化链接类型名称 (小写)
+          $linkTypeNormalized = switch ($linkType) {
+            "static" { "static" }
+            "shared" { "shared" }
+            default { $linkType.ToLower() }
+          }
+          
+          # 三段式命名格式：软件名-平台架构编译器-配置类型
+          $archiveName = "qt${qtVersion}-windows_x86_64_msvc${msvcVersion}-${linkTypeNormalized}_${buildTypeNormalized}.7z"
+          $sourcePath = "D:\a\QtBuild\Qt\$qtVersion-$linkType"
+          
+          # 检查源目录是否存在
+          if (Test-Path $sourcePath) {
+            7z a $archiveName $sourcePath -mx=9
+            echo "Archive created: $archiveName"
+            echo "Source path: $sourcePath"
+            
+            # 输出到环境变量供后续步骤使用
+            echo "ARCHIVE_NAME=$archiveName" >> $env:GITHUB_ENV
+          } else {
+            echo "Error: Source path does not exist: $sourcePath"
+            exit 1
+          }
+        shell: pwsh
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: qt${{ env.QT_VERSION }}-windows_x86_64_msvc${{ env.MSVC_VERSION }}-${{ matrix.link_type }}_${{ matrix.build_type == 'release' && 'release' || matrix.build_type == 'release-and-debug' && 'releaseanddebug' || 'relwithdebinfo' }}
+          path: ${{ env.ARCHIVE_NAME }}
