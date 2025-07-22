@@ -50,6 +50,47 @@ clang --version
 clang++ --version
 echo.
 
+REM 检测和设置 Windows SDK 路径
+echo Detecting Windows SDK...
+for /f "usebackq tokens=1,2*" %%i in (`reg query "HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\Microsoft\Microsoft SDKs\Windows\v10.0" /v "InstallationFolder" 2^>nul`) do (
+    if "%%i"=="InstallationFolder" (
+        set "WINDOWS_SDK_ROOT=%%k"
+    )
+)
+
+if not defined WINDOWS_SDK_ROOT (
+    for /f "usebackq tokens=1,2*" %%i in (`reg query "HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Microsoft SDKs\Windows\v10.0" /v "InstallationFolder" 2^>nul`) do (
+        if "%%i"=="InstallationFolder" (
+            set "WINDOWS_SDK_ROOT=%%k"
+        )
+    )
+)
+
+REM 查找最新的Windows SDK版本
+if defined WINDOWS_SDK_ROOT (
+    for /f "delims=" %%i in ('dir "%WINDOWS_SDK_ROOT%Include" /b /ad /o-n 2^>nul ^| findstr "^10\."') do (
+        set "WINDOWS_SDK_VERSION=%%i"
+        goto :sdk_found
+    )
+)
+
+:sdk_found
+if defined WINDOWS_SDK_ROOT if defined WINDOWS_SDK_VERSION (
+    echo Found Windows SDK: %WINDOWS_SDK_VERSION% at %WINDOWS_SDK_ROOT%
+    set "WINDOWS_SDK_INCLUDE=%WINDOWS_SDK_ROOT%Include\%WINDOWS_SDK_VERSION%"
+    set "WINDOWS_SDK_LIB=%WINDOWS_SDK_ROOT%Lib\%WINDOWS_SDK_VERSION%"
+    
+    REM 设置 Windows SDK 环境变量
+    set "INCLUDE=%WINDOWS_SDK_INCLUDE%\um;%WINDOWS_SDK_INCLUDE%\shared;%WINDOWS_SDK_INCLUDE%\winrt;%WINDOWS_SDK_INCLUDE%\ucrt;%INCLUDE%"
+    set "LIB=%WINDOWS_SDK_LIB%\um\x64;%WINDOWS_SDK_LIB%\ucrt\x64;%LIB%"
+    set "LIBPATH=%WINDOWS_SDK_LIB%\um\x64;%WINDOWS_SDK_LIB%\ucrt\x64;%LIBPATH%"
+    
+    echo Windows SDK configured successfully.
+) else (
+    echo WARNING: Windows SDK not found. Some features may not work properly.
+    echo Please install Windows SDK 10 or later.
+)
+
 REM 清理并创建build目录
 rmdir /s /q "%BUILD_DIR%" 2>nul
 rmdir /s /q "%TEMP_INSTALL_DIR%" 2>nul
@@ -65,12 +106,25 @@ set CC=clang
 set CXX=clang++
 set AR=llvm-ar
 set RANLIB=llvm-ranlib
-set RC=llvm-rc
 
-REM 设置Windows SDK环境（重要：解决syncqt问题）
-set INCLUDE=%INCLUDE%
-set LIB=%LIB%
-set LIBPATH=%LIBPATH%
+REM 关键修复：设置正确的资源编译器
+if defined WINDOWS_SDK_ROOT if defined WINDOWS_SDK_VERSION (
+    REM 如果有Windows SDK，优先使用SDK的rc.exe
+    set "RC=%WINDOWS_SDK_ROOT%bin\%WINDOWS_SDK_VERSION%\x64\rc.exe"
+    if not exist "%RC%" (
+        set "RC=%WINDOWS_SDK_ROOT%bin\x64\rc.exe"
+    )
+    if not exist "%RC%" (
+        set "RC=llvm-rc"
+        echo WARNING: Using llvm-rc as fallback
+    )
+) else (
+    REM 没有Windows SDK时使用llvm-rc，但需要额外配置
+    set "RC=llvm-rc"
+    echo WARNING: Using llvm-rc without Windows SDK
+)
+
+echo Using Resource Compiler: %RC%
 
 REM 配置参数 - 使用正确的平台
 set CFG_OPTIONS=-%LINK_TYPE% -prefix "%TEMP_INSTALL_DIR%" -platform win32-clang-g++ -nomake examples -nomake tests -c++std c++20 -skip qtwebengine -opensource -confirm-license -qt-libpng -qt-libjpeg -qt-zlib -qt-pcre -qt-freetype -schannel -opengl desktop
@@ -113,9 +167,9 @@ if %errorlevel% neq 0 (
     echo Configure failed with error code: %errorlevel%
     echo.
     echo Troubleshooting suggestions:
-    echo 1. Check if all required tools are accessible
+    echo 1. Check if Windows SDK is properly installed
     echo 2. Verify LLVM-Clang installation
-    echo 3. Check Windows SDK installation
+    echo 3. Check environment variables
     exit /b %errorlevel%
 )
 
@@ -130,6 +184,11 @@ if %errorlevel% neq 0 (
     cmake --build . --parallel 1
     if %errorlevel% neq 0 (
         echo Single-threaded build also failed with error code: %errorlevel%
+        echo.
+        echo Additional troubleshooting:
+        echo 1. Check Windows SDK installation
+        echo 2. Verify resource compiler setup
+        echo 3. Check CMake cache and regenerate if needed
         exit /b %errorlevel%
     )
 )
@@ -203,6 +262,12 @@ echo Runtime: %RUNTIME%
 echo Build Type: %LINK_TYPE% %BUILD_TYPE%
 echo Build Date: %DATE% %TIME%
 echo Install Path: %FINAL_INSTALL_DIR%
+if defined WINDOWS_SDK_VERSION (
+  echo Windows SDK: %WINDOWS_SDK_VERSION%
+) else (
+  echo Windows SDK: Not detected
+)
+echo Resource Compiler: %RC%
 echo.
 if "%SEPARATE_DEBUG%"=="true" (
   echo Debug Info: Separated ^(PDB files generated^)
