@@ -18,31 +18,6 @@
 
 ---
 
-## 快速开始
-
-### 自动构建 (推荐)
-
-1. **Fork 本仓库**到您的GitHub账户
-2. **进入 Actions 页面**选择对应的工作流
-3. **点击 "Run workflow"**配置构建参数
-4. **等待构建完成**下载 Artifacts
-
-### 本地构建
-
-```bash
-# 克隆仓库
-git clone https://github.com/your-username/QtBuild.git
-cd QtBuild
-
-# Windows 示例 (选择相应的脚本)
-.\Qt6Build\build-qt6-windows_x86_64_msvc.cmd 6.9.1 2022 release static false
-
-# Linux 示例
-./Qt6Build/build-qt6-linux_x86_64_gcc.sh 6.9.1 15.1 release shared false
-```
-
----
-
 ## 支持的构建配置
 
 ### Qt 6.9.1 完整支持
