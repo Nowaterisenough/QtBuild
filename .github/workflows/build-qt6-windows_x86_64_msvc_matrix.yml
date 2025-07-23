@@ -27,6 +27,9 @@ jobs:
       matrix:
         link_type: [static, shared]
         build_type: [release, debug, release-sepdbg]
+        exclude:
+          - link_type: static
+            build_type: debug
     steps:
       - name: 检出代码仓库
         uses: actions/checkout@v4

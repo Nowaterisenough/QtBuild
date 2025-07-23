@@ -32,6 +32,9 @@ jobs:
       matrix:
         link_type: [static, shared]
         build_type: [release, debug, release-sepdbg]
+        exclude:
+          - link_type: static
+            build_type: debug
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
