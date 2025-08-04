@@ -70,111 +70,29 @@ jobs:
             default { "https://developer.arm.com/-/media/Files/downloads/gnu/14.3.rel1/binrel/arm-gnu-toolchain-14.3.rel1-mingw-w64-x86_64-aarch64-none-linux-gnu.zip" }
           }
           
-          $fileName = "arm-gnu-toolchain-$gccVersion-mingw-w64-x86_64-aarch64-none-linux-gnu.zip"
-          
           Write-Host "Downloading from: $downloadUrl"
-          curl -L -o $fileName $downloadUrl
+          curl -L -o toolchain.zip $downloadUrl
           
           Write-Host "Extracting ARM GNU toolchain..."
-          7z x $fileName
+          7z x toolchain.zip
           
-          # 查找解压后的目录
-          $extractedDirs = Get-ChildItem -Directory | Where-Object { $_.Name -like "*aarch64-none-linux-gnu*" }
-          Write-Host "Found directories: $($extractedDirs.Name -join ', ')"
-          
-          if ($extractedDirs.Count -gt 0) {
-            $extractedDir = $extractedDirs[0].Name
-            Write-Host "Using directory: $extractedDir"
-            
-            # 重命名为标准名称（如果需要）
-            if ($extractedDir -ne "aarch64-none-linux-gnu") {
-              Write-Host "Renaming '$extractedDir' to 'aarch64-none-linux-gnu'"
-              Rename-Item $extractedDir "aarch64-none-linux-gnu"
-            } else {
-              Write-Host "Directory already has the correct name"
-            }
+          # 重命名为标准名称
+          $extractedDir = "arm-gnu-toolchain-$gccVersion-mingw-w64-x86_64-aarch64-none-linux-gnu"
+          if (Test-Path $extractedDir) {
+            Rename-Item $extractedDir "aarch64-none-linux-gnu"
+            Write-Host "Renamed toolchain directory to aarch64-none-linux-gnu"
           } else {
-            Write-Host "Error: No ARM toolchain directory found"
-            Write-Host "Available directories:"
-            Get-ChildItem -Directory | ForEach-Object { Write-Host "  - $($_.Name)" }
+            Write-Host "Error: Expected directory $extractedDir not found"
             exit 1
           }
           
-          # 验证工具链设置
-          Write-Host "Verifying ARM GNU toolchain setup..."
-          $toolchainRoot = "aarch64-none-linux-gnu"
-          
-          # 查找bin目录
-          $binDirs = @()
-          if (Test-Path "$toolchainRoot\bin") {
-            $binDirs += "$toolchainRoot\bin"
-          }
-          
-          # 递归查找其他可能的bin目录
-          $additionalBinDirs = Get-ChildItem $toolchainRoot -Recurse -Directory -Name "bin" | ForEach-Object { Join-Path $toolchainRoot $_ }
-          $binDirs += $additionalBinDirs
-          
-          Write-Host "Found bin directories:"
-          foreach ($binDir in $binDirs) {
-            Write-Host "  - $binDir"
-          }
-          
-          # 查找正确的工具链
-          $correctBinDir = $null
-          $toolchainPrefix = "aarch64-none-linux-gnu"
-          
-          foreach ($binDir in $binDirs) {
-            if (Test-Path "$binDir\aarch64-none-linux-gnu-gcc.exe") {
-              $correctBinDir = $binDir
-              Write-Host "Found aarch64-none-linux-gnu toolchain at: $binDir"
-              break
-            }
-          }
-          
-          if (-not $correctBinDir) {
-            Write-Host "Error: aarch64-none-linux-gnu-gcc.exe not found"
-            Write-Host "Searching for any gcc executables..."
-            foreach ($binDir in $binDirs) {
-              $gccFiles = Get-ChildItem $binDir -Name "*gcc*.exe" 2>$null
-              if ($gccFiles) {
-                Write-Host "Found GCC files in ${binDir}: $($gccFiles -join ', ')"
-              }
-            }
-            exit 1
-          }
-          
-          # 如果bin目录不是标准位置，需要重新组织结构
-          $expectedBinDir = "$toolchainRoot\bin"
-          if ($correctBinDir -ne $expectedBinDir) {
-            Write-Host "Reorganizing toolchain structure..."
-            $sourceRoot = Split-Path $correctBinDir -Parent
-            $tempDir = "temp_toolchain"
-            
-            # 复制到临时目录
-            Copy-Item $sourceRoot $tempDir -Recurse -Force
-            Remove-Item $toolchainRoot -Recurse -Force
-            Rename-Item $tempDir $toolchainRoot
-          }
-          
-          # 最终验证
-          $finalBinDir = "$toolchainRoot\bin"
-          $gccPath = "$finalBinDir\aarch64-none-linux-gnu-gcc.exe"
-          
+          # 验证工具链
+          $gccPath = "aarch64-none-linux-gnu\bin\aarch64-none-linux-gnu-gcc.exe"
           if (Test-Path $gccPath) {
-            Write-Host "Final verification successful!"
-            Write-Host "GCC path: $gccPath"
-            Write-Host "Testing compiler..."
+            Write-Host "ARM GNU toolchain setup successful"
             & $gccPath --version
-            Write-Host "ARM GNU toolchain setup completed successfully!"
           } else {
-            Write-Host "Error: Final verification failed"
-            Write-Host "Expected GCC at: $gccPath"
-            if (Test-Path $finalBinDir) {
-              Write-Host "Available files in bin directory:"
-              Get-ChildItem $finalBinDir -Name "*.exe" | ForEach-Object { Write-Host "  - $_" }
-            } else {
-              Write-Host "Bin directory does not exist: $finalBinDir"
-            }
+            Write-Host "Error: GCC not found at $gccPath"
             exit 1
           }
         shell: pwsh
@@ -202,7 +120,6 @@ jobs:
           New-Item -ItemType Directory -Force -Path "Qt/${{ env.QT_VERSION }}-host"
           cd "Qt/${{ env.QT_VERSION }}-host"
           
-          # 下载Host Qt并解压到正确位置
           curl -L -o host-qt.7z "${{ env.HOST_QT_URL }}"
           7z x host-qt.7z
           
