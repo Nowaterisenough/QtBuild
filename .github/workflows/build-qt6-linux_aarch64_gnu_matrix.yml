@@ -86,12 +86,10 @@ jobs:
             $extractedDir = $extractedDirs[0].Name
             Write-Host "Using directory: $extractedDir"
             
-            # 只有当目录名不是我们期望的标准名称时才重命名
-            if ($extractedDir -ne "aarch64-none-linux-gnu") {
-              Write-Host "Renaming '$extractedDir' to 'aarch64-none-linux-gnu'"
-              Rename-Item $extractedDir "aarch64-none-linux-gnu"
-            } else {
-              Write-Host "Directory already has the correct name"
+            # 重命名为标准名称
+            if ($extractedDir -ne "arm-gnu-toolchain") {
+              Write-Host "Renaming '$extractedDir' to 'arm-gnu-toolchain'"
+              Rename-Item $extractedDir "arm-gnu-toolchain"
             }
           } else {
             Write-Host "Error: No ARM toolchain directory found"
@@ -100,39 +98,88 @@ jobs:
             exit 1
           }
           
-          # 验证工具链并检查实际的可执行文件
-          Write-Host "Checking toolchain executables..."
-          $binPath = "aarch64-none-linux-gnu\bin"
+          # 探索目录结构并查找GCC
+          Write-Host "Exploring toolchain directory structure..."
+          $toolchainRoot = "arm-gnu-toolchain"
           
-          if (Test-Path $binPath) {
-            Write-Host "Bin directory contents:"
-            Get-ChildItem $binPath -Name "*.exe" | ForEach-Object { Write-Host "  - $_" }
-            
-            # 检查可能的GCC可执行文件名
-            $possibleGccNames = @(
-              "aarch64-none-linux-gnu-gcc.exe",
-              "gcc.exe"
-            )
-            
-            $gccFound = $false
-            foreach ($gccName in $possibleGccNames) {
-              $gccPath = Join-Path $binPath $gccName
-              if (Test-Path $gccPath) {
-                Write-Host "Found GCC at: $gccPath"
-                & $gccPath --version
-                $gccFound = $true
-                break
+          # 查找所有可能的bin目录
+          $binDirs = Get-ChildItem $toolchainRoot -Recurse -Directory -Name "bin" | ForEach-Object { Join-Path $toolchainRoot $_ }
+          Write-Host "Found bin directories:"
+          foreach ($binDir in $binDirs) {
+            Write-Host "  - $binDir"
+            $gccFiles = Get-ChildItem $binDir -Name "*gcc*.exe" 2>$null
+            if ($gccFiles) {
+              Write-Host "    GCC files: $($gccFiles -join ', ')"
+            }
+          }
+          
+          # 查找正确的bin目录
+          $correctBinDir = $null
+          $toolchainPrefix = $null
+          
+          foreach ($binDir in $binDirs) {
+            # 查找aarch64-none-linux-gnu-gcc.exe
+            if (Test-Path "$binDir\aarch64-none-linux-gnu-gcc.exe") {
+              $correctBinDir = $binDir
+              $toolchainPrefix = "aarch64-none-linux-gnu"
+              Write-Host "Found correct toolchain at: $binDir with prefix: $toolchainPrefix"
+              break
+            }
+            # 查找其他可能的gcc
+            $gccFiles = Get-ChildItem $binDir -Name "*gcc.exe" 2>$null
+            if ($gccFiles) {
+              $correctBinDir = $binDir
+              $gccFile = $gccFiles[0]
+              if ($gccFile -match "^(.+)-gcc\.exe$") {
+                $toolchainPrefix = $matches[1]
+              } else {
+                $toolchainPrefix = ""
               }
+              Write-Host "Found alternative toolchain at: $binDir with prefix: $toolchainPrefix"
+              break
+            }
+          }
+          
+          if (-not $correctBinDir) {
+            Write-Host "Error: No GCC compiler found in any bin directory"
+            exit 1
+          }
+          
+          # 创建符号链接或重新组织目录结构
+          Write-Host "Setting up toolchain structure..."
+          $targetDir = "aarch64-none-linux-gnu"
+          if (Test-Path $targetDir) {
+            Remove-Item $targetDir -Recurse -Force
+          }
+          
+          # 复制整个工具链到标准位置
+          $sourceRoot = Split-Path $correctBinDir -Parent
+          Copy-Item $sourceRoot $targetDir -Recurse -Force
+          
+          # 验证设置
+          $finalBinDir = "$targetDir\bin"
+          if (Test-Path $finalBinDir) {
+            Write-Host "Final toolchain setup completed"
+            Write-Host "Toolchain bin directory: $finalBinDir"
+            Write-Host "Available executables:"
+            Get-ChildItem $finalBinDir -Name "*.exe" | ForEach-Object { Write-Host "  - $_" }
+            
+            # 测试编译器
+            $gccPath = "$finalBinDir\$toolchainPrefix-gcc.exe"
+            if (-not $toolchainPrefix) {
+              $gccPath = "$finalBinDir\gcc.exe"
             }
             
-            if (-not $gccFound) {
-              Write-Host "Error: No GCC executable found in $binPath"
+            if (Test-Path $gccPath) {
+              Write-Host "Testing compiler: $gccPath"
+              & $gccPath --version
+              Write-Host "ARM GNU toolchain setup successful"
+            } else {
+              Write-Host "Error: Final GCC compiler not found at $gccPath"
               exit 1
             }
-            
-            Write-Host "ARM GNU toolchain setup successful"
           } else {
-            Write-Host "Error: Bin directory not found at $binPath"
+            Write-Host "Error: Final bin directory not found"
             exit 1
           }
         shell: pwsh
