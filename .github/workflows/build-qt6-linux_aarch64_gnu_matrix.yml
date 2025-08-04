@@ -78,23 +78,25 @@ jobs:
           Write-Host "Extracting ARM GNU toolchain..."
           7z x $fileName
           
-          # 查找解压后的目录并重命名为标准名称
-          $extractedDirs = Get-ChildItem -Directory -Name "*aarch64-none-linux-gnu*"
-          Write-Host "Found directories: $($extractedDirs -join ', ')"
+          # 查找解压后的目录
+          $extractedDirs = Get-ChildItem -Directory | Where-Object { $_.Name -like "*aarch64-none-linux-gnu*" }
+          Write-Host "Found directories: $($extractedDirs.Name -join ', ')"
           
           if ($extractedDirs.Count -gt 0) {
-            $extractedDir = $extractedDirs[0]
+            $extractedDir = $extractedDirs[0].Name
             Write-Host "Using directory: $extractedDir"
             
             # 只有当目录名不是我们期望的标准名称时才重命名
             if ($extractedDir -ne "aarch64-none-linux-gnu") {
-              Write-Host "Renaming $extractedDir to aarch64-none-linux-gnu"
+              Write-Host "Renaming '$extractedDir' to 'aarch64-none-linux-gnu'"
               Rename-Item $extractedDir "aarch64-none-linux-gnu"
             } else {
               Write-Host "Directory already has the correct name"
             }
           } else {
             Write-Host "Error: No ARM toolchain directory found"
+            Write-Host "Available directories:"
+            Get-ChildItem -Directory | ForEach-Object { Write-Host "  - $($_.Name)" }
             exit 1
           }
           
@@ -104,7 +106,10 @@ jobs:
             & ".\aarch64-none-linux-gnu\bin\aarch64-none-linux-gnu-gcc.exe" --version
           } else {
             Write-Host "Error: ARM GNU toolchain not found"
-            Get-ChildItem "aarch64-none-linux-gnu" -Recurse | Select-Object -First 10
+            Write-Host "Checking aarch64-none-linux-gnu directory structure:"
+            if (Test-Path "aarch64-none-linux-gnu") {
+              Get-ChildItem "aarch64-none-linux-gnu" -Recurse | Select-Object -First 10 | ForEach-Object { Write-Host "  $($_.FullName)" }
+            }
             exit 1
           }
         shell: pwsh
