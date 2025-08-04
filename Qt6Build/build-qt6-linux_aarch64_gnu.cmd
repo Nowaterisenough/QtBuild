@@ -189,8 +189,8 @@ echo Final sysroot path: %TOOLCHAIN_SYSROOT%
 
 cd /d "%SHORT_BUILD_PATH%"
 
-REM 配置参数 - 跳过所有QML相关模块
-set SKIP_MODULES=-skip qtwebengine -skip qtdeclarative -skip qmltools -skip qtquicktimeline -skip qtquick3d -skip qtquickeffectmaker -skip qtmultimedia -skip qtconnectivity -skip qtlocation -skip qtsensors -skip qtserialport -skip qtwebsockets -skip qtwebchannel -skip qtpositioning
+REM 配置参数 - 跳过所有依赖qtdeclarative的模块和可能有问题的模块
+set SKIP_MODULES=-skip qtwebengine -skip qtdeclarative -skip qmltools -skip qtquicktimeline -skip qtquick3d -skip qtquickeffectmaker -skip qtmultimedia -skip qtconnectivity -skip qtlocation -skip qtsensors -skip qtserialport -skip qtwebsockets -skip qtwebchannel -skip qtpositioning -skip qtgraphs -skip qtcharts -skip qtdatavis3d -skip qtnetworkauth -skip qtremoteobjects -skip qtscxml -skip qtvirtualkeyboard -skip qtwayland -skip qtwebview
 
 set QT_CFG_OPTIONS=-%LINK_TYPE% -prefix %TEMP_INSTALL_DIR% -qt-host-path %HOST_QT_DIR% -platform win32-g++ -xplatform linux-aarch64-gnu-g++ -nomake examples -nomake tests -c++std c++20 -headersclean %SKIP_MODULES% -opensource -confirm-license -qt-libpng -qt-libjpeg -qt-zlib -qt-pcre -qt-freetype -no-sql-psql -no-sql-odbc -no-opengl -no-dbus -no-pkg-config -device-option CROSS_COMPILE=%TOOLCHAIN_PREFIX%-
 
@@ -203,13 +203,13 @@ if "%BUILD_TYPE%"=="debug" (
     echo Building RELEASE version for ARM64...
 )
 
-REM shared构建才能分离调试信息，但先不启用避免复杂性
-REM if "%LINK_TYPE%"=="shared" (
-REM     if "%SEPARATE_DEBUG%"=="true" (
-REM         set QT_CFG_OPTIONS=%QT_CFG_OPTIONS% -force-debug-info -separate-debug-info
-REM         echo Separate debug info enabled for shared build
-REM     )
-REM )
+REM shared构建可以启用分离调试信息
+if "%LINK_TYPE%"=="shared" (
+    if "%SEPARATE_DEBUG%"=="true" (
+        set QT_CFG_OPTIONS=%QT_CFG_OPTIONS% -force-debug-info -separate-debug-info
+        echo Separate debug info enabled for shared build
+    )
+)
 
 REM CMake选项
 set CMAKE_OPTIONS=-DCMAKE_TOOLCHAIN_FILE="%TOOLCHAIN_FILE%" -DQT_FEATURE_pkg_config=OFF
@@ -292,7 +292,7 @@ echo.
 echo NOTE: This is a cross-compiled build for ARM64 Linux
 echo - Binaries cannot run on x86_64 Windows
 echo - Deploy to ARM64 Linux target system
-echo - Core Qt modules only ^(widgets, network, etc.^)
+echo - Core Qt modules only ^(QtCore, QtGui, QtWidgets, QtNetwork, etc.^)
 echo - No QML/Quick support in this build
 echo.
 echo Skipped modules:
