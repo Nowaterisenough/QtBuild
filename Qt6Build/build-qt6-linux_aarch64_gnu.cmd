@@ -66,8 +66,18 @@ echo =====================================
 
 REM 验证工具链
 echo Verifying toolchain...
-if not exist "%TOOLCHAIN_BIN%\%TOOLCHAIN_PREFIX%-gcc.exe" (
-    echo Error: ARM GNU toolchain not found at %TOOLCHAIN_BIN%\%TOOLCHAIN_PREFIX%-gcc.exe
+set GCC_FULL_PATH=%TOOLCHAIN_BIN%\%TOOLCHAIN_PREFIX%-gcc.exe
+set GPP_FULL_PATH=%TOOLCHAIN_BIN%\%TOOLCHAIN_PREFIX%-g++.exe
+
+if not exist "%GCC_FULL_PATH%" (
+    echo Error: ARM GNU toolchain GCC not found at %GCC_FULL_PATH%
+    echo Available files in bin directory:
+    dir "%TOOLCHAIN_BIN%\*.exe" /B 2>nul
+    exit /b 1
+)
+
+if not exist "%GPP_FULL_PATH%" (
+    echo Error: ARM GNU toolchain G++ not found at %GPP_FULL_PATH%
     echo Available files in bin directory:
     dir "%TOOLCHAIN_BIN%\*.exe" /B 2>nul
     exit /b 1
@@ -78,25 +88,18 @@ if not exist "%TOOLCHAIN_SYSROOT%" (
     exit /b 1
 )
 
-echo Testing compiler in PATH...
-where %TOOLCHAIN_PREFIX%-gcc
-if %errorlevel% neq 0 (
-    echo Error: Compiler not found in PATH
-    echo Current PATH: %PATH%
-    exit /b 1
-)
-
 echo Testing compiler execution...
-%TOOLCHAIN_PREFIX%-gcc --version
+echo GCC version:
+"%GCC_FULL_PATH%" --version
 if %errorlevel% neq 0 (
-    echo Error: Compiler test failed
+    echo Error: GCC test failed
     exit /b %errorlevel%
 )
 
-echo Testing C++ compiler...
-%TOOLCHAIN_PREFIX%-g++ --version
+echo G++ version:
+"%GPP_FULL_PATH%" --version
 if %errorlevel% neq 0 (
-    echo Error: C++ compiler test failed
+    echo Error: G++ test failed
     exit /b %errorlevel%
 )
 
@@ -115,19 +118,19 @@ echo # CMake toolchain file for ARM64 Linux cross-compilation
 echo set^(CMAKE_SYSTEM_NAME Linux^)
 echo set^(CMAKE_SYSTEM_PROCESSOR aarch64^)
 echo.
-echo # Cross-compiler settings
-echo set^(CMAKE_C_COMPILER %TOOLCHAIN_PREFIX%-gcc^)
-echo set^(CMAKE_CXX_COMPILER %TOOLCHAIN_PREFIX%-g++^)
-echo set^(CMAKE_AR %TOOLCHAIN_PREFIX%-ar^)
-echo set^(CMAKE_STRIP %TOOLCHAIN_PREFIX%-strip^)
-echo set^(CMAKE_OBJCOPY %TOOLCHAIN_PREFIX%-objcopy^)
-echo set^(CMAKE_OBJDUMP %TOOLCHAIN_PREFIX%-objdump^)
-echo set^(CMAKE_NM %TOOLCHAIN_PREFIX%-nm^)
-echo set^(CMAKE_RANLIB %TOOLCHAIN_PREFIX%-ranlib^)
+echo # Cross-compiler settings - use full paths
+echo set^(CMAKE_C_COMPILER "%GCC_FULL_PATH:\=/%"^)
+echo set^(CMAKE_CXX_COMPILER "%GPP_FULL_PATH:\=/%"^)
+echo set^(CMAKE_AR "%TOOLCHAIN_BIN:\=/%/%TOOLCHAIN_PREFIX%-ar.exe"^)
+echo set^(CMAKE_STRIP "%TOOLCHAIN_BIN:\=/%/%TOOLCHAIN_PREFIX%-strip.exe"^)
+echo set^(CMAKE_OBJCOPY "%TOOLCHAIN_BIN:\=/%/%TOOLCHAIN_PREFIX%-objcopy.exe"^)
+echo set^(CMAKE_OBJDUMP "%TOOLCHAIN_BIN:\=/%/%TOOLCHAIN_PREFIX%-objdump.exe"^)
+echo set^(CMAKE_NM "%TOOLCHAIN_BIN:\=/%/%TOOLCHAIN_PREFIX%-nm.exe"^)
+echo set^(CMAKE_RANLIB "%TOOLCHAIN_BIN:\=/%/%TOOLCHAIN_PREFIX%-ranlib.exe"^)
 echo.
 echo # Sysroot
-echo set^(CMAKE_SYSROOT %TOOLCHAIN_SYSROOT:\=/%^)
-echo set^(CMAKE_FIND_ROOT_PATH %TOOLCHAIN_SYSROOT:\=/%^)
+echo set^(CMAKE_SYSROOT "%TOOLCHAIN_SYSROOT:\=/%"^)
+echo set^(CMAKE_FIND_ROOT_PATH "%TOOLCHAIN_SYSROOT:\=/%"^)
 echo.
 echo # Search paths
 echo set^(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER^)
@@ -140,10 +143,14 @@ echo set^(CMAKE_C_FLAGS_INIT "-march=armv8-a"^)
 echo set^(CMAKE_CXX_FLAGS_INIT "-march=armv8-a"^)
 ) > "%TOOLCHAIN_FILE%"
 
+echo Toolchain file created at: %TOOLCHAIN_FILE%
+echo Toolchain file contents:
+type "%TOOLCHAIN_FILE%"
+
 cd /d "%SHORT_BUILD_PATH%"
 
 REM 配置参数
-set CFG_OPTIONS=-%LINK_TYPE% -prefix %TEMP_INSTALL_DIR% -qt-host-path %HOST_QT_DIR% -platform win32-g++ -xplatform linux-aarch64-gnu-g++ -nomake examples -nomake tests -c++std c++20 -headersclean -skip qtwebengine -opensource -confirm-license -qt-libpng -qt-libjpeg -qt-zlib -qt-pcre -qt-freetype -no-sql-psql -no-sql-odbc -opengl es2 -no-dbus -device-option CROSS_COMPILE=%TOOLCHAIN_PREFIX%- -- -DCMAKE_TOOLCHAIN_FILE=%TOOLCHAIN_FILE%
+set CFG_OPTIONS=-%LINK_TYPE% -prefix %TEMP_INSTALL_DIR% -qt-host-path %HOST_QT_DIR% -platform win32-g++ -xplatform linux-aarch64-gnu-g++ -nomake examples -nomake tests -c++std c++20 -headersclean -skip qtwebengine -opensource -confirm-license -qt-libpng -qt-libjpeg -qt-zlib -qt-pcre -qt-freetype -no-sql-psql -no-sql-odbc -opengl es2 -no-dbus -device-option CROSS_COMPILE=%TOOLCHAIN_PREFIX%- -- -DCMAKE_TOOLCHAIN_FILE="%TOOLCHAIN_FILE%"
 
 REM 根据构建类型添加相应选项
 if "%BUILD_TYPE%"=="debug" (
@@ -173,6 +180,8 @@ if %errorlevel% neq 0 (
     echo Debugging information:
     echo CMAKE_C_COMPILER: %CC%
     echo CMAKE_CXX_COMPILER: %CXX%
+    echo GCC_FULL_PATH: %GCC_FULL_PATH%
+    echo GPP_FULL_PATH: %GPP_FULL_PATH%
     echo PATH: %PATH%
     echo Toolchain file: %TOOLCHAIN_FILE%
     if exist "%TOOLCHAIN_FILE%" (
