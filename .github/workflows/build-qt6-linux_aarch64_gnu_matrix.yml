@@ -94,9 +94,13 @@ jobs:
           $sourceDir = $extractedDirs[0].Name
           Write-Host "Using directory: $sourceDir"
           
-          # 重命名为标准名称
-          Rename-Item $sourceDir "aarch64-none-linux-gnu"
-          Write-Host "Renamed toolchain directory to aarch64-none-linux-gnu"
+          # 只有当目录名不是我们期望的标准名称时才重命名
+          if ($sourceDir -ne "aarch64-none-linux-gnu") {
+            Rename-Item $sourceDir "aarch64-none-linux-gnu"
+            Write-Host "Renamed toolchain directory from $sourceDir to aarch64-none-linux-gnu"
+          } else {
+            Write-Host "Directory already has the correct name: aarch64-none-linux-gnu"
+          }
           
           # 验证工具链
           $gccPath = "aarch64-none-linux-gnu\bin\aarch64-none-linux-gnu-gcc.exe"
