@@ -76,15 +76,27 @@ jobs:
           Write-Host "Extracting ARM GNU toolchain..."
           7z x toolchain.zip
           
-          # 重命名为标准名称
-          $extractedDir = "arm-gnu-toolchain-$gccVersion-mingw-w64-x86_64-aarch64-none-linux-gnu"
-          if (Test-Path $extractedDir) {
-            Rename-Item $extractedDir "aarch64-none-linux-gnu"
-            Write-Host "Renamed toolchain directory to aarch64-none-linux-gnu"
-          } else {
-            Write-Host "Error: Expected directory $extractedDir not found"
+          # 查找实际解压出来的目录
+          Write-Host "Looking for extracted directories..."
+          $extractedDirs = Get-ChildItem -Directory | Where-Object { $_.Name -like "*arm-gnu-toolchain*" -or $_.Name -like "*aarch64*" }
+          Write-Host "Found directories:"
+          foreach ($dir in $extractedDirs) {
+            Write-Host "  - $($dir.Name)"
+          }
+          
+          if ($extractedDirs.Count -eq 0) {
+            Write-Host "No toolchain directory found. Listing all directories:"
+            Get-ChildItem -Directory | ForEach-Object { Write-Host "  - $($_.Name)" }
             exit 1
           }
+          
+          # 使用第一个找到的目录
+          $sourceDir = $extractedDirs[0].Name
+          Write-Host "Using directory: $sourceDir"
+          
+          # 重命名为标准名称
+          Rename-Item $sourceDir "aarch64-none-linux-gnu"
+          Write-Host "Renamed toolchain directory to aarch64-none-linux-gnu"
           
           # 验证工具链
           $gccPath = "aarch64-none-linux-gnu\bin\aarch64-none-linux-gnu-gcc.exe"
@@ -93,6 +105,12 @@ jobs:
             & $gccPath --version
           } else {
             Write-Host "Error: GCC not found at $gccPath"
+            Write-Host "Checking bin directory contents:"
+            if (Test-Path "aarch64-none-linux-gnu\bin") {
+              Get-ChildItem "aarch64-none-linux-gnu\bin" -Name "*.exe" | ForEach-Object { Write-Host "  - $_" }
+            } else {
+              Write-Host "Bin directory not found"
+            }
             exit 1
           }
         shell: pwsh
