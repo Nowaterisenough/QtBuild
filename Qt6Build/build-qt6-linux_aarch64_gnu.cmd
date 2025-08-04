@@ -15,7 +15,8 @@ set GNU_VERSION=aarch64_none_linux_gnu_%GCC_VERSION%
 REM 设置工具链路径
 set TOOLCHAIN_ROOT=D:\a\QtBuild\arm-gnu-toolchain
 set TOOLCHAIN_BIN=%TOOLCHAIN_ROOT%\bin
-set TOOLCHAIN_SYSROOT=%TOOLCHAIN_ROOT%\aarch64-none-linux-gnu
+set TOOLCHAIN_TARGET_DIR=%TOOLCHAIN_ROOT%\aarch64-none-linux-gnu
+set TOOLCHAIN_SYSROOT=%TOOLCHAIN_TARGET_DIR%\libc
 
 REM 设置PATH，确保交叉编译器可以被找到
 set PATH=%TOOLCHAIN_BIN%;D:\a\QtBuild\ninja;D:\a\QtBuild\protoc\bin;%PATH%
@@ -56,6 +57,7 @@ echo Target: Linux ARM64 (aarch64)
 echo Toolchain: %TOOLCHAIN_PREFIX%
 echo Toolchain Root: %TOOLCHAIN_ROOT%
 echo Toolchain Bin: %TOOLCHAIN_BIN%
+echo Toolchain Target Dir: %TOOLCHAIN_TARGET_DIR%
 echo Toolchain Sysroot: %TOOLCHAIN_SYSROOT%
 echo Source: %SRC_QT%
 echo Host Qt Dir: %HOST_QT_DIR%
@@ -83,9 +85,42 @@ if not exist "%GPP_FULL_PATH%" (
     exit /b 1
 )
 
-if not exist "%TOOLCHAIN_SYSROOT%" (
-    echo Error: Toolchain sysroot not found at %TOOLCHAIN_SYSROOT%
+REM 检查不同可能的sysroot位置
+echo Checking possible sysroot locations...
+if exist "%TOOLCHAIN_TARGET_DIR%\libc" (
+    set TOOLCHAIN_SYSROOT=%TOOLCHAIN_TARGET_DIR%\libc
+    echo Using sysroot: %TOOLCHAIN_SYSROOT%
+) else if exist "%TOOLCHAIN_TARGET_DIR%\sysroot" (
+    set TOOLCHAIN_SYSROOT=%TOOLCHAIN_TARGET_DIR%\sysroot
+    echo Using sysroot: %TOOLCHAIN_SYSROOT%
+) else if exist "%TOOLCHAIN_TARGET_DIR%" (
+    set TOOLCHAIN_SYSROOT=%TOOLCHAIN_TARGET_DIR%
+    echo Using sysroot: %TOOLCHAIN_SYSROOT%
+) else (
+    echo Error: No valid sysroot found
+    echo Checked locations:
+    echo   %TOOLCHAIN_TARGET_DIR%\libc
+    echo   %TOOLCHAIN_TARGET_DIR%\sysroot
+    echo   %TOOLCHAIN_TARGET_DIR%
+    echo Available directories in toolchain:
+    dir "%TOOLCHAIN_ROOT%" /B /AD 2>nul
     exit /b 1
+)
+
+REM 验证sysroot内容
+echo Verifying sysroot contents...
+if exist "%TOOLCHAIN_SYSROOT%\lib" (
+    echo Found lib directory in sysroot
+) else (
+    echo Warning: lib directory not found in sysroot
+    echo Available directories in sysroot:
+    dir "%TOOLCHAIN_SYSROOT%" /B /AD 2>nul
+)
+
+if exist "%TOOLCHAIN_SYSROOT%\usr\lib" (
+    echo Found usr/lib directory in sysroot
+) else (
+    echo Warning: usr/lib directory not found in sysroot
 )
 
 echo Testing compiler execution...
@@ -102,6 +137,18 @@ if %errorlevel% neq 0 (
     echo Error: G++ test failed
     exit /b %errorlevel%
 )
+
+REM 测试简单编译（不链接）
+echo Testing compilation without linking...
+echo int main() { return 0; } > test.c
+"%GCC_FULL_PATH%" --sysroot="%TOOLCHAIN_SYSROOT%" -c test.c -o test.o
+if %errorlevel% neq 0 (
+    echo Error: Simple compilation test failed
+    del test.c test.o 2>nul
+    exit /b %errorlevel%
+)
+del test.c test.o 2>nul
+echo Simple compilation test passed
 
 REM 清理并创建build目录
 echo Cleaning previous build...
@@ -141,9 +188,13 @@ echo.
 echo # Compiler flags
 echo set^(CMAKE_C_FLAGS_INIT "-march=armv8-a"^)
 echo set^(CMAKE_CXX_FLAGS_INIT "-march=armv8-a"^)
+echo.
+echo # Additional library search paths
+echo set^(CMAKE_LIBRARY_PATH "%TOOLCHAIN_SYSROOT:\=/%/lib;%TOOLCHAIN_SYSROOT:\=/%/usr/lib"^)
 ) > "%TOOLCHAIN_FILE%"
 
 echo Toolchain file created at: %TOOLCHAIN_FILE%
+echo Final sysroot path: %TOOLCHAIN_SYSROOT%
 
 cd /d "%SHORT_BUILD_PATH%"
 
@@ -186,6 +237,7 @@ if %errorlevel% neq 0 (
     echo CMAKE_CXX_COMPILER: %CXX%
     echo GCC_FULL_PATH: %GCC_FULL_PATH%
     echo GPP_FULL_PATH: %GPP_FULL_PATH%
+    echo Final sysroot: %TOOLCHAIN_SYSROOT%
     echo Toolchain file: %TOOLCHAIN_FILE%
     if exist "%TOOLCHAIN_FILE%" (
         echo Toolchain file contents:
