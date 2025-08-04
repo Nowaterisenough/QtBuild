@@ -100,16 +100,39 @@ jobs:
             exit 1
           }
           
-          # 验证工具链
-          if (Test-Path "aarch64-none-linux-gnu\bin\aarch64-none-linux-gnu-gcc.exe") {
-            Write-Host "ARM GNU toolchain setup successful"
-            & ".\aarch64-none-linux-gnu\bin\aarch64-none-linux-gnu-gcc.exe" --version
-          } else {
-            Write-Host "Error: ARM GNU toolchain not found"
-            Write-Host "Checking aarch64-none-linux-gnu directory structure:"
-            if (Test-Path "aarch64-none-linux-gnu") {
-              Get-ChildItem "aarch64-none-linux-gnu" -Recurse | Select-Object -First 10 | ForEach-Object { Write-Host "  $($_.FullName)" }
+          # 验证工具链并检查实际的可执行文件
+          Write-Host "Checking toolchain executables..."
+          $binPath = "aarch64-none-linux-gnu\bin"
+          
+          if (Test-Path $binPath) {
+            Write-Host "Bin directory contents:"
+            Get-ChildItem $binPath -Name "*.exe" | ForEach-Object { Write-Host "  - $_" }
+            
+            # 检查可能的GCC可执行文件名
+            $possibleGccNames = @(
+              "aarch64-none-linux-gnu-gcc.exe",
+              "gcc.exe"
+            )
+            
+            $gccFound = $false
+            foreach ($gccName in $possibleGccNames) {
+              $gccPath = Join-Path $binPath $gccName
+              if (Test-Path $gccPath) {
+                Write-Host "Found GCC at: $gccPath"
+                & $gccPath --version
+                $gccFound = $true
+                break
+              }
             }
+            
+            if (-not $gccFound) {
+              Write-Host "Error: No GCC executable found in $binPath"
+              exit 1
+            }
+            
+            Write-Host "ARM GNU toolchain setup successful"
+          } else {
+            Write-Host "Error: Bin directory not found at $binPath"
             exit 1
           }
         shell: pwsh
