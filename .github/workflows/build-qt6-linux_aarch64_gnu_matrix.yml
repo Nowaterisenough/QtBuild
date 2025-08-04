@@ -76,47 +76,53 @@ jobs:
           Write-Host "Extracting ARM GNU toolchain..."
           7z x toolchain.zip
           
-          # 查找实际解压出来的目录
-          Write-Host "Looking for extracted directories..."
-          $extractedDirs = Get-ChildItem -Directory | Where-Object { $_.Name -like "*arm-gnu-toolchain*" -or $_.Name -like "*aarch64*" }
-          Write-Host "Found directories:"
-          foreach ($dir in $extractedDirs) {
-            Write-Host "  - $($dir.Name)"
-          }
-          
-          if ($extractedDirs.Count -eq 0) {
-            Write-Host "No toolchain directory found. Listing all directories:"
+          # 查找解压后的工具链目录
+          $toolchainDirs = Get-ChildItem -Directory | Where-Object { $_.Name -like "*arm-gnu-toolchain*" }
+          if ($toolchainDirs.Count -eq 0) {
+            Write-Host "No ARM GNU toolchain directory found. Available directories:"
             Get-ChildItem -Directory | ForEach-Object { Write-Host "  - $($_.Name)" }
             exit 1
           }
           
-          # 使用第一个找到的目录
-          $sourceDir = $extractedDirs[0].Name
-          Write-Host "Using directory: $sourceDir"
+          $toolchainRoot = $toolchainDirs[0].Name
+          Write-Host "Found toolchain directory: $toolchainRoot"
           
-          # 只有当目录名不是我们期望的标准名称时才重命名
-          if ($sourceDir -ne "aarch64-none-linux-gnu") {
-            Rename-Item $sourceDir "aarch64-none-linux-gnu"
-            Write-Host "Renamed toolchain directory from $sourceDir to aarch64-none-linux-gnu"
-          } else {
-            Write-Host "Directory already has the correct name: aarch64-none-linux-gnu"
+          # 验证目录结构
+          $binDir = "$toolchainRoot\bin"
+          $sysrootDir = "$toolchainRoot\aarch64-none-linux-gnu"
+          
+          Write-Host "Checking directory structure..."
+          Write-Host "  Bin directory: $binDir"
+          Write-Host "  Sysroot directory: $sysrootDir"
+          
+          if (-not (Test-Path $binDir)) {
+            Write-Host "Error: Bin directory not found at $binDir"
+            exit 1
           }
           
-          # 验证工具链
-          $gccPath = "aarch64-none-linux-gnu\bin\aarch64-none-linux-gnu-gcc.exe"
+          if (-not (Test-Path $sysrootDir)) {
+            Write-Host "Error: Sysroot directory not found at $sysrootDir"
+            exit 1
+          }
+          
+          # 重命名为标准名称
+          Rename-Item $toolchainRoot "arm-gnu-toolchain"
+          Write-Host "Renamed $toolchainRoot to arm-gnu-toolchain"
+          
+          # 验证编译器
+          $gccPath = "arm-gnu-toolchain\bin\aarch64-none-linux-gnu-gcc.exe"
           if (Test-Path $gccPath) {
             Write-Host "ARM GNU toolchain setup successful"
+            Write-Host "GCC path: $gccPath"
             & $gccPath --version
           } else {
             Write-Host "Error: GCC not found at $gccPath"
-            Write-Host "Checking bin directory contents:"
-            if (Test-Path "aarch64-none-linux-gnu\bin") {
-              Get-ChildItem "aarch64-none-linux-gnu\bin" -Name "*.exe" | ForEach-Object { Write-Host "  - $_" }
-            } else {
-              Write-Host "Bin directory not found"
-            }
+            Write-Host "Available executables in bin directory:"
+            Get-ChildItem "arm-gnu-toolchain\bin" -Name "*.exe" | ForEach-Object { Write-Host "  - $_" }
             exit 1
           }
+          
+          Write-Host "Toolchain setup completed successfully!"
         shell: pwsh
 
       - name: 设置构建工具
