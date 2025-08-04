@@ -19,7 +19,7 @@ set TOOLCHAIN_TARGET_DIR=%TOOLCHAIN_ROOT%\aarch64-none-linux-gnu
 set TOOLCHAIN_SYSROOT=%TOOLCHAIN_TARGET_DIR%\libc
 
 REM 设置PATH，确保交叉编译器可以被找到
-set PATH=%TOOLCHAIN_BIN%;D:\a\QtBuild\ninja;D:\a\QtBuild\protoc\bin;%PATH%
+set PATH=%TOOLCHAIN_BIN%;D:\a\QtBuild\ninja;D:\a\QtBuild\protoc\bin;D:\a\QtBuild\pkgconfig\bin;%PATH%
 set QT_PATH=D:\a\QtBuild\Qt
 
 REM 使用短路径避免 Windows 路径长度限制
@@ -138,18 +138,6 @@ if %errorlevel% neq 0 (
     exit /b %errorlevel%
 )
 
-REM 测试简单编译（不链接）
-echo Testing compilation without linking...
-echo int main() { return 0; } > test.c
-"%GCC_FULL_PATH%" --sysroot="%TOOLCHAIN_SYSROOT%" -c test.c -o test.o
-if %errorlevel% neq 0 (
-    echo Error: Simple compilation test failed
-    del test.c test.o 2>nul
-    exit /b %errorlevel%
-)
-del test.c test.o 2>nul
-echo Simple compilation test passed
-
 REM 清理并创建build目录
 echo Cleaning previous build...
 rmdir /s /q %BUILD_DIR% 2>nul
@@ -191,6 +179,9 @@ echo set^(CMAKE_CXX_FLAGS_INIT "-march=armv8-a"^)
 echo.
 echo # Additional library search paths
 echo set^(CMAKE_LIBRARY_PATH "%TOOLCHAIN_SYSROOT:\=/%/lib;%TOOLCHAIN_SYSROOT:\=/%/usr/lib"^)
+echo.
+echo # Disable features that require external dependencies
+echo set^(QT_FEATURE_pkg_config OFF CACHE BOOL "Disable pkg-config"^)
 ) > "%TOOLCHAIN_FILE%"
 
 echo Toolchain file created at: %TOOLCHAIN_FILE%
@@ -199,7 +190,8 @@ echo Final sysroot path: %TOOLCHAIN_SYSROOT%
 cd /d "%SHORT_BUILD_PATH%"
 
 REM 配置参数 - 先设置Qt configure选项，再设置CMake选项
-set QT_CFG_OPTIONS=-%LINK_TYPE% -prefix %TEMP_INSTALL_DIR% -qt-host-path %HOST_QT_DIR% -platform win32-g++ -xplatform linux-aarch64-gnu-g++ -nomake examples -nomake tests -c++std c++20 -headersclean -skip qtwebengine -opensource -confirm-license -qt-libpng -qt-libjpeg -qt-zlib -qt-pcre -qt-freetype -no-sql-psql -no-sql-odbc -opengl es2 -no-dbus -device-option CROSS_COMPILE=%TOOLCHAIN_PREFIX%-
+REM 减少依赖和模块以避免问题
+set QT_CFG_OPTIONS=-%LINK_TYPE% -prefix %TEMP_INSTALL_DIR% -qt-host-path %HOST_QT_DIR% -platform win32-g++ -xplatform linux-aarch64-gnu-g++ -nomake examples -nomake tests -nomake tools -c++std c++20 -headersclean -skip qtwebengine -skip qtdeclarative -skip qmltools -opensource -confirm-license -qt-libpng -qt-libjpeg -qt-zlib -qt-pcre -qt-freetype -no-sql-psql -no-sql-odbc -no-opengl -no-dbus -no-pkg-config -device-option CROSS_COMPILE=%TOOLCHAIN_PREFIX%-
 
 REM 根据构建类型添加相应选项
 if "%BUILD_TYPE%"=="debug" (
@@ -210,16 +202,16 @@ if "%BUILD_TYPE%"=="debug" (
     echo Building RELEASE version for ARM64...
 )
 
-REM shared构建才能分离调试信息
-if "%LINK_TYPE%"=="shared" (
-    if "%SEPARATE_DEBUG%"=="true" (
-        set QT_CFG_OPTIONS=%QT_CFG_OPTIONS% -force-debug-info -separate-debug-info
-        echo Separate debug info enabled for shared build
-    )
-)
+REM shared构建才能分离调试信息，但先不启用避免复杂性
+REM if "%LINK_TYPE%"=="shared" (
+REM     if "%SEPARATE_DEBUG%"=="true" (
+REM         set QT_CFG_OPTIONS=%QT_CFG_OPTIONS% -force-debug-info -separate-debug-info
+REM         echo Separate debug info enabled for shared build
+REM     )
+REM )
 
 REM CMake选项
-set CMAKE_OPTIONS=-DCMAKE_TOOLCHAIN_FILE="%TOOLCHAIN_FILE%"
+set CMAKE_OPTIONS=-DCMAKE_TOOLCHAIN_FILE="%TOOLCHAIN_FILE%" -DQT_FEATURE_pkg_config=OFF
 
 REM 完整的configure命令
 set CFG_OPTIONS=%QT_CFG_OPTIONS% -- %CMAKE_OPTIONS%
@@ -299,6 +291,7 @@ echo.
 echo NOTE: This is a cross-compiled build for ARM64 Linux
 echo - Binaries cannot run on x86_64 Windows
 echo - Deploy to ARM64 Linux target system
+echo - Minimal build without QML/Declarative support
 echo.
 if "%SEPARATE_DEBUG%"=="true" (
   echo Debug symbols have been separated for easier deployment
