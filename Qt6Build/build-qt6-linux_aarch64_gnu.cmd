@@ -144,30 +144,34 @@ echo set^(CMAKE_CXX_FLAGS_INIT "-march=armv8-a"^)
 ) > "%TOOLCHAIN_FILE%"
 
 echo Toolchain file created at: %TOOLCHAIN_FILE%
-echo Toolchain file contents:
-type "%TOOLCHAIN_FILE%"
 
 cd /d "%SHORT_BUILD_PATH%"
 
-REM 配置参数
-set CFG_OPTIONS=-%LINK_TYPE% -prefix %TEMP_INSTALL_DIR% -qt-host-path %HOST_QT_DIR% -platform win32-g++ -xplatform linux-aarch64-gnu-g++ -nomake examples -nomake tests -c++std c++20 -headersclean -skip qtwebengine -opensource -confirm-license -qt-libpng -qt-libjpeg -qt-zlib -qt-pcre -qt-freetype -no-sql-psql -no-sql-odbc -opengl es2 -no-dbus -device-option CROSS_COMPILE=%TOOLCHAIN_PREFIX%- -- -DCMAKE_TOOLCHAIN_FILE="%TOOLCHAIN_FILE%"
+REM 配置参数 - 先设置Qt configure选项，再设置CMake选项
+set QT_CFG_OPTIONS=-%LINK_TYPE% -prefix %TEMP_INSTALL_DIR% -qt-host-path %HOST_QT_DIR% -platform win32-g++ -xplatform linux-aarch64-gnu-g++ -nomake examples -nomake tests -c++std c++20 -headersclean -skip qtwebengine -opensource -confirm-license -qt-libpng -qt-libjpeg -qt-zlib -qt-pcre -qt-freetype -no-sql-psql -no-sql-odbc -opengl es2 -no-dbus -device-option CROSS_COMPILE=%TOOLCHAIN_PREFIX%-
 
 REM 根据构建类型添加相应选项
 if "%BUILD_TYPE%"=="debug" (
-    set CFG_OPTIONS=%CFG_OPTIONS% -debug
+    set QT_CFG_OPTIONS=%QT_CFG_OPTIONS% -debug
     echo Building DEBUG version for ARM64...
 ) else (
-    set CFG_OPTIONS=%CFG_OPTIONS% -release
+    set QT_CFG_OPTIONS=%QT_CFG_OPTIONS% -release
     echo Building RELEASE version for ARM64...
 )
 
 REM shared构建才能分离调试信息
 if "%LINK_TYPE%"=="shared" (
     if "%SEPARATE_DEBUG%"=="true" (
-        set CFG_OPTIONS=%CFG_OPTIONS% -force-debug-info -separate-debug-info
+        set QT_CFG_OPTIONS=%QT_CFG_OPTIONS% -force-debug-info -separate-debug-info
         echo Separate debug info enabled for shared build
     )
 )
+
+REM CMake选项
+set CMAKE_OPTIONS=-DCMAKE_TOOLCHAIN_FILE="%TOOLCHAIN_FILE%"
+
+REM 完整的configure命令
+set CFG_OPTIONS=%QT_CFG_OPTIONS% -- %CMAKE_OPTIONS%
 
 echo Configure options: %CFG_OPTIONS%
 
@@ -182,7 +186,6 @@ if %errorlevel% neq 0 (
     echo CMAKE_CXX_COMPILER: %CXX%
     echo GCC_FULL_PATH: %GCC_FULL_PATH%
     echo GPP_FULL_PATH: %GPP_FULL_PATH%
-    echo PATH: %PATH%
     echo Toolchain file: %TOOLCHAIN_FILE%
     if exist "%TOOLCHAIN_FILE%" (
         echo Toolchain file contents:
