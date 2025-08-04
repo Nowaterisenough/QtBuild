@@ -68,7 +68,11 @@ ARM_SYSROOT="${QTBUILD_ROOT}/sysroot/${ARM_ARCH}"
 
 # 路径和文件名定义
 SRC_QT="${QT_PATH}/${QT_VERSION}/qt-everywhere-src-${QT_VERSION}"
+HOST_QT_PATH="${QT_PATH}/${QT_VERSION}-host"
 FINAL_INSTALL_DIR="${QT_PATH}/${QT_VERSION}-${LINK_TYPE}/${ARM_GCC_VERSION}"
+
+# Host Qt下载URL
+HOST_QT_URL="https://github.com/yuanpeirong/buildQt/releases/download/Qt6.9.1_rev0/Qt_6.9.1-static-Release_gcc13_2_0_64_linux.tar.gz"
 
 echo "Starting Qt ARM cross-compilation build..."
 echo "Qt Version: $QT_VERSION"
@@ -81,7 +85,49 @@ echo "Cross Compiler Prefix: $CROSS_PREFIX"
 echo "Qt Platform: $QT_PLATFORM"
 echo "Sysroot: $ARM_SYSROOT"
 echo "Source: $SRC_QT"
+echo "Host Qt: $HOST_QT_PATH"
 echo "Final Install Dir: $FINAL_INSTALL_DIR"
+
+# 下载并设置Host Qt
+if [ ! -d "$HOST_QT_PATH" ]; then
+    echo "下载Host Qt用于交叉编译..."
+    mkdir -p "$HOST_QT_PATH"
+    cd "$HOST_QT_PATH"
+    
+    echo "从以下地址下载: $HOST_QT_URL"
+    if wget -q -O host-qt.tar.gz "$HOST_QT_URL"; then
+        echo "解压Host Qt..."
+        tar -xzf host-qt.tar.gz --strip-components=1
+        rm host-qt.tar.gz
+        echo "Host Qt设置完成。"
+    else
+        echo "Host Qt下载失败，将构建最小的host工具..."
+        cd "$QT_PATH"
+        rm -rf "$QT_VERSION-host"
+        
+        # 创建最小的host Qt构建
+        mkdir -p "$QT_VERSION-host-build"
+        cd "$QT_VERSION-host-build"
+        
+        echo "构建最小的host Qt工具..."
+        "$SRC_QT/configure" -static -prefix "$HOST_QT_PATH" \
+          -nomake examples -nomake tests -no-gui -no-widgets \
+          -opensource -confirm-license -release
+        make -j$(nproc) && make install
+        cd "$QT_PATH"
+        rm -rf "$QT_VERSION-host-build"
+    fi
+else
+    echo "Host Qt已存在: $HOST_QT_PATH"
+fi
+
+# 验证host Qt
+if [ -f "$HOST_QT_PATH/bin/qmake" ]; then
+    echo "Host Qt工具可用: $($HOST_QT_PATH/bin/qmake -query QT_VERSION)"
+else
+    echo "错误: Host Qt工具未找到"
+    exit 1
+fi
 
 # 检查交叉编译器是否存在
 if [ ! -f "${CROSS_COMPILE_PATH}/${CROSS_PREFIX}gcc" ]; then
@@ -112,11 +158,13 @@ mkdir -p "$BUILD_PATH" "$TEMP_INSTALL_DIR"
 cd "$BUILD_PATH"
 
 # 配置参数 - 针对ARM嵌入式设备优化
-CFG_OPTIONS="-${LINK_TYPE} -prefix $TEMP_INSTALL_DIR -nomake examples -nomake tests -c++std c++17 -headersclean -skip qtwebengine -skip qtwebkit -skip qtmultimedia -opensource -confirm-license -qt-libpng -qt-libjpeg -qt-zlib -qt-pcre -qt-freetype -no-sql-psql -no-sql-odbc -no-openssl -no-dbus -platform $QT_PLATFORM -device-option CROSS_COMPILE=$CROSS_PREFIX"
+CFG_OPTIONS="-${LINK_TYPE} -prefix $TEMP_INSTALL_DIR -nomake examples -nomake tests -c++std c++17 -headersclean -skip qtwebengine -skip qtwebkit -skip qtmultimedia -skip qtlocation -skip qtspeech -skip qtserialport -skip qtnetworkauth -skip qtremoteobjects -skip qtscxml -skip qtvirtualkeyboard -opensource -confirm-license -qt-libpng -qt-libjpeg -qt-zlib -qt-pcre -qt-freetype -no-sql-psql -no-sql-odbc -no-openssl -no-dbus -no-glib -no-icu -platform $QT_PLATFORM -device-option CROSS_COMPILE=$CROSS_PREFIX -no-feature-getentropy -qt-host-path $HOST_QT_PATH"
 
 # 如果sysroot存在且不为空，添加sysroot选项
-if [ -d "$ARM_SYSROOT" ] && [ "$(ls -A $ARM_SYSROOT)" ]; then
+if [ -d "$ARM_SYSROOT" ] && [ "$(ls -A $ARM_SYSROOT 2>/dev/null)" ]; then
     CFG_OPTIONS="$CFG_OPTIONS -sysroot $ARM_SYSROOT"
+else
+    echo "警告: 使用系统默认库路径，可能导致兼容性问题"
 fi
 
 # 根据构建类型添加相应选项
@@ -139,14 +187,54 @@ export STRIP="${CROSS_PREFIX}strip"
 export OBJCOPY="${CROSS_PREFIX}objcopy"
 export OBJDUMP="${CROSS_PREFIX}objdump"
 export PKG_CONFIG="${CROSS_PREFIX}pkg-config"
+export RANLIB="${CROSS_PREFIX}ranlib"
+export LD="${CROSS_PREFIX}ld"
+
+# 设置编译器标志
+export CFLAGS="-O2"
+export CXXFLAGS="-O2"
+export LDFLAGS=""
+
+# 如果有sysroot，设置PKG_CONFIG_PATH
+if [ -d "$ARM_SYSROOT" ]; then
+    export PKG_CONFIG_PATH="$ARM_SYSROOT/usr/lib/pkgconfig:$ARM_SYSROOT/usr/share/pkgconfig"
+    export PKG_CONFIG_LIBDIR="$ARM_SYSROOT/usr/lib/pkgconfig:$ARM_SYSROOT/usr/share/pkgconfig"
+    export PKG_CONFIG_SYSROOT_DIR="$ARM_SYSROOT"
+fi
 
 echo "Configure options: $CFG_OPTIONS"
 echo "Cross-compilation environment:"
 echo "  CC=$CC"
 echo "  CXX=$CXX"
 echo "  AR=$AR"
+echo "  PKG_CONFIG_PATH=$PKG_CONFIG_PATH"
+
+# 验证交叉编译器工作正常
+echo "验证交叉编译器..."
+$CC --version || { echo "错误: 交叉编译器 $CC 不可用"; exit 1; }
+$CXX --version || { echo "错误: 交叉编译器 $CXX 不可用"; exit 1; }
+
+# 创建简单的测试程序验证编译器
+echo "测试交叉编译器..."
+cat > test_compiler.c << 'EOF'
+#include <stdio.h>
+int main() {
+    printf("Hello ARM World!\n");
+    return 0;
+}
+EOF
+
+if $CC test_compiler.c -o test_compiler_arm; then
+    echo "交叉编译器测试成功"
+    file test_compiler_arm
+    rm -f test_compiler.c test_compiler_arm
+else
+    echo "错误: 交叉编译器测试失败"
+    exit 1
+fi
 
 # configure
+echo "开始配置Qt..."
 echo "Configuring Qt..."
 "$SRC_QT/configure" $CFG_OPTIONS
 if [ $? -ne 0 ]; then

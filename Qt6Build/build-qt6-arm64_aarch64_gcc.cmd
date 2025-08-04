@@ -48,8 +48,12 @@ set ARM_SYSROOT=D:\a\QtBuild\sysroot\%ARM_ARCH%
 
 REM 路径和文件名定义
 set SRC_QT="%QT_PATH%\%QT_VERSION%\qt-everywhere-src-%QT_VERSION%"
+set HOST_QT_PATH="%QT_PATH%\%QT_VERSION%-host"
 set FINAL_INSTALL_DIR="%QT_PATH%\%QT_VERSION%-%LINK_TYPE%\%ARM_GCC_VERSION%"
 set BUILD_DIR="%SHORT_BUILD_PATH%"
+
+REM Host Qt下载URL
+set HOST_QT_URL=https://github.com/yuanpeirong/buildQt/releases/download/Qt6.9.1_rev0/Qt_6.9.1-static-Release_mingw1510_64_UCRT.7z
 
 echo Starting Qt ARM cross-compilation build...
 echo Qt Version: %QT_VERSION%
@@ -62,7 +66,44 @@ echo Cross Compiler Prefix: %CROSS_PREFIX%
 echo Qt Platform: %QT_PLATFORM%
 echo Sysroot: %ARM_SYSROOT%
 echo Source: %SRC_QT%
+echo Host Qt: %HOST_QT_PATH%
 echo Final Install Dir: %FINAL_INSTALL_DIR%
+
+REM 下载并设置Host Qt
+if not exist %HOST_QT_PATH% (
+    echo Downloading Host Qt...
+    mkdir "%QT_PATH%\%QT_VERSION%-host"
+    cd /d "%QT_PATH%\%QT_VERSION%-host"
+    
+    echo Downloading from: %HOST_QT_URL%
+    powershell -Command "Invoke-WebRequest -Uri '%HOST_QT_URL%' -OutFile 'host-qt.7z'"
+    if %errorlevel% neq 0 (
+        echo Failed to download Host Qt
+        exit /b %errorlevel%
+    )
+    
+    echo Extracting Host Qt...
+    "C:\Program Files\7-Zip\7z.exe" x host-qt.7z
+    if %errorlevel% neq 0 (
+        echo Failed to extract Host Qt, trying with powershell...
+        powershell -Command "Expand-Archive -Path 'host-qt.7z' -DestinationPath '.'"
+    )
+    
+    REM 移动到正确的目录结构
+    for /d %%D in ("%QT_VERSION%-static\*") do (
+        echo Moving files from %%D to current directory...
+        xcopy "%%D\*" . /E /I /H /Y
+        rmdir /s /q "%QT_VERSION%-static" 2>nul
+        goto :host_qt_done
+    )
+    
+    :host_qt_done
+    del host-qt.7z 2>nul
+    cd /d %~dp0
+    echo Host Qt setup completed.
+) else (
+    echo Host Qt already exists at %HOST_QT_PATH%
+)
 
 REM 检查交叉编译器是否存在
 if not exist "%CROSS_COMPILE_PATH%\%CROSS_PREFIX%gcc.exe" (
@@ -86,7 +127,7 @@ mkdir "%TEMP_INSTALL_DIR%"
 cd /d "%SHORT_BUILD_PATH%"
 
 REM 配置参数 - 针对ARM嵌入式设备优化
-set CFG_OPTIONS=-%LINK_TYPE% -prefix %TEMP_INSTALL_DIR% -nomake examples -nomake tests -c++std c++17 -headersclean -skip qtwebengine -skip qtwebkit -skip qtmultimedia -opensource -confirm-license -qt-libpng -qt-libjpeg -qt-zlib -qt-pcre -qt-freetype -no-sql-psql -no-sql-odbc -no-openssl -no-dbus -platform %QT_PLATFORM% -device-option CROSS_COMPILE=%CROSS_PREFIX% -sysroot %ARM_SYSROOT% -no-gui -no-widgets -no-opengl
+set CFG_OPTIONS=-%LINK_TYPE% -prefix %TEMP_INSTALL_DIR% -nomake examples -nomake tests -c++std c++17 -headersclean -skip qtwebengine -skip qtwebkit -skip qtmultimedia -opensource -confirm-license -qt-libpng -qt-libjpeg -qt-zlib -qt-pcre -qt-freetype -no-sql-psql -no-sql-odbc -no-openssl -no-dbus -platform %QT_PLATFORM% -device-option CROSS_COMPILE=%CROSS_PREFIX% -sysroot %ARM_SYSROOT% -no-gui -no-widgets -no-opengl -qt-host-path %HOST_QT_PATH%
 
 REM 根据构建类型添加相应选项
 if "%BUILD_TYPE%"=="debug" (
