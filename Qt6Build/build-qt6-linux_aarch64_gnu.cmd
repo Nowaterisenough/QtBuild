@@ -189,9 +189,10 @@ echo Final sysroot path: %TOOLCHAIN_SYSROOT%
 
 cd /d "%SHORT_BUILD_PATH%"
 
-REM 配置参数 - 先设置Qt configure选项，再设置CMake选项
-REM 减少依赖和模块以避免问题
-set QT_CFG_OPTIONS=-%LINK_TYPE% -prefix %TEMP_INSTALL_DIR% -qt-host-path %HOST_QT_DIR% -platform win32-g++ -xplatform linux-aarch64-gnu-g++ -nomake examples -nomake tests -nomake tools -c++std c++20 -headersclean -skip qtwebengine -skip qtdeclarative -skip qmltools -opensource -confirm-license -qt-libpng -qt-libjpeg -qt-zlib -qt-pcre -qt-freetype -no-sql-psql -no-sql-odbc -no-opengl -no-dbus -no-pkg-config -device-option CROSS_COMPILE=%TOOLCHAIN_PREFIX%-
+REM 配置参数 - 跳过所有QML相关模块
+set SKIP_MODULES=-skip qtwebengine -skip qtdeclarative -skip qmltools -skip qtquicktimeline -skip qtquick3d -skip qtquickeffectmaker -skip qtmultimedia -skip qtconnectivity -skip qtlocation -skip qtsensors -skip qtserialport -skip qtwebsockets -skip qtwebchannel -skip qtpositioning
+
+set QT_CFG_OPTIONS=-%LINK_TYPE% -prefix %TEMP_INSTALL_DIR% -qt-host-path %HOST_QT_DIR% -platform win32-g++ -xplatform linux-aarch64-gnu-g++ -nomake examples -nomake tests -c++std c++20 -headersclean %SKIP_MODULES% -opensource -confirm-license -qt-libpng -qt-libjpeg -qt-zlib -qt-pcre -qt-freetype -no-sql-psql -no-sql-odbc -no-opengl -no-dbus -no-pkg-config -device-option CROSS_COMPILE=%TOOLCHAIN_PREFIX%-
 
 REM 根据构建类型添加相应选项
 if "%BUILD_TYPE%"=="debug" (
@@ -291,7 +292,11 @@ echo.
 echo NOTE: This is a cross-compiled build for ARM64 Linux
 echo - Binaries cannot run on x86_64 Windows
 echo - Deploy to ARM64 Linux target system
-echo - Minimal build without QML/Declarative support
+echo - Core Qt modules only ^(widgets, network, etc.^)
+echo - No QML/Quick support in this build
+echo.
+echo Skipped modules:
+echo %SKIP_MODULES%
 echo.
 if "%SEPARATE_DEBUG%"=="true" (
   echo Debug symbols have been separated for easier deployment
