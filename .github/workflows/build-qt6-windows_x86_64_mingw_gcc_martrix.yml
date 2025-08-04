@@ -19,6 +19,14 @@ on:
         options:
         - ucrt
         - msvcrt
+      create_release:
+        description: 'Create Release'
+        required: true
+        default: 'true'
+        type: choice
+        options:
+        - 'true'
+        - 'false'
 
 env:
   QT_VERSION: ${{ github.event.inputs.qt_version || '6.9.1' }}
@@ -250,3 +258,84 @@ jobs:
         with:
           name: qt${{ env.QT_VERSION }}-windows_x86_64_mingw_gcc${{ env.GCC_VERSION }}_${{ env.RUNTIME }}-${{ matrix.link_type }}_${{ matrix.build_type == 'release' && 'release' || matrix.build_type == 'debug' && 'debug' || 'relwithdebinfo' }}
           path: ${{ env.ARCHIVE_NAME }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.create_release == 'true' }}
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Generate release tag
+        id: release_tag
+        run: |
+          TAG_NAME="qt${{ env.QT_VERSION }}-windows-mingw${{ env.GCC_VERSION }}-${{ env.RUNTIME }}-$(date +'%Y%m%d%H%M%S')"
+          echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
+          echo "Tag name: $TAG_NAME"
+
+      - name: Generate release notes
+        id: release_notes
+        run: |
+          cat << EOF > release_notes.md
+          # Qt ${{ env.QT_VERSION }} Windows MinGW Build
+          
+          ## Build Information
+          - **Qt Version**: ${{ env.QT_VERSION }}
+          - **Compiler**: MinGW GCC ${{ env.GCC_VERSION }}
+          - **Runtime**: ${{ env.RUNTIME }}
+          - **Build Date**: $(date +'%Y-%m-%d %H:%M:%S UTC')
+          - **Build Runner**: GitHub Actions (windows-latest)
+          
+          ## Included Configurations
+          This release includes the following build configurations:
+          
+          ### Static Builds
+          - \`static_release\`: Static linking, Release mode
+          - \`static_relwithdebinfo\`: Static linking, Release mode with separate debug info (if supported)
+          
+          ### Shared Builds
+          - \`shared_release\`: Dynamic linking, Release mode
+          - \`shared_debug\`: Dynamic linking, Debug mode
+          - \`shared_relwithdebinfo\`: Dynamic linking, Release mode with separate debug info
+          
+          ## File Naming Convention
+          Files follow the pattern: \`qt{version}-windows_x86_64_mingw_gcc{gcc_version}_{runtime}-{link_type}_{build_type}.7z\`
+          
+          Where:
+          - \`{version}\`: Qt version (e.g., 6.9.1)
+          - \`{gcc_version}\`: GCC version (e.g., 15.1.0)
+          - \`{runtime}\`: Runtime library (ucrt or msvcrt)
+          - \`{link_type}\`: static or shared
+          - \`{build_type}\`: release, debug, or relwithdebinfo
+          
+          ## Installation
+          1. Download the appropriate .7z file for your needs
+          2. Extract using 7-Zip or compatible software
+          3. The Qt installation will be in the extracted folder
+          
+          ## Notes
+          - Static builds do not include debug configurations
+          - Shared builds include MinGW runtime DLLs
+          - All builds skip QtWebEngine and examples/tests
+          - Built with C++20 standard
+          EOF
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release_tag.outputs.tag_name }}
+          name: Qt ${{ env.QT_VERSION }} - MinGW ${{ env.GCC_VERSION }} (${{ env.RUNTIME }})
+          body_path: release_notes.md
+          draft: false
+          prerelease: false
+          files: artifacts/**/*.7z
+          fail_on_unmatched_files: true
+          generate_release_notes: false
+
+      - name: Clean up artifacts
+        uses: geekyeggo/delete-artifact@v5
+        with:
+          name: qt${{ env.QT_VERSION }}-windows_x86_64_mingw_gcc${{ env.GCC_VERSION }}_${{ env.RUNTIME }}-*
