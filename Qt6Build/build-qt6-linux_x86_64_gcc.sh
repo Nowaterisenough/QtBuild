@@ -1,42 +1,76 @@
-#!/usr/bin/env bash
+#!/bin/bash
+
 set -e
 
-# -------- 参数 --------
-QT_VERSION=${QT_VERSION:-6.9.1}
-GCC_VERSION=${GCC_VERSION:-13}
-BUILD_TYPE=${BUILD_TYPE:-release}     # release | debug
-LINK_TYPE=${LINK_TYPE:-shared}        # shared  | static
-SEPARATE_DEBUG=${SEPARATE_DEBUG:-false}
+echo "Starting Qt Linux build script in WSL2..."
 
-# -------- 解压源码 --------
-tar -xf qt-everywhere-src-${QT_VERSION}.tar.xz
-rm  -f qt-everywhere-src-${QT_VERSION}.tar.xz
+# 参数处理
+QT_VERSION=${QT_VERSION:-"6.9.1"}
+GCC_VERSION=${GCC_VERSION:-"13"}
+BUILD_TYPE=${BUILD_TYPE:-"release"}
+LINK_TYPE=${LINK_TYPE:-"shared"}
+SEPARATE_DEBUG=${SEPARATE_DEBUG:-"false"}
 
-SRC_QT=$PWD/qt-everywhere-src-${QT_VERSION}
-BUILD_DIR=$PWD/build
-INSTALL_DIR=$PWD/output/qt-${QT_VERSION}-${LINK_TYPE}-gcc${GCC_VERSION}
+echo "=== Build Parameters ==="
+echo "Qt Version: $QT_VERSION"
+echo "GCC Version: $GCC_VERSION"
+echo "Build Type: $BUILD_TYPE"
+echo "Link Type: $LINK_TYPE"
+echo "Separate Debug: $SEPARATE_DEBUG"
+echo "========================"
 
-mkdir -p "${BUILD_DIR}" "${INSTALL_DIR}"
-cd "${BUILD_DIR}"
-
-# -------- 配置 --------
-CFG="-${LINK_TYPE} -prefix ${INSTALL_DIR} \
-     -nomake examples -nomake tests -c++std c++20 -skip qtwebengine \
-     -opensource -confirm-license -qt-libpng -qt-libjpeg -qt-zlib -qt-pcre \
-     -openssl-linked -platform linux-g++ -opengl desktop"
-
-[[ "${BUILD_TYPE}" == debug ]] && CFG="${CFG} -debug" || CFG="${CFG} -release"
-if [[ "${LINK_TYPE}" == shared && "${SEPARATE_DEBUG}" == true ]]; then
-    CFG="${CFG} -force-debug-info -separate-debug-info"
+# 解压 Qt 源码
+echo "Extracting Qt source..."
+if [ -f "qt-everywhere-src-${QT_VERSION}.tar.xz" ]; then
+    tar -xf qt-everywhere-src-${QT_VERSION}.tar.xz
+    rm qt-everywhere-src-${QT_VERSION}.tar.xz
+else
+    echo "Error: Qt source file not found"
+    exit 1
 fi
 
-"${SRC_QT}/configure" ${CFG}
-cmake --build . --parallel $(nproc)
+# 设置路径
+SRC_QT="$(pwd)/qt-everywhere-src-${QT_VERSION}"
+BUILD_DIR="$(pwd)/build"
+INSTALL_DIR="$(pwd)/output"
+
+mkdir -p "$BUILD_DIR"
+mkdir -p "$INSTALL_DIR"
+cd "$BUILD_DIR"
+
+# 构建配置选项
+CFG_OPTIONS="-${LINK_TYPE} -prefix $INSTALL_DIR -nomake examples -nomake tests -c++std c++20 -skip qtwebengine -opensource -confirm-license -qt-libpng -qt-libjpeg -qt-zlib -qt-pcre -openssl-linked -platform linux-g++ -opengl desktop"
+
+if [ "$BUILD_TYPE" = "debug" ]; then
+    CFG_OPTIONS="$CFG_OPTIONS -debug"
+else
+    CFG_OPTIONS="$CFG_OPTIONS -release"
+fi
+
+if [ "$LINK_TYPE" = "shared" ] && [ "$SEPARATE_DEBUG" = "true" ]; then
+    CFG_OPTIONS="$CFG_OPTIONS -force-debug-info -separate-debug-info"
+fi
+
+# 配置
+echo "Configuring Qt..."
+"$SRC_QT/configure" $CFG_OPTIONS
+
+# 构建
+echo "Building Qt..."
+PARALLEL_JOBS=$(nproc)
+if [ $PARALLEL_JOBS -gt 6 ]; then
+    PARALLEL_JOBS=6
+fi
+
+cmake --build . --parallel $PARALLEL_JOBS
+
+# 安装
+echo "Installing Qt..."
 cmake --install .
 
-# -------- 打包 --------
-ARCHIVE_NAME="qt${QT_VERSION}-linux-x86_64-gcc${GCC_VERSION}-${LINK_TYPE}_${BUILD_TYPE}.tar.xz"
-tar -cJf "${ARCHIVE_NAME}" -C "${INSTALL_DIR}" .
+# 清理
+cd "$(pwd)/.."
+rm -rf "$BUILD_DIR"
+rm -rf "qt-everywhere-src-${QT_VERSION}"
 
-# 返回给 GitHub Actions（可选）
-[ -n "${GITHUB_ENV}" ] && echo "ARCHIVE_NAME=${ARCHIVE_NAME}" >> "${GITHUB_ENV}"
+echo "Qt build completed successfully!"

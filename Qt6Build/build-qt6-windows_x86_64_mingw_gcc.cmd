@@ -250,17 +250,12 @@ REM 验证安装目录存在
 if exist "%FINAL_INSTALL_DIR%" (
     echo Final installation directory verified.
     dir "%FINAL_INSTALL_DIR%"
-    
-    REM 验证数据库插件是否构建成功
-    if exist "%FINAL_INSTALL_DIR%\plugins\sqldrivers" (
-        echo Database drivers built:
-        dir "%FINAL_INSTALL_DIR%\plugins\sqldrivers\*.dll"
-    )
 ) else (
     echo Error: Final installation directory does not exist!
     exit /b 1
 )
 
+echo Qt build process completed successfully!
 goto :eof
 
 :ConvertPath
