@@ -81,12 +81,34 @@ if "%LINK_TYPE%"=="shared" (
 )
 
 REM 检查并添加 Clang 支持 (用于 QDoc)
-where clang >nul 2>&1
-if %errorlevel% equ 0 (
-    echo Clang found, enabling QDoc support
-    set CFG_OPTIONS=%CFG_OPTIONS% -qdoc
+echo Checking LLVM availability...
+if "%LLVM_AVAILABLE%"=="true" (
+    echo LLVM is available, checking clang executable...
+    where clang >nul 2>&1
+    if %errorlevel% equ 0 (
+        echo Clang found in PATH, enabling QDoc support
+        clang --version 2>nul
+        set CFG_OPTIONS=%CFG_OPTIONS% -qdoc
+    ) else (
+        echo Clang not found in PATH, checking LLVM_PATH...
+        if defined LLVM_PATH (
+            echo Adding LLVM_PATH to current session: %LLVM_PATH%
+            set PATH=%LLVM_PATH%;%PATH%
+            where clang >nul 2>&1
+            if %errorlevel% equ 0 (
+                echo Clang now available, enabling QDoc support
+                set CFG_OPTIONS=%CFG_OPTIONS% -qdoc
+            ) else (
+                echo Clang still not found, QDoc will be disabled
+                set CFG_OPTIONS=%CFG_OPTIONS% -no-qdoc
+            )
+        ) else (
+            echo LLVM_PATH not defined, QDoc will be disabled
+            set CFG_OPTIONS=%CFG_OPTIONS% -no-qdoc
+        )
+    )
 ) else (
-    echo Clang not found, QDoc will be disabled
+    echo LLVM not available, QDoc will be disabled
     set CFG_OPTIONS=%CFG_OPTIONS% -no-qdoc
 )
 

@@ -170,27 +170,49 @@ jobs:
 
       - name: Setup LLVM/Clang
         run: |
-          # 使用 Chocolatey 安装 LLVM (更可靠)
-          Write-Host "Installing LLVM via Chocolatey..."
-          choco install llvm --version=18.1.8 -y
+          # 检查现有的 LLVM 安装
+          Write-Host "Checking for LLVM installation..."
           
-          if ($LASTEXITCODE -eq 0) {
-            Write-Host "LLVM installed successfully via Chocolatey"
-            # Add LLVM to PATH
-            echo "C:\Program Files\LLVM\bin" >> $env:GITHUB_PATH
-            echo "LLVM_AVAILABLE=true" >> $env:GITHUB_ENV
+          # 检查 chocolatey 安装的 LLVM
+          $chocoLlvm = "C:\ProgramData\chocolatey\lib\llvm\tools\bin"
+          $programLlvm = "C:\Program Files\LLVM\bin"
+          
+          $llvmPath = ""
+          if (Test-Path "$chocoLlvm\clang.exe") {
+            $llvmPath = $chocoLlvm
+            Write-Host "Found LLVM via Chocolatey at: $chocoLlvm"
+          } elseif (Test-Path "$programLlvm\clang.exe") {
+            $llvmPath = $programLlvm  
+            Write-Host "Found LLVM in Program Files at: $programLlvm"
+          } else {
+            # 尝试使用现有版本，不指定版本号
+            Write-Host "Installing latest LLVM..."
+            choco install llvm -y
             
-            # 验证安装
-            $clangPath = "C:\Program Files\LLVM\bin\clang.exe"
-            if (Test-Path $clangPath) {
-              Write-Host "LLVM/Clang verified at: $clangPath"
-              & $clangPath --version
-            } else {
-              Write-Host "LLVM/Clang not found after installation"
-              echo "LLVM_AVAILABLE=false" >> $env:GITHUB_ENV
+            # 重新检查
+            if (Test-Path "$chocoLlvm\clang.exe") {
+              $llvmPath = $chocoLlvm
+            } elseif (Test-Path "$programLlvm\clang.exe") {
+              $llvmPath = $programLlvm
+            }
+          }
+          
+          if ($llvmPath -ne "") {
+            # 添加到 PATH 并设置环境变量
+            echo $llvmPath >> $env:GITHUB_PATH
+            echo "LLVM_AVAILABLE=true" >> $env:GITHUB_ENV
+            echo "LLVM_PATH=$llvmPath" >> $env:GITHUB_ENV
+            
+            Write-Host "LLVM setup completed"
+            Write-Host "LLVM Path: $llvmPath"
+            
+            # 显示版本
+            & "$llvmPath\clang.exe" --version 2>$null
+            if ($LASTEXITCODE -eq 0) {
+              Write-Host "Clang is working correctly"
             }
           } else {
-            Write-Host "LLVM installation failed"
+            Write-Host "LLVM not found, QDoc will be disabled"
             echo "LLVM_AVAILABLE=false" >> $env:GITHUB_ENV
           }
         shell: pwsh
