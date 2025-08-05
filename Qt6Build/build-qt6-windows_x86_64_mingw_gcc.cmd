@@ -21,7 +21,7 @@ if /i "%RUNTIME%"=="ucrt" (
     set MinGW_VERSION=mingw%GCC_VERSION:_=%%_64_MSVCRT
 )
 
-set PATH=D:\a\QtBuild\mingw64\bin;D:\a\QtBuild\ninja;D:\a\QtBuild\protoc\bin;%PATH%
+set PATH=D:\a\QtBuild\mingw64\bin;D:\a\QtBuild\ninja;D:\a\QtBuild\protoc\bin;C:\Program Files\LLVM\bin;%PATH%
 set QT_PATH=D:\a\QtBuild\Qt
 
 REM 使用短路径避免 Windows 路径长度限制
@@ -52,6 +52,20 @@ cd /d "%SHORT_BUILD_PATH%"
 REM 配置参数
 set CFG_OPTIONS=-%LINK_TYPE% -prefix %TEMP_INSTALL_DIR% -nomake examples -nomake tests -c++std c++20 -headersclean -skip qtwebengine -opensource -confirm-license -qt-libpng -qt-libjpeg -qt-zlib -qt-pcre -schannel -platform win32-g++ -opengl desktop
 
+REM 添加数据库驱动支持
+if defined PostgreSQL_ROOT (
+    set CFG_OPTIONS=%CFG_OPTIONS% -sql-psql -I "%PostgreSQL_ROOT%\include" -L "%PostgreSQL_ROOT%\lib"
+    echo PostgreSQL support enabled: %PostgreSQL_ROOT%
+)
+
+if defined MYSQL_ROOT (
+    set CFG_OPTIONS=%CFG_OPTIONS% -sql-mysql -I "%MYSQL_ROOT%\include" -L "%MYSQL_ROOT%\lib"
+    echo MySQL support enabled: %MYSQL_ROOT%
+)
+
+REM 添加SQLite支持（Qt内置）
+set CFG_OPTIONS=%CFG_OPTIONS% -sql-sqlite
+
 REM 根据构建类型添加相应选项
 if "%BUILD_TYPE%"=="debug" (
     set CFG_OPTIONS=%CFG_OPTIONS% -debug
@@ -66,7 +80,28 @@ if "%LINK_TYPE%"=="shared" (
     )
 )
 
+REM 检查并添加 Clang 支持 (用于 QDoc)
+where clang >nul 2>&1
+if %errorlevel% equ 0 (
+    echo Clang found, enabling QDoc support
+    set CFG_OPTIONS=%CFG_OPTIONS% -qdoc
+) else (
+    echo Clang not found, QDoc will be disabled
+    set CFG_OPTIONS=%CFG_OPTIONS% -no-qdoc
+)
+
 echo Configure options: %CFG_OPTIONS%
+
+REM 设置环境变量以避免路径问题
+if defined PostgreSQL_ROOT (
+    set "POSTGRES_INCLUDE_DIR=%PostgreSQL_ROOT%\include"
+    set "POSTGRES_LIB_DIR=%PostgreSQL_ROOT%\lib"
+)
+
+if defined MYSQL_ROOT (
+    set "MYSQL_INCLUDE_DIR=%MYSQL_ROOT%\include"
+    set "MYSQL_LIB_DIR=%MYSQL_ROOT%\lib"
+)
 
 REM configure
 call %SRC_QT%\configure.bat %CFG_OPTIONS%
@@ -80,6 +115,16 @@ echo Starting build...
 cmake --build . --parallel 4
 if %errorlevel% neq 0 (
     echo Build failed with error code: %errorlevel%
+    echo Checking for common issues...
+    
+    REM 检查是否是数据库驱动问题
+    if exist "qtbase\src\plugins\sqldrivers\psql\CMakeFiles\QPSQLDriverPlugin.dir" (
+        echo PostgreSQL driver build issue detected
+        echo PostgreSQL paths:
+        echo   Include: %POSTGRES_INCLUDE_DIR%
+        echo   Lib: %POSTGRES_LIB_DIR%
+    )
+    
     exit /b %errorlevel%
 )
 
@@ -121,6 +166,21 @@ if "%LINK_TYPE%"=="shared" (
     copy D:\a\QtBuild\mingw64\bin\libgcc_s_seh-1.dll %FINAL_INSTALL_DIR%\bin\ 2>nul
     copy D:\a\QtBuild\mingw64\bin\libstdc++-6.dll %FINAL_INSTALL_DIR%\bin\ 2>nul
     copy D:\a\QtBuild\mingw64\bin\libwinpthread-1.dll %FINAL_INSTALL_DIR%\bin\ 2>nul
+    
+    REM 复制数据库驱动需要的DLL
+    if defined PostgreSQL_ROOT (
+        if exist "%PostgreSQL_ROOT%\bin\libpq.dll" (
+            copy "%PostgreSQL_ROOT%\bin\libpq.dll" %FINAL_INSTALL_DIR%\bin\ 2>nul
+            echo Copied PostgreSQL runtime DLL
+        )
+    )
+    
+    if defined MYSQL_ROOT (
+        if exist "%MYSQL_ROOT%\bin\libmysql.dll" (
+            copy "%MYSQL_ROOT%\bin\libmysql.dll" %FINAL_INSTALL_DIR%\bin\ 2>nul
+            echo Copied MySQL runtime DLL
+        )
+    )
 )
 
 echo Build completed successfully!
@@ -130,6 +190,19 @@ REM 验证安装目录存在
 if exist %FINAL_INSTALL_DIR% (
     echo Final installation directory verified.
     dir %FINAL_INSTALL_DIR%
+    
+    REM 验证数据库插件是否构建成功
+    if exist %FINAL_INSTALL_DIR%\plugins\sqldrivers (
+        echo Database drivers built:
+        dir %FINAL_INSTALL_DIR%\plugins\sqldrivers\*.dll
+    )
+    
+    REM 验证QDoc是否可用
+    if exist %FINAL_INSTALL_DIR%\bin\qdoc.exe (
+        echo QDoc is available
+    ) else (
+        echo QDoc is not available
+    )
 ) else (
     echo Error: Final installation directory does not exist!
     exit /b 1

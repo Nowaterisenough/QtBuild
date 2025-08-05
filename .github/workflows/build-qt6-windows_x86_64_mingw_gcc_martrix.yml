@@ -1,4 +1,4 @@
-name: build-qt6-windows_x86_64_mingw_gcc_martrix
+name: build-qt6-windows_x86_64_mingw_gcc_matrix
 
 on:
   workflow_dispatch:
@@ -168,6 +168,79 @@ jobs:
           curl -L -o ninja.zip https://github.com/ninja-build/ninja/releases/download/v1.12.1/ninja-win.zip
           unzip -q ninja.zip -d ./ninja
 
+      - name: Setup LLVM/Clang
+        run: |
+          cd ..
+          # Download LLVM/Clang for QDoc and other Qt tools
+          $llvmVersion = "18.1.8"
+          $llvmUrl = "https://github.com/llvm/llvm-project/releases/download/llvmorg-$llvmVersion/LLVM-$llvmVersion-win64.exe"
+          Write-Host "Downloading LLVM $llvmVersion..."
+          curl -L -o llvm-installer.exe $llvmUrl
+          
+          # Install LLVM silently
+          Start-Process -FilePath "llvm-installer.exe" -ArgumentList "/S" -Wait -NoNewWindow
+          
+          # Add LLVM to PATH
+          echo "C:\Program Files\LLVM\bin" >> $env:GITHUB_PATH
+          
+          # Verify installation
+          if (Test-Path "C:\Program Files\LLVM\bin\clang.exe") {
+            Write-Host "LLVM/Clang installed successfully"
+          } else {
+            Write-Host "LLVM/Clang installation failed"
+          }
+        shell: pwsh
+
+      - name: Setup PostgreSQL
+        run: |
+          cd ..
+          # Download and install PostgreSQL for the PSQL driver
+          $pgVersion = "16.6"
+          $pgUrl = "https://get.enterprisedb.com/postgresql/postgresql-$pgVersion-1-windows-x64-binaries.zip"
+          Write-Host "Downloading PostgreSQL $pgVersion..."
+          curl -L -o postgresql.zip $pgUrl
+          
+          # Extract PostgreSQL
+          mkdir postgresql
+          7z x postgresql.zip -opostgresql
+          
+          # Find the actual extracted directory
+          $pgDir = Get-ChildItem -Path "postgresql" -Directory | Select-Object -First 1
+          $pgPath = $pgDir.FullName
+          
+          Write-Host "PostgreSQL extracted to: $pgPath"
+          
+          # Set environment variables for PostgreSQL
+          echo "PostgreSQL_ROOT=$pgPath" >> $env:GITHUB_ENV
+          echo "POSTGRES_INCLUDE_DIR=$pgPath\include" >> $env:GITHUB_ENV
+          echo "POSTGRES_LIB_DIR=$pgPath\lib" >> $env:GITHUB_ENV
+          
+          # Add PostgreSQL bin to PATH for pg_config
+          echo "$pgPath\bin" >> $env:GITHUB_PATH
+        shell: pwsh
+
+      - name: Setup MySQL
+        run: |
+          cd ..
+          # Download MySQL Connector C++ for MySQL driver
+          $mysqlVersion = "8.0.35"
+          $mysqlUrl = "https://dev.mysql.com/get/Downloads/MySQL-8.0/mysql-$mysqlVersion-winx64.zip"
+          Write-Host "Downloading MySQL $mysqlVersion..."
+          curl -L -o mysql.zip $mysqlUrl
+          
+          # Extract MySQL
+          7z x mysql.zip
+          $mysqlDir = Get-ChildItem -Directory -Filter "mysql-*" | Select-Object -First 1
+          $mysqlPath = $mysqlDir.FullName
+          
+          Write-Host "MySQL extracted to: $mysqlPath"
+          
+          # Set environment variables for MySQL
+          echo "MYSQL_ROOT=$mysqlPath" >> $env:GITHUB_ENV
+          echo "MYSQL_INCLUDE_DIR=$mysqlPath\include" >> $env:GITHUB_ENV
+          echo "MYSQL_LIB_DIR=$mysqlPath\lib" >> $env:GITHUB_ENV
+        shell: pwsh
+
       - name: Setup Protobuf (for QtGRPC)
         run: |
           cd ..
@@ -325,6 +398,12 @@ jobs:
           - **Build Date**: $(date +'%Y-%m-%d %H:%M:%S UTC')
           - **Build Runner**: GitHub Actions (windows-latest)
           
+          ## Included Features
+          - **Database Drivers**: PostgreSQL, MySQL, SQLite
+          - **Documentation**: QDoc with LLVM/Clang support
+          - **Protocols**: QtGRPC with Protobuf
+          - **SSL**: Schannel (native Windows SSL)
+          
           ## Included Configurations
           This release includes the following build configurations:
           
@@ -357,6 +436,8 @@ jobs:
           - Shared builds include MinGW runtime DLLs
           - All builds skip QtWebEngine and examples/tests
           - Built with C++20 standard
+          - Includes PostgreSQL and MySQL database drivers
+          - QDoc documentation generation supported with LLVM/Clang
           EOF
 
       - name: Create Release
