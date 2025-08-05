@@ -54,174 +54,141 @@ jobs:
           echo "major_minor=$major_minor" >> $env:GITHUB_OUTPUT
         shell: pwsh
 
-      - name: Create WSL setup script
+      - name: Create scripts with proper line endings
         run: |
-          @'
+          # 创建 WSL 设置脚本
+          $setupScript = @"
           #!/bin/bash
           set -e
           echo "=== Setting up WSL2 environment ==="
-          
-          # 显示系统信息
+
           echo "System info:"
           lsb_release -a
           uname -a
           df -h
-          
-          # 更新包列表
+
           echo "Updating package lists..."
           export DEBIAN_FRONTEND=noninteractive
           sudo apt-get update
-          
-          # 安装必需的依赖
+
           echo "Installing dependencies..."
-          sudo apt-get install -y --no-install-recommends \
-            build-essential \
-            gcc-${{ env.GCC_VERSION }} \
-            g++-${{ env.GCC_VERSION }} \
-            cmake \
-            ninja-build \
-            python3 \
-            python3-pip \
-            pkg-config \
-            libgl1-mesa-dev \
-            libglu1-mesa-dev \
-            libxkbcommon-dev \
-            libxkbcommon-x11-dev \
-            libxcb1-dev \
-            libxcb-util-dev \
-            libxcb-image0-dev \
-            libxcb-keysyms1-dev \
-            libxcb-render0-dev \
-            libxcb-render-util0-dev \
-            libxcb-randr0-dev \
-            libxcb-xtest0-dev \
-            libxcb-xinerama0-dev \
-            libxcb-shape0-dev \
-            libxcb-sync-dev \
-            libxcb-xfixes0-dev \
-            libxcb-icccm4-dev \
-            libxcb-shm0-dev \
-            libxcb-cursor-dev \
-            libfontconfig1-dev \
-            libfreetype6-dev \
-            libx11-dev \
-            libxext-dev \
-            libxfixes-dev \
-            libxi-dev \
-            libxrender-dev \
-            libxrandr-dev \
-            libxcursor-dev \
-            libxinerama-dev \
-            libxss-dev \
-            libglib2.0-dev \
-            libegl1-mesa-dev \
-            libwayland-dev \
-            libssl-dev \
-            libasound2-dev \
-            libpulse-dev \
-            libnss3-dev \
-            libxcomposite-dev \
-            libxdamage-dev \
-            libdrm-dev \
-            wget \
-            curl \
-            xz-utils
-          
-          # 设置编译器
+          sudo apt-get install -y --no-install-recommends build-essential gcc-${{ env.GCC_VERSION }} g++-${{ env.GCC_VERSION }} cmake ninja-build python3 python3-pip pkg-config libgl1-mesa-dev libglu1-mesa-dev libxkbcommon-dev libxkbcommon-x11-dev libxcb1-dev libxcb-util-dev libxcb-image0-dev libxcb-keysyms1-dev libxcb-render0-dev libxcb-render-util0-dev libxcb-randr0-dev libxcb-xtest0-dev libxcb-xinerama0-dev libxcb-shape0-dev libxcb-sync-dev libxcb-xfixes0-dev libxcb-icccm4-dev libxcb-shm0-dev libxcb-cursor-dev libfontconfig1-dev libfreetype6-dev libx11-dev libxext-dev libxfixes-dev libxi-dev libxrender-dev libxrandr-dev libxcursor-dev libxinerama-dev libxss-dev libglib2.0-dev libegl1-mesa-dev libwayland-dev libssl-dev libasound2-dev libpulse-dev libnss3-dev libxcomposite-dev libxdamage-dev libdrm-dev wget curl xz-utils
+
           echo "Setting up compiler..."
           sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-${{ env.GCC_VERSION }} 100
           sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-${{ env.GCC_VERSION }} 100
-          
-          # 验证工具版本
+
           echo "Tool versions:"
           gcc --version
           g++ --version
           cmake --version
           ninja --version
-          
-          # 清理包缓存
+
           sudo apt-get clean
           sudo rm -rf /var/lib/apt/lists/*
-          
+
           echo "WSL2 environment setup completed!"
           df -h
-          '@ | Out-File -FilePath "wsl_setup.sh" -Encoding UTF8 -NoNewline
+          "@
+                    [System.IO.File]::WriteAllText("wsl_setup.sh", $setupScript.Replace("`r`n", "`n"), [System.Text.Encoding]::UTF8)
+
+                    # 创建下载脚本
+                    $downloadScript = @"
+          #!/bin/bash
+          set -e
+          qt_version="${{ env.QT_VERSION }}"
+          major_minor="${{ steps.qt_version.outputs.major_minor }}"
+          source_url="https://download.qt.io/official_releases/qt/`$major_minor/`$qt_version/single/qt-everywhere-src-`$qt_version.tar.xz"
+
+          echo "Downloading Qt source from: `$source_url"
+          wget -O "qt-everywhere-src-`$qt_version.tar.xz" "`$source_url"
+
+          if [ -f "qt-everywhere-src-`$qt_version.tar.xz" ]; then
+            file_size=`$(stat -c%s "qt-everywhere-src-`$qt_version.tar.xz")
+            echo "Downloaded file size: `$file_size bytes"
+          else
+            echo "Error: Failed to download Qt source"
+            exit 1
+          fi
+
+          mkdir -p output
+          "@
+                    [System.IO.File]::WriteAllText("download_qt.sh", $downloadScript.Replace("`r`n", "`n"), [System.Text.Encoding]::UTF8)
+
+                    # 创建构建脚本
+                    $buildScript = @"
+          #!/bin/bash
+          set -e
+
+          qt_version="${{ env.QT_VERSION }}"
+          gcc_version="${{ env.GCC_VERSION }}"
+          build_type="${{ matrix.build_type }}"
+          link_type="${{ matrix.link_type }}"
+
+          actual_build_type="`$build_type"
+          separate_debug="false"
+          if [ "`$build_type" = "release-sepdbg" ]; then
+            actual_build_type="release"
+            if [ "`$link_type" = "shared" ]; then
+              separate_debug="true"
+            fi
+          fi
+
+          echo "Building with parameters:"
+          echo "  Qt Version: `$qt_version"
+          echo "  GCC Version: `$gcc_version"
+          echo "  Build Type: `$actual_build_type"
+          echo "  Link Type: `$link_type"
+          echo "  Separate Debug: `$separate_debug"
+
+          export QT_VERSION="`$qt_version"
+          export GCC_VERSION="`$gcc_version"
+          export BUILD_TYPE="`$actual_build_type"
+          export LINK_TYPE="`$link_type"
+          export SEPARATE_DEBUG="`$separate_debug"
+
+          chmod +x ./build-qt6-linux_x86_64_gcc_wsl2.sh
+          ./build-qt6-linux_x86_64_gcc_wsl2.sh
+          "@
+                    [System.IO.File]::WriteAllText("build_qt.sh", $buildScript.Replace("`r`n", "`n"), [System.Text.Encoding]::UTF8)
+
+                    # 创建打包脚本
+                    $packageScript = @"
+          #!/bin/bash
+          set -e
+          qt_version="${{ env.QT_VERSION }}"
+          gcc_version="${{ env.GCC_VERSION }}"
+          link_type="${{ matrix.link_type }}"
+          build_type="${{ matrix.build_type }}"
+
+          case "`$build_type" in
+            "release") build_type_normalized="release" ;;
+            "debug") build_type_normalized="debug" ;;
+            "release-sepdbg") build_type_normalized="relwithdebinfo" ;;
+            *) build_type_normalized=`$(echo "`$build_type" | tr '[:upper:]' '[:lower:]') ;;
+          esac
+
+          case "`$link_type" in
+            "static") link_type_normalized="static" ;;
+            "shared") link_type_normalized="shared" ;;
+            *) link_type_normalized=`$(echo "`$link_type" | tr '[:upper:]' '[:lower:]') ;;
+          esac
+
+          archive_name="qt`${qt_version}-linux-x86_64-gcc`${gcc_version}-`${link_type_normalized}_`${build_type_normalized}.tar.xz"
+          echo "Creating archive: `$archive_name"
+          tar -cJf "`$archive_name" -C output "qt-`$qt_version-`$link_type-gcc`$gcc_version"
+          echo "Archive created successfully"
+          "@
+          [System.IO.File]::WriteAllText("package.sh", $packageScript.Replace("`r`n", "`n"), [System.Text.Encoding]::UTF8)
         shell: pwsh
 
       - name: Setup WSL2 environment and dependencies
         run: |
           wsl bash ./wsl_setup.sh
 
-      - name: Create download script
-        run: |
-          @'
-          #!/bin/bash
-          set -e
-          qt_version="${{ env.QT_VERSION }}"
-          major_minor="${{ steps.qt_version.outputs.major_minor }}"
-          source_url="https://download.qt.io/official_releases/qt/$major_minor/$qt_version/single/qt-everywhere-src-$qt_version.tar.xz"
-          
-          echo "Downloading Qt source from: $source_url"
-          
-          wget -O "qt-everywhere-src-$qt_version.tar.xz" "$source_url"
-          
-          # 验证下载
-          if [ -f "qt-everywhere-src-$qt_version.tar.xz" ]; then
-            file_size=$(stat -c%s "qt-everywhere-src-$qt_version.tar.xz")
-            echo "Downloaded file size: $file_size bytes"
-          else
-            echo "Error: Failed to download Qt source"
-            exit 1
-          fi
-          
-          # 创建输出目录
-          mkdir -p output
-          '@ | Out-File -FilePath "download_qt.sh" -Encoding UTF8 -NoNewline
-        shell: pwsh
-
       - name: Download Qt source in WSL2
         run: |
           wsl bash ./download_qt.sh
-
-      - name: Create build script
-        run: |
-          @'
-          #!/bin/bash
-          set -e
-          
-          qt_version="${{ env.QT_VERSION }}"
-          gcc_version="${{ env.GCC_VERSION }}"
-          build_type="${{ matrix.build_type }}"
-          link_type="${{ matrix.link_type }}"
-          
-          # 处理 build_type
-          actual_build_type="$build_type"
-          separate_debug="false"
-          if [ "$build_type" = "release-sepdbg" ]; then
-            actual_build_type="release"
-            if [ "$link_type" = "shared" ]; then
-              separate_debug="true"
-            fi
-          fi
-          
-          echo "Building with parameters:"
-          echo "  Qt Version: $qt_version"
-          echo "  GCC Version: $gcc_version"
-          echo "  Build Type: $actual_build_type"
-          echo "  Link Type: $link_type"
-          echo "  Separate Debug: $separate_debug"
-          
-          # 设置环境变量并运行构建脚本
-          export QT_VERSION="$qt_version"
-          export GCC_VERSION="$gcc_version"
-          export BUILD_TYPE="$actual_build_type"
-          export LINK_TYPE="$link_type"
-          export SEPARATE_DEBUG="$separate_debug"
-          
-          chmod +x ./build-qt6-linux_x86_64_gcc_wsl2.sh
-          ./build-qt6-linux_x86_64_gcc_wsl2.sh
-          '@ | Out-File -FilePath "build_qt.sh" -Encoding UTF8 -NoNewline
-        shell: pwsh
 
       - name: Build Qt in WSL2
         run: |
@@ -256,12 +223,6 @@ jobs:
           Write-Host "Packaging: $sourcePath -> $archiveName"
           
           if (Test-Path $sourcePath) {
-            # 创建打包脚本
-            @"
-          #!/bin/bash
-          tar -cJf $archiveName -C output qt-${qtVersion}-${linkType}-gcc${gccVersion}
-          "@ | Out-File -FilePath "package.sh" -Encoding UTF8 -NoNewline
-            
             # 使用 WSL2 创建 tar.xz 压缩包
             Write-Host "Creating archive with WSL2..."
             wsl bash ./package.sh
