@@ -50,7 +50,7 @@ mkdir "%TEMP_INSTALL_DIR%"
 cd /d "%SHORT_BUILD_PATH%"
 
 REM 配置参数
-set CFG_OPTIONS=-%LINK_TYPE% -prefix %TEMP_INSTALL_DIR% -nomake examples -nomake tests -c++std c++20 -headersclean -skip qtwebengine -opensource -confirm-license -qt-libpng -qt-libjpeg -qt-zlib -qt-pcre -qt-freetype -no-sql-psql -no-sql-odbc -schannel -platform win32-g++ -opengl desktop
+set CFG_OPTIONS=-%LINK_TYPE% -prefix %TEMP_INSTALL_DIR% -nomake examples -nomake tests -c++std c++20 -headersclean -skip qtwebengine -opensource -confirm-license -qt-libpng -qt-libjpeg -qt-zlib -qt-pcre -schannel -platform win32-g++ -opengl desktop
 
 REM 根据构建类型添加相应选项
 if "%BUILD_TYPE%"=="debug" (
