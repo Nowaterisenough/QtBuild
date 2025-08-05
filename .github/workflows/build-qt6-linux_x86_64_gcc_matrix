@@ -1,0 +1,266 @@
+name: build-qt6-linux_x86_64_gcc_matrix
+
+on:
+  workflow_dispatch:
+    inputs:
+      qt_version:
+        description: 'QT Version'
+        required: true
+        default: '6.9.1'
+      gcc_version:
+        description: 'GCC Version'
+        required: true
+        default: '13'
+      create_release:
+        description: 'Create Release'
+        required: true
+        default: 'true'
+        type: choice
+        options:
+        - 'true'
+        - 'false'
+
+env:
+  QT_VERSION: ${{ github.event.inputs.qt_version || '6.9.1' }}
+  GCC_VERSION: ${{ github.event.inputs.gcc_version || '13' }}
+
+jobs:
+  build:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        link_type: [static, shared]
+        build_type: [release, debug, release-sepdbg]
+        exclude:
+          - link_type: static
+            build_type: debug
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Extract Qt major.minor version
+        id: qt_version
+        run: |
+          $version = "${{ env.QT_VERSION }}"
+          $parts = $version.Split('.')
+          $major_minor = "$($parts[0]).$($parts[1])"
+          echo "major_minor=$major_minor" >> $env:GITHUB_OUTPUT
+        shell: pwsh
+
+      - name: Setup Docker
+        run: |
+          # 确保 Docker Desktop 正在运行
+          Write-Host "Setting up Docker environment..."
+          docker version
+        shell: pwsh
+
+      - name: Create build directories
+        run: |
+          New-Item -ItemType Directory -Path ".\output" -Force
+          New-Item -ItemType Directory -Path ".\qt_source" -Force
+        shell: pwsh
+
+      - name: Download Qt source
+        run: |
+          $qtVersion = "${{ env.QT_VERSION }}"
+          $majorMinor = "${{ steps.qt_version.outputs.major_minor }}"
+          $sourceUrl = "https://download.qt.io/official_releases/qt/$majorMinor/$qtVersion/single/qt-everywhere-src-$qtVersion.tar.xz"
+          
+          Write-Host "Downloading Qt source from: $sourceUrl"
+          curl -L -o "qt-everywhere-src-$qtVersion.tar.xz" $sourceUrl
+          
+          # 验证下载
+          if (Test-Path "qt-everywhere-src-$qtVersion.tar.xz") {
+            $fileSize = (Get-Item "qt-everywhere-src-$qtVersion.tar.xz").Length
+            Write-Host "Downloaded file size: $fileSize bytes"
+          } else {
+            Write-Error "Failed to download Qt source"
+            exit 1
+          }
+        shell: pwsh
+
+      - name: Build Qt in Docker
+        run: |
+          $qtVersion = "${{ env.QT_VERSION }}"
+          $gccVersion = "${{ env.GCC_VERSION }}"
+          $buildType = "${{ matrix.build_type }}"
+          $linkType = "${{ matrix.link_type }}"
+          
+          # 处理 build_type
+          $actualBuildType = $buildType
+          $separateDebug = "false"
+          if ($buildType -eq "release-sepdbg") {
+            $actualBuildType = "release"
+            if ($linkType -eq "shared") {
+              $separateDebug = "true"
+            }
+          }
+          
+          # 设置环境变量
+          $env:QT_VERSION_VAR = $qtVersion
+          $env:GCC_VERSION_VAR = $gccVersion
+          $env:BUILD_TYPE_VAR = $actualBuildType
+          $env:LINK_TYPE_VAR = $linkType
+          $env:SEPARATE_DEBUG_VAR = $separateDebug
+          
+          Write-Host "Building with parameters:"
+          Write-Host "  Qt Version: $qtVersion"
+          Write-Host "  GCC Version: $gccVersion"
+          Write-Host "  Build Type: $actualBuildType"
+          Write-Host "  Link Type: $linkType"
+          Write-Host "  Separate Debug: $separateDebug"
+          
+          # 运行 Docker 容器进行编译
+          docker run --rm `
+            -v "${PWD}:/workspace" `
+            -w /workspace `
+            -e QT_VERSION="$qtVersion" `
+            -e GCC_VERSION="$gccVersion" `
+            -e BUILD_TYPE="$actualBuildType" `
+            -e LINK_TYPE="$linkType" `
+            -e SEPARATE_DEBUG="$separateDebug" `
+            ubuntu:22.04 `
+            bash -c "chmod +x ./build-qt6-linux_x86_64_gcc.sh && ./build-qt6-linux_x86_64_gcc.sh"
+        shell: pwsh
+
+      - name: Package binaries
+        run: |
+          $linkType = "${{ matrix.link_type }}"
+          $buildType = "${{ matrix.build_type }}"
+          $qtVersion = "${{ env.QT_VERSION }}"
+          $gccVersion = "${{ env.GCC_VERSION }}"
+          
+          # 规范化构建类型名称
+          $buildTypeNormalized = switch ($buildType) {
+            "release" { "release" }
+            "debug" { "debug" }
+            "release-sepdbg" { "relwithdebinfo" }
+            default { $buildType.ToLower() }
+          }
+          
+          # 规范化链接类型名称
+          $linkTypeNormalized = switch ($linkType) {
+            "static" { "static" }
+            "shared" { "shared" }
+            default { $linkType.ToLower() }
+          }
+          
+          # 创建压缩包名称
+          $archiveName = "qt${qtVersion}-linux-x86_64-gcc${gccVersion}-${linkTypeNormalized}_${buildTypeNormalized}.tar.xz"
+          $sourcePath = ".\output\qt-${qtVersion}-${linkType}-gcc${gccVersion}"
+          
+          Write-Host "Packaging: $sourcePath -> $archiveName"
+          
+          if (Test-Path $sourcePath) {
+            # 使用 Docker 来创建 tar.xz 压缩包（保持 Linux 文件权限）
+            docker run --rm `
+              -v "${PWD}:/workspace" `
+              -w /workspace `
+              ubuntu:22.04 `
+              bash -c "apt-get update && apt-get install -y xz-utils && tar -cJf $archiveName -C output qt-${qtVersion}-${linkType}-gcc${gccVersion}"
+              
+            if (Test-Path $archiveName) {
+              $fileSize = (Get-Item $archiveName).Length
+              Write-Host "Created archive: $archiveName (Size: $fileSize bytes)"
+              echo "ARCHIVE_NAME=$archiveName" >> $env:GITHUB_ENV
+            } else {
+              Write-Error "Failed to create archive"
+              exit 1
+            }
+          } else {
+            Write-Error "Source path does not exist: $sourcePath"
+            Get-ChildItem -Path ".\output" -Recurse
+            exit 1
+          }
+        shell: pwsh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qt${{ env.QT_VERSION }}-linux-x86_64-gcc${{ env.GCC_VERSION }}-${{ matrix.link_type }}_${{ matrix.build_type == 'release' && 'release' || matrix.build_type == 'debug' && 'debug' || 'relwithdebinfo' }}
+          path: ${{ env.ARCHIVE_NAME }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.create_release == 'true' }}
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Generate release tag
+        id: release_tag
+        run: |
+          TAG_NAME="qt${{ env.QT_VERSION }}-linux-gcc${{ env.GCC_VERSION }}-$(date +'%Y%m%d%H%M%S')"
+          echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
+          echo "Tag name: $TAG_NAME"
+
+      - name: Generate release notes
+        id: release_notes
+        run: |
+          cat << EOF > release_notes.md
+          # Qt ${{ env.QT_VERSION }} Linux GCC Build
+          
+          ## Build Information
+          - **Qt Version**: ${{ env.QT_VERSION }}
+          - **Compiler**: GCC ${{ env.GCC_VERSION }}
+          - **Platform**: Linux x86_64
+          - **Build Date**: $(date +'%Y-%m-%d %H:%M:%S UTC')
+          - **Build Runner**: GitHub Actions (windows-latest with Docker)
+          - **Base Image**: Ubuntu 22.04
+          
+          ## Included Configurations
+          This release includes the following build configurations:
+          
+          ### Static Builds
+          - \`static_release\`: Static linking, Release mode
+          - \`static_relwithdebinfo\`: Static linking, Release mode with separate debug info (if supported)
+          
+          ### Shared Builds
+          - \`shared_release\`: Dynamic linking, Release mode
+          - \`shared_debug\`: Dynamic linking, Debug mode
+          - \`shared_relwithdebinfo\`: Dynamic linking, Release mode with separate debug info
+          
+          ## File Naming Convention
+          Files follow the pattern: \`qt{version}-linux-x86_64-gcc{gcc_version}-{link_type}_{build_type}.tar.xz\`
+          
+          Where:
+          - \`{version}\`: Qt version (e.g., 6.9.1)
+          - \`{gcc_version}\`: GCC version (e.g., 13)
+          - \`{link_type}\`: static or shared
+          - \`{build_type}\`: release, debug, or relwithdebinfo
+          
+          ## Installation
+          1. Download the appropriate .tar.xz file for your needs
+          2. Extract using: \`tar -xJf filename.tar.xz\`
+          3. The Qt installation will be in the extracted folder with bin, lib, qml, etc. directories
+          
+          ## System Requirements
+          - Linux x86_64
+          - Compatible with Ubuntu 22.04+ and similar distributions
+          - GCC ${{ env.GCC_VERSION }} or compatible
+          
+          ## Notes
+          - Static builds do not include debug configurations
+          - All builds skip QtWebEngine and examples/tests
+          - Built with C++20 standard
+          - Built on Ubuntu 22.04 base system
+          EOF
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release_tag.outputs.tag_name }}
+          name: Qt ${{ env.QT_VERSION }} - Linux GCC ${{ env.GCC_VERSION }}
+          body_path: release_notes.md
+          draft: false
+          prerelease: false
+          files: artifacts/**/*.tar.xz
+          fail_on_unmatched_files: true
+          generate_release_notes: false
+
+      - name: Clean up artifacts
+        uses: geekyeggo/delete-artifact@v5
+        with:
+          name: qt${{ env.QT_VERSION }}-linux-x86_64-gcc${{ env.GCC_VERSION }}-*
