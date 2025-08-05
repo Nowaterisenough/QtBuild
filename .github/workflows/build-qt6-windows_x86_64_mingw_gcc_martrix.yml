@@ -170,24 +170,28 @@ jobs:
 
       - name: Setup LLVM/Clang
         run: |
-          cd ..
-          # Download LLVM/Clang for QDoc and other Qt tools
-          $llvmVersion = "18.1.8"
-          $llvmUrl = "https://github.com/llvm/llvm-project/releases/download/llvmorg-$llvmVersion/LLVM-$llvmVersion-win64.exe"
-          Write-Host "Downloading LLVM $llvmVersion..."
-          curl -L -o llvm-installer.exe $llvmUrl
+          # 使用 Chocolatey 安装 LLVM (更可靠)
+          Write-Host "Installing LLVM via Chocolatey..."
+          choco install llvm --version=18.1.8 -y
           
-          # Install LLVM silently
-          Start-Process -FilePath "llvm-installer.exe" -ArgumentList "/S" -Wait -NoNewWindow
-          
-          # Add LLVM to PATH
-          echo "C:\Program Files\LLVM\bin" >> $env:GITHUB_PATH
-          
-          # Verify installation
-          if (Test-Path "C:\Program Files\LLVM\bin\clang.exe") {
-            Write-Host "LLVM/Clang installed successfully"
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "LLVM installed successfully via Chocolatey"
+            # Add LLVM to PATH
+            echo "C:\Program Files\LLVM\bin" >> $env:GITHUB_PATH
+            echo "LLVM_AVAILABLE=true" >> $env:GITHUB_ENV
+            
+            # 验证安装
+            $clangPath = "C:\Program Files\LLVM\bin\clang.exe"
+            if (Test-Path $clangPath) {
+              Write-Host "LLVM/Clang verified at: $clangPath"
+              & $clangPath --version
+            } else {
+              Write-Host "LLVM/Clang not found after installation"
+              echo "LLVM_AVAILABLE=false" >> $env:GITHUB_ENV
+            }
           } else {
-            Write-Host "LLVM/Clang installation failed"
+            Write-Host "LLVM installation failed"
+            echo "LLVM_AVAILABLE=false" >> $env:GITHUB_ENV
           }
         shell: pwsh
 
