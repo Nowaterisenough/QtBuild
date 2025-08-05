@@ -1,4 +1,4 @@
-name: build-qt6-linux_x86_64_gcc_matrix_wsl2
+name: build-qt6-linux_x86_64_gcc_matrix
 
 on:
   workflow_dispatch:
