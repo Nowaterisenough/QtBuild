@@ -1,4 +1,4 @@
-name: build-qt6-linux_x86_64_gcc_matrix
+name: build-qt6-linux_x86_64_gcc_matrix_wsl2
 
 on:
   workflow_dispatch:
@@ -38,6 +38,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Setup WSL2 with Ubuntu 24.04
+        uses: Vampire/setup-wsl@v3
+        with:
+          distribution: Ubuntu-24.04
+          use-cache: 'false'
+          set-as-default: 'true'
+
       - name: Extract Qt major.minor version
         id: qt_version
         run: |
@@ -47,116 +54,162 @@ jobs:
           echo "major_minor=$major_minor" >> $env:GITHUB_OUTPUT
         shell: pwsh
 
-      - name: Setup Docker for Linux containers
+      - name: Setup WSL2 environment and dependencies
         run: |
-          Write-Host "Setting up Docker for Linux containers..."
+          wsl bash -c "
+          set -e
+          echo '=== Setting up WSL2 environment ==='
           
-          # 显示 Docker 信息
-          Write-Host "Docker version:"
-          docker version
+          # 显示系统信息
+          echo 'System info:'
+          lsb_release -a
+          uname -a
+          df -h
           
-          Write-Host "Docker info:"
-          docker info
+          # 更新包列表
+          echo 'Updating package lists...'
+          export DEBIAN_FRONTEND=noninteractive
+          sudo apt-get update
           
-          # 测试拉取 Ubuntu 镜像
-          Write-Host "Testing Docker with Ubuntu image..."
-          try {
-            docker pull ubuntu:22.04
-            Write-Host "Successfully pulled Ubuntu 22.04 image"
-          } catch {
-            Write-Host "Failed to pull Ubuntu image, trying alternative approach..."
-            # 尝试使用 mcr.microsoft.com 镜像（如果可用）
-            docker pull mcr.microsoft.com/windows/servercore:ltsc2022
-          }
-        shell: pwsh
+          # 安装必需的依赖
+          echo 'Installing dependencies...'
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            gcc-${{ env.GCC_VERSION }} \
+            g++-${{ env.GCC_VERSION }} \
+            cmake \
+            ninja-build \
+            python3 \
+            python3-pip \
+            pkg-config \
+            libgl1-mesa-dev \
+            libglu1-mesa-dev \
+            libxkbcommon-dev \
+            libxkbcommon-x11-dev \
+            libxcb1-dev \
+            libxcb-util-dev \
+            libxcb-image0-dev \
+            libxcb-keysyms1-dev \
+            libxcb-render0-dev \
+            libxcb-render-util0-dev \
+            libxcb-randr0-dev \
+            libxcb-xtest0-dev \
+            libxcb-xinerama0-dev \
+            libxcb-shape0-dev \
+            libxcb-sync-dev \
+            libxcb-xfixes0-dev \
+            libxcb-icccm4-dev \
+            libxcb-shm0-dev \
+            libxcb-cursor-dev \
+            libfontconfig1-dev \
+            libfreetype6-dev \
+            libx11-dev \
+            libxext-dev \
+            libxfixes-dev \
+            libxi-dev \
+            libxrender-dev \
+            libxrandr-dev \
+            libxcursor-dev \
+            libxinerama-dev \
+            libxss-dev \
+            libglib2.0-dev \
+            libegl1-mesa-dev \
+            libwayland-dev \
+            libssl-dev \
+            libasound2-dev \
+            libpulse-dev \
+            libnss3-dev \
+            libxcomposite-dev \
+            libxdamage-dev \
+            libdrm-dev \
+            wget \
+            curl \
+            xz-utils
+          
+          # 设置编译器
+          echo 'Setting up compiler...'
+          sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-${{ env.GCC_VERSION }} 100
+          sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-${{ env.GCC_VERSION }} 100
+          
+          # 验证工具版本
+          echo 'Tool versions:'
+          gcc --version
+          g++ --version
+          cmake --version
+          ninja --version
+          
+          # 清理包缓存
+          sudo apt-get clean
+          sudo rm -rf /var/lib/apt/lists/*
+          
+          echo 'WSL2 environment setup completed!'
+          df -h
+          "
 
-      - name: Create build directories
+      - name: Download Qt source in WSL2
         run: |
-          New-Item -ItemType Directory -Path ".\output" -Force
-          New-Item -ItemType Directory -Path ".\qt_source" -Force
-        shell: pwsh
-
-      - name: Download Qt source
-        run: |
-          $qtVersion = "${{ env.QT_VERSION }}"
-          $majorMinor = "${{ steps.qt_version.outputs.major_minor }}"
-          $sourceUrl = "https://download.qt.io/official_releases/qt/$majorMinor/$qtVersion/single/qt-everywhere-src-$qtVersion.tar.xz"
+          wsl bash -c "
+          set -e
+          qt_version='${{ env.QT_VERSION }}'
+          major_minor='${{ steps.qt_version.outputs.major_minor }}'
+          source_url=\"https://download.qt.io/official_releases/qt/\$major_minor/\$qt_version/single/qt-everywhere-src-\$qt_version.tar.xz\"
           
-          Write-Host "Downloading Qt source from: $sourceUrl"
-          curl -L -o "qt-everywhere-src-$qtVersion.tar.xz" $sourceUrl
+          echo 'Downloading Qt source from:' \$source_url
+          cd /mnt/c/Users/runneradmin/work/\$(basename \$PWD)/\$(basename \$PWD)
+          
+          wget -O \"qt-everywhere-src-\$qt_version.tar.xz\" \"\$source_url\"
           
           # 验证下载
-          if (Test-Path "qt-everywhere-src-$qtVersion.tar.xz") {
-            $fileSize = (Get-Item "qt-everywhere-src-$qtVersion.tar.xz").Length
-            Write-Host "Downloaded file size: $fileSize bytes"
-          } else {
-            Write-Error "Failed to download Qt source"
+          if [ -f \"qt-everywhere-src-\$qt_version.tar.xz\" ]; then
+            file_size=\$(stat -c%s \"qt-everywhere-src-\$qt_version.tar.xz\")
+            echo \"Downloaded file size: \$file_size bytes\"
+          else
+            echo \"Error: Failed to download Qt source\"
             exit 1
-          }
-        shell: pwsh
+          fi
+          
+          # 创建输出目录
+          mkdir -p output
+          "
 
-      - name: Build Qt in Docker
+      - name: Build Qt in WSL2
         run: |
-          $qtVersion = "${{ env.QT_VERSION }}"
-          $gccVersion = "${{ env.GCC_VERSION }}"
-          $buildType = "${{ matrix.build_type }}"
-          $linkType = "${{ matrix.link_type }}"
+          wsl bash -c "
+          set -e
+          cd /mnt/c/Users/runneradmin/work/\$(basename \$PWD)/\$(basename \$PWD)
+          
+          qt_version='${{ env.QT_VERSION }}'
+          gcc_version='${{ env.GCC_VERSION }}'
+          build_type='${{ matrix.build_type }}'
+          link_type='${{ matrix.link_type }}'
           
           # 处理 build_type
-          $actualBuildType = $buildType
-          $separateDebug = "false"
-          if ($buildType -eq "release-sepdbg") {
-            $actualBuildType = "release"
-            if ($linkType -eq "shared") {
-              $separateDebug = "true"
-            }
-          }
+          actual_build_type=\"\$build_type\"
+          separate_debug=\"false\"
+          if [ \"\$build_type\" = \"release-sepdbg\" ]; then
+            actual_build_type=\"release\"
+            if [ \"\$link_type\" = \"shared\" ]; then
+              separate_debug=\"true\"
+            fi
+          fi
           
-          Write-Host "Building with parameters:"
-          Write-Host "  Qt Version: $qtVersion"
-          Write-Host "  GCC Version: $gccVersion"
-          Write-Host "  Build Type: $actualBuildType"
-          Write-Host "  Link Type: $linkType"
-          Write-Host "  Separate Debug: $separateDebug"
+          echo 'Building with parameters:'
+          echo \"  Qt Version: \$qt_version\"
+          echo \"  GCC Version: \$gcc_version\"
+          echo \"  Build Type: \$actual_build_type\"
+          echo \"  Link Type: \$link_type\"
+          echo \"  Separate Debug: \$separate_debug\"
           
-          # 获取当前工作目录的 Windows 路径
-          $currentPath = (Get-Location).Path
-          Write-Host "Current Windows path: $currentPath"
+          # 设置环境变量并运行构建脚本
+          export QT_VERSION=\"\$qt_version\"
+          export GCC_VERSION=\"\$gcc_version\"
+          export BUILD_TYPE=\"\$actual_build_type\"
+          export LINK_TYPE=\"\$link_type\"
+          export SEPARATE_DEBUG=\"\$separate_debug\"
           
-          # 将 Windows 路径转换为 Docker 可用的路径格式
-          $dockerPath = $currentPath -replace '\\', '/' -replace '([A-Z]):', '/mnt/$1'.ToLower()
-          Write-Host "Docker path: $dockerPath"
-          
-          Write-Host "Running Docker container..."
-          
-          # 使用不同的方法运行 Docker 容器
-          try {
-            # 方法1: 直接使用当前路径
-            docker run --rm `
-              -v "${currentPath}:/workspace" `
-              -w /workspace `
-              -e QT_VERSION="$qtVersion" `
-              -e GCC_VERSION="$gccVersion" `
-              -e BUILD_TYPE="$actualBuildType" `
-              -e LINK_TYPE="$linkType" `
-              -e SEPARATE_DEBUG="$separateDebug" `
-              ubuntu:22.04 `
-              bash -c "ls -la /workspace && chmod +x /workspace/build-qt6-linux_x86_64_gcc.sh && /workspace/build-qt6-linux_x86_64_gcc.sh"
-          } catch {
-            Write-Host "First method failed, trying alternative..."
-            # 方法2: 使用相对路径
-            docker run --rm `
-              -v ".:/workspace" `
-              -w /workspace `
-              -e QT_VERSION="$qtVersion" `
-              -e GCC_VERSION="$gccVersion" `
-              -e BUILD_TYPE="$actualBuildType" `
-              -e LINK_TYPE="$linkType" `
-              -e SEPARATE_DEBUG="$separateDebug" `
-              ubuntu:22.04 `
-              bash -c "ls -la /workspace && chmod +x /workspace/build-qt6-linux_x86_64_gcc.sh && /workspace/build-qt6-linux_x86_64_gcc.sh"
-          }
-        shell: pwsh
+          chmod +x ./build-qt6-linux_x86_64_gcc_wsl2.sh
+          ./build-qt6-linux_x86_64_gcc_wsl2.sh
+          "
 
       - name: Package binaries
         run: |
@@ -187,16 +240,13 @@ jobs:
           Write-Host "Packaging: $sourcePath -> $archiveName"
           
           if (Test-Path $sourcePath) {
-            # 使用 Docker 来创建 tar.xz 压缩包（保持 Linux 文件权限）
-            Write-Host "Creating archive with Docker..."
-            $currentPath = (Get-Location).Path
+            # 使用 WSL2 创建 tar.xz 压缩包
+            Write-Host "Creating archive with WSL2..."
+            wsl bash -c "
+            cd /mnt/c/Users/runneradmin/work/`$(basename `$PWD)/`$(basename `$PWD)
+            tar -cJf $archiveName -C output qt-${qtVersion}-${linkType}-gcc${gccVersion}
+            "
             
-            docker run --rm `
-              -v "${currentPath}:/workspace" `
-              -w /workspace `
-              ubuntu:22.04 `
-              bash -c "apt-get update -qq && apt-get install -y -qq xz-utils && tar -cJf $archiveName -C output qt-${qtVersion}-${linkType}-gcc${gccVersion}"
-              
             if (Test-Path $archiveName) {
               $fileSize = (Get-Item $archiveName).Length
               Write-Host "Created archive: $archiveName (Size: $fileSize bytes)"
@@ -243,15 +293,15 @@ jobs:
         id: release_notes
         run: |
           cat << EOF > release_notes.md
-          # Qt ${{ env.QT_VERSION }} Linux GCC Build
+          # Qt ${{ env.QT_VERSION }} Linux GCC Build (WSL2)
           
           ## Build Information
           - **Qt Version**: ${{ env.QT_VERSION }}
           - **Compiler**: GCC ${{ env.GCC_VERSION }}
           - **Platform**: Linux x86_64
           - **Build Date**: $(date +'%Y-%m-%d %H:%M:%S UTC')
-          - **Build Runner**: GitHub Actions (windows-latest with Docker)
-          - **Base Image**: Ubuntu 22.04
+          - **Build Runner**: GitHub Actions (windows-latest with WSL2)
+          - **Base System**: Ubuntu 24.04 LTS
           
           ## Included Configurations
           This release includes the following build configurations:
@@ -281,21 +331,22 @@ jobs:
           
           ## System Requirements
           - Linux x86_64
-          - Compatible with Ubuntu 22.04+ and similar distributions
+          - Compatible with Ubuntu 24.04+ and similar distributions
           - GCC ${{ env.GCC_VERSION }} or compatible
           
           ## Notes
           - Static builds do not include debug configurations
           - All builds skip QtWebEngine and examples/tests
           - Built with C++20 standard
-          - Built on Ubuntu 22.04 base system
+          - Built on Ubuntu 24.04 LTS via WSL2
+          - Optimized for large-scale builds with ample disk space
           EOF
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.release_tag.outputs.tag_name }}
-          name: Qt ${{ env.QT_VERSION }} - Linux GCC ${{ env.GCC_VERSION }}
+          name: Qt ${{ env.QT_VERSION }} - Linux GCC ${{ env.GCC_VERSION }} (WSL2)
           body_path: release_notes.md
           draft: false
           prerelease: false

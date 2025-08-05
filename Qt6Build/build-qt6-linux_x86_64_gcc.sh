@@ -1,10 +1,11 @@
 #!/bin/bash
 
-# build-qt6-linux_x86_64_gcc.sh
+# build-qt6-linux_x86_64_gcc_wsl2.sh
+# 针对 WSL2 环境优化的版本
 
 set -e  # 遇到错误立即退出
 
-echo "Starting Qt Linux build script..."
+echo "Starting Qt Linux build script in WSL2..."
 
 # 参数处理
 QT_VERSION=${QT_VERSION:-"6.9.1"}
@@ -21,93 +22,46 @@ echo "Link Type: $LINK_TYPE"
 echo "Separate Debug: $SEPARATE_DEBUG"
 echo "========================"
 
-# 更新系统并安装依赖
-echo "Installing dependencies..."
-export DEBIAN_FRONTEND=noninteractive
-apt-get update
-apt-get install -y \
-    build-essential \
-    gcc-${GCC_VERSION} \
-    g++-${GCC_VERSION} \
-    cmake \
-    ninja-build \
-    python3 \
-    python3-pip \
-    pkg-config \
-    libgl1-mesa-dev \
-    libglu1-mesa-dev \
-    libxkbcommon-dev \
-    libxkbcommon-x11-dev \
-    libxcb1-dev \
-    libxcb-util-dev \
-    libxcb-image0-dev \
-    libxcb-keysyms1-dev \
-    libxcb-render0-dev \
-    libxcb-render-util0-dev \
-    libxcb-randr0-dev \
-    libxcb-xtest0-dev \
-    libxcb-xinerama0-dev \
-    libxcb-shape0-dev \
-    libxcb-sync-dev \
-    libxcb-xfixes0-dev \
-    libxcb-icccm4-dev \
-    libxcb-shm0-dev \
-    libxcb-cursor-dev \
-    libfontconfig1-dev \
-    libfreetype6-dev \
-    libx11-dev \
-    libxext-dev \
-    libxfixes-dev \
-    libxi-dev \
-    libxrender-dev \
-    libxrandr-dev \
-    libxcursor-dev \
-    libxinerama-dev \
-    libxss-dev \
-    libglib2.0-dev \
-    libegl1-mesa-dev \
-    libwayland-dev \
-    libssl-dev \
-    libasound2-dev \
-    libpulse-dev \
-    libnss3-dev \
-    libxcomposite-dev \
-    libxdamage-dev \
-    libdrm-dev \
-    libxss1 \
-    libgconf-2-4 \
-    xz-utils \
-    wget \
-    curl
+# 显示系统信息
+echo "=== System Information ==="
+echo "WSL Version: $(cat /proc/version)"
+echo "Distribution: $(lsb_release -d | cut -f2)"
+echo "Kernel: $(uname -r)"
+echo "Architecture: $(uname -m)"
+echo "========================="
 
-# 设置编译器
-echo "Setting up compiler..."
-update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-${GCC_VERSION} 100
-update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-${GCC_VERSION} 100
+# 显示磁盘使用情况
+echo "=== Disk usage before build ==="
+df -h
 
-# 验证编译器版本
-gcc --version
-g++ --version
-cmake --version
+# 验证编译器和工具
+echo "Verifying tools..."
+gcc --version | head -1
+g++ --version | head -1
+cmake --version | head -1
 ninja --version
 
 # 解压 Qt 源码
 echo "Extracting Qt source..."
 if [ -f "qt-everywhere-src-${QT_VERSION}.tar.xz" ]; then
+    echo "Extracting qt-everywhere-src-${QT_VERSION}.tar.xz..."
     tar -xf qt-everywhere-src-${QT_VERSION}.tar.xz
     if [ ! -d "qt-everywhere-src-${QT_VERSION}" ]; then
         echo "Error: Failed to extract Qt source"
         exit 1
     fi
+    # 删除压缩包以节省空间
+    echo "Removing source archive to save space..."
+    rm qt-everywhere-src-${QT_VERSION}.tar.xz
 else
     echo "Error: Qt source file not found"
     exit 1
 fi
 
 # 设置路径
-SRC_QT="/workspace/qt-everywhere-src-${QT_VERSION}"
-BUILD_DIR="/workspace/build"
-INSTALL_DIR="/workspace/output/qt-${QT_VERSION}-${LINK_TYPE}-gcc${GCC_VERSION}"
+SRC_QT="$(pwd)/qt-everywhere-src-${QT_VERSION}"
+BUILD_DIR="$(pwd)/build"
+INSTALL_DIR="$(pwd)/output/qt-${QT_VERSION}-${LINK_TYPE}-gcc${GCC_VERSION}"
 
 echo "Source directory: $SRC_QT"
 echo "Build directory: $BUILD_DIR"
@@ -135,6 +89,10 @@ fi
 
 echo "Configure options: $CFG_OPTIONS"
 
+# 显示磁盘使用情况
+echo "=== Disk usage before configure ==="
+df -h
+
 # 配置
 echo "Configuring Qt..."
 "$SRC_QT/configure" $CFG_OPTIONS
@@ -143,20 +101,50 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
+# 显示磁盘使用情况
+echo "=== Disk usage after configure ==="
+df -h
+
 # 构建
 echo "Building Qt..."
-# 使用并行构建，但限制并发数以避免内存不足
+# WSL2 可以使用更多的并行作业，因为有更大的磁盘空间
 PARALLEL_JOBS=$(nproc)
-if [ $PARALLEL_JOBS -gt 4 ]; then
-    PARALLEL_JOBS=4
+if [ $PARALLEL_JOBS -gt 6 ]; then
+    PARALLEL_JOBS=6
 fi
 echo "Using $PARALLEL_JOBS parallel jobs"
 
+# 监控磁盘空间
+(
+    while true; do
+        sleep 300  # 每5分钟检查一次
+        echo "=== Disk usage during build ($(date)) ==="
+        df -h
+        # 如果磁盘使用率超过90%，发出警告
+        usage=$(df / | awk 'NR==2 {print $5}' | sed 's/%//')
+        if [ "$usage" -gt 90 ]; then
+            echo "WARNING: Disk usage is at ${usage}%"
+        fi
+    done
+) &
+monitor_pid=$!
+
 cmake --build . --parallel $PARALLEL_JOBS
-if [ $? -ne 0 ]; then
-    echo "Build failed with error code: $?"
-    exit 1
+build_result=$?
+
+# 停止磁盘监控
+kill $monitor_pid 2>/dev/null || true
+
+if [ $build_result -ne 0 ]; then
+    echo "Build failed with error code: $build_result"
+    echo "=== Disk usage when build failed ==="
+    df -h
+    exit $build_result
 fi
+
+# 显示磁盘使用情况
+echo "=== Disk usage after build ==="
+df -h
 
 # 安装
 echo "Installing Qt..."
@@ -165,6 +153,12 @@ if [ $? -ne 0 ]; then
     echo "Install failed with error code: $?"
     exit 1
 fi
+
+# 清理构建目录以节省空间
+echo "Cleaning up build directory..."
+cd "$(pwd)/.."
+rm -rf "$BUILD_DIR"
+rm -rf "qt-everywhere-src-${QT_VERSION}"
 
 # 验证安装
 echo "Verifying installation..."
@@ -196,4 +190,7 @@ else
     exit 1
 fi
 
-echo "Qt build completed successfully!"
+echo "=== Final disk usage ==="
+df -h
+
+echo "Qt build completed successfully in WSL2!"
