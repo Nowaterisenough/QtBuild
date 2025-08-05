@@ -49,32 +49,25 @@ jobs:
 
       - name: Setup Docker for Linux containers
         run: |
-          # 切换到 Linux 容器模式
-          Write-Host "Switching Docker to Linux containers..."
-          & "C:\Program Files\Docker\Docker\DockerCli.exe" -SwitchLinuxEngine
+          Write-Host "Setting up Docker for Linux containers..."
           
-          # 等待 Docker 切换完成
-          $timeout = 60
-          $elapsed = 0
-          do {
-            try {
-              docker version
-              Write-Host "Docker is ready"
-              break
-            } catch {
-              Write-Host "Waiting for Docker to switch to Linux containers..."
-              Start-Sleep -Seconds 5
-              $elapsed += 5
-            }
-          } while ($elapsed -lt $timeout)
+          # 显示 Docker 信息
+          Write-Host "Docker version:"
+          docker version
           
-          if ($elapsed -ge $timeout) {
-            Write-Error "Timeout waiting for Docker to switch to Linux containers"
-            exit 1
-          }
-          
-          # 验证 Docker 状态
+          Write-Host "Docker info:"
           docker info
+          
+          # 测试拉取 Ubuntu 镜像
+          Write-Host "Testing Docker with Ubuntu image..."
+          try {
+            docker pull ubuntu:22.04
+            Write-Host "Successfully pulled Ubuntu 22.04 image"
+          } catch {
+            Write-Host "Failed to pull Ubuntu image, trying alternative approach..."
+            # 尝试使用 mcr.microsoft.com 镜像（如果可用）
+            docker pull mcr.microsoft.com/windows/servercore:ltsc2022
+          }
         shell: pwsh
 
       - name: Create build directories
@@ -126,20 +119,43 @@ jobs:
           Write-Host "  Link Type: $linkType"
           Write-Host "  Separate Debug: $separateDebug"
           
-          # 确保脚本有执行权限（在容器内）
-          Write-Host "Making script executable and running build..."
+          # 获取当前工作目录的 Windows 路径
+          $currentPath = (Get-Location).Path
+          Write-Host "Current Windows path: $currentPath"
           
-          # 运行 Docker 容器进行编译，强制使用 Linux 平台
-          docker run --rm --platform linux/amd64 `
-            -v "${PWD}:/workspace" `
-            -w /workspace `
-            -e QT_VERSION="$qtVersion" `
-            -e GCC_VERSION="$gccVersion" `
-            -e BUILD_TYPE="$actualBuildType" `
-            -e LINK_TYPE="$linkType" `
-            -e SEPARATE_DEBUG="$separateDebug" `
-            ubuntu:22.04 `
-            bash -c "chmod +x ./build-qt6-linux_x86_64_gcc.sh && ./build-qt6-linux_x86_64_gcc.sh"
+          # 将 Windows 路径转换为 Docker 可用的路径格式
+          $dockerPath = $currentPath -replace '\\', '/' -replace '([A-Z]):', '/mnt/$1'.ToLower()
+          Write-Host "Docker path: $dockerPath"
+          
+          Write-Host "Running Docker container..."
+          
+          # 使用不同的方法运行 Docker 容器
+          try {
+            # 方法1: 直接使用当前路径
+            docker run --rm `
+              -v "${currentPath}:/workspace" `
+              -w /workspace `
+              -e QT_VERSION="$qtVersion" `
+              -e GCC_VERSION="$gccVersion" `
+              -e BUILD_TYPE="$actualBuildType" `
+              -e LINK_TYPE="$linkType" `
+              -e SEPARATE_DEBUG="$separateDebug" `
+              ubuntu:22.04 `
+              bash -c "ls -la /workspace && chmod +x /workspace/build-qt6-linux_x86_64_gcc.sh && /workspace/build-qt6-linux_x86_64_gcc.sh"
+          } catch {
+            Write-Host "First method failed, trying alternative..."
+            # 方法2: 使用相对路径
+            docker run --rm `
+              -v ".:/workspace" `
+              -w /workspace `
+              -e QT_VERSION="$qtVersion" `
+              -e GCC_VERSION="$gccVersion" `
+              -e BUILD_TYPE="$actualBuildType" `
+              -e LINK_TYPE="$linkType" `
+              -e SEPARATE_DEBUG="$separateDebug" `
+              ubuntu:22.04 `
+              bash -c "ls -la /workspace && chmod +x /workspace/build-qt6-linux_x86_64_gcc.sh && /workspace/build-qt6-linux_x86_64_gcc.sh"
+          }
         shell: pwsh
 
       - name: Package binaries
@@ -173,8 +189,10 @@ jobs:
           if (Test-Path $sourcePath) {
             # 使用 Docker 来创建 tar.xz 压缩包（保持 Linux 文件权限）
             Write-Host "Creating archive with Docker..."
-            docker run --rm --platform linux/amd64 `
-              -v "${PWD}:/workspace" `
+            $currentPath = (Get-Location).Path
+            
+            docker run --rm `
+              -v "${currentPath}:/workspace" `
               -w /workspace `
               ubuntu:22.04 `
               bash -c "apt-get update -qq && apt-get install -y -qq xz-utils && tar -cJf $archiveName -C output qt-${qtVersion}-${linkType}-gcc${gccVersion}"
