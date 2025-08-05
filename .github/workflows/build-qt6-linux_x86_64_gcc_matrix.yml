@@ -58,299 +58,299 @@ jobs:
         run: |
           # 创建 WSL 设置脚本
           $setupScript = @"
-#!/bin/bash
-set -e
-echo "=== Setting up WSL2 environment ==="
+          #!/bin/bash
+          set -e
+          echo "=== Setting up WSL2 environment ==="
 
-echo "System info:"
-lsb_release -a
-uname -a
-df -h
+          echo "System info:"
+          lsb_release -a
+          uname -a
+          df -h
 
-echo "Updating package lists..."
-export DEBIAN_FRONTEND=noninteractive
-sudo apt-get update
+          echo "Updating package lists..."
+          export DEBIAN_FRONTEND=noninteractive
+          sudo apt-get update
 
-echo "Installing dependencies..."
-sudo apt-get install -y --no-install-recommends build-essential gcc-${{ env.GCC_VERSION }} g++-${{ env.GCC_VERSION }} cmake ninja-build python3 python3-pip pkg-config libgl1-mesa-dev libglu1-mesa-dev libxkbcommon-dev libxkbcommon-x11-dev libxcb1-dev libxcb-util-dev libxcb-image0-dev libxcb-keysyms1-dev libxcb-render0-dev libxcb-render-util0-dev libxcb-randr0-dev libxcb-xtest0-dev libxcb-xinerama0-dev libxcb-shape0-dev libxcb-sync-dev libxcb-xfixes0-dev libxcb-icccm4-dev libxcb-shm0-dev libxcb-cursor-dev libfontconfig1-dev libfreetype6-dev libx11-dev libxext-dev libxfixes-dev libxi-dev libxrender-dev libxrandr-dev libxcursor-dev libxinerama-dev libxss-dev libglib2.0-dev libegl1-mesa-dev libwayland-dev libssl-dev libasound2-dev libpulse-dev libnss3-dev libxcomposite-dev libxdamage-dev libdrm-dev wget curl xz-utils
+          echo "Installing dependencies..."
+          sudo apt-get install -y --no-install-recommends build-essential gcc-${{ env.GCC_VERSION }} g++-${{ env.GCC_VERSION }} cmake ninja-build python3 python3-pip pkg-config libgl1-mesa-dev libglu1-mesa-dev libxkbcommon-dev libxkbcommon-x11-dev libxcb1-dev libxcb-util-dev libxcb-image0-dev libxcb-keysyms1-dev libxcb-render0-dev libxcb-render-util0-dev libxcb-randr0-dev libxcb-xtest0-dev libxcb-xinerama0-dev libxcb-shape0-dev libxcb-sync-dev libxcb-xfixes0-dev libxcb-icccm4-dev libxcb-shm0-dev libxcb-cursor-dev libfontconfig1-dev libfreetype6-dev libx11-dev libxext-dev libxfixes-dev libxi-dev libxrender-dev libxrandr-dev libxcursor-dev libxinerama-dev libxss-dev libglib2.0-dev libegl1-mesa-dev libwayland-dev libssl-dev libasound2-dev libpulse-dev libnss3-dev libxcomposite-dev libxdamage-dev libdrm-dev wget curl xz-utils
 
-echo "Setting up compiler..."
-sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-${{ env.GCC_VERSION }} 100
-sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-${{ env.GCC_VERSION }} 100
+          echo "Setting up compiler..."
+          sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-${{ env.GCC_VERSION }} 100
+          sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-${{ env.GCC_VERSION }} 100
 
-echo "Tool versions:"
-gcc --version
-g++ --version
-cmake --version
-ninja --version
+          echo "Tool versions:"
+          gcc --version
+          g++ --version
+          cmake --version
+          ninja --version
 
-sudo apt-get clean
-sudo rm -rf /var/lib/apt/lists/*
+          sudo apt-get clean
+          sudo rm -rf /var/lib/apt/lists/*
 
-echo "WSL2 environment setup completed!"
-df -h
-"@
+          echo "WSL2 environment setup completed!"
+          df -h
+          "@
           [System.IO.File]::WriteAllText("wsl_setup.sh", $setupScript.Replace("`r`n", "`n"), [System.Text.UTF8Encoding]::new($false))
 
           # 创建下载脚本
           $downloadScript = @"
-#!/bin/bash
-set -e
-qt_version="${{ env.QT_VERSION }}"
-major_minor="${{ steps.qt_version.outputs.major_minor }}"
-source_url="https://download.qt.io/official_releases/qt/`$major_minor/`$qt_version/single/qt-everywhere-src-`$qt_version.tar.xz"
+          #!/bin/bash
+          set -e
+          qt_version="${{ env.QT_VERSION }}"
+          major_minor="${{ steps.qt_version.outputs.major_minor }}"
+          source_url="https://download.qt.io/official_releases/qt/`$major_minor/`$qt_version/single/qt-everywhere-src-`$qt_version.tar.xz"
 
-echo "Downloading Qt source from: `$source_url"
-wget -O "qt-everywhere-src-`$qt_version.tar.xz" "`$source_url"
+          echo "Downloading Qt source from: `$source_url"
+          wget -O "qt-everywhere-src-`$qt_version.tar.xz" "`$source_url"
 
-if [ -f "qt-everywhere-src-`$qt_version.tar.xz" ]; then
-  file_size=`$(stat -c%s "qt-everywhere-src-`$qt_version.tar.xz")
-  echo "Downloaded file size: `$file_size bytes"
-else
-  echo "Error: Failed to download Qt source"
-  exit 1
-fi
+          if [ -f "qt-everywhere-src-`$qt_version.tar.xz" ]; then
+            file_size=`$(stat -c%s "qt-everywhere-src-`$qt_version.tar.xz")
+            echo "Downloaded file size: `$file_size bytes"
+          else
+            echo "Error: Failed to download Qt source"
+            exit 1
+          fi
 
-mkdir -p output
-"@
+          mkdir -p output
+          "@
           [System.IO.File]::WriteAllText("download_qt.sh", $downloadScript.Replace("`r`n", "`n"), [System.Text.UTF8Encoding]::new($false))
 
           # 创建主要的构建脚本
           $mainBuildScript = @"
-#!/bin/bash
-set -e
+          #!/bin/bash
+          set -e
 
-echo "Starting Qt Linux build script in WSL2..."
+          echo "Starting Qt Linux build script in WSL2..."
 
-qt_version="`$QT_VERSION"
-gcc_version="`$GCC_VERSION"
-build_type="`$BUILD_TYPE"
-link_type="`$LINK_TYPE"
-separate_debug="`$SEPARATE_DEBUG"
+          qt_version="`$QT_VERSION"
+          gcc_version="`$GCC_VERSION"
+          build_type="`$BUILD_TYPE"
+          link_type="`$LINK_TYPE"
+          separate_debug="`$SEPARATE_DEBUG"
 
-echo "=== Build Parameters ==="
-echo "Qt Version: `$qt_version"
-echo "GCC Version: `$gcc_version"
-echo "Build Type: `$build_type"
-echo "Link Type: `$link_type"
-echo "Separate Debug: `$separate_debug"
-echo "========================"
+          echo "=== Build Parameters ==="
+          echo "Qt Version: `$qt_version"
+          echo "GCC Version: `$gcc_version"
+          echo "Build Type: `$build_type"
+          echo "Link Type: `$link_type"
+          echo "Separate Debug: `$separate_debug"
+          echo "========================"
 
-echo "=== System Information ==="
-echo "WSL Version: `$(cat /proc/version)"
-echo "Distribution: `$(lsb_release -d | cut -f2)"
-echo "Kernel: `$(uname -r)"
-echo "Architecture: `$(uname -m)"
-echo "========================="
+          echo "=== System Information ==="
+          echo "WSL Version: `$(cat /proc/version)"
+          echo "Distribution: `$(lsb_release -d | cut -f2)"
+          echo "Kernel: `$(uname -r)"
+          echo "Architecture: `$(uname -m)"
+          echo "========================="
 
-echo "=== Disk usage before build ==="
-df -h
+          echo "=== Disk usage before build ==="
+          df -h
 
-echo "Verifying tools..."
-gcc --version | head -1
-g++ --version | head -1
-cmake --version | head -1
-ninja --version
+          echo "Verifying tools..."
+          gcc --version | head -1
+          g++ --version | head -1
+          cmake --version | head -1
+          ninja --version
 
-echo "Extracting Qt source..."
-if [ -f "qt-everywhere-src-`$qt_version.tar.xz" ]; then
-    echo "Extracting qt-everywhere-src-`$qt_version.tar.xz..."
-    tar -xf qt-everywhere-src-`$qt_version.tar.xz
-    if [ ! -d "qt-everywhere-src-`$qt_version" ]; then
-        echo "Error: Failed to extract Qt source"
-        exit 1
-    fi
-    echo "Removing source archive to save space..."
-    rm qt-everywhere-src-`$qt_version.tar.xz
-else
-    echo "Error: Qt source file not found"
-    exit 1
-fi
+          echo "Extracting Qt source..."
+          if [ -f "qt-everywhere-src-`$qt_version.tar.xz" ]; then
+              echo "Extracting qt-everywhere-src-`$qt_version.tar.xz..."
+              tar -xf qt-everywhere-src-`$qt_version.tar.xz
+              if [ ! -d "qt-everywhere-src-`$qt_version" ]; then
+                  echo "Error: Failed to extract Qt source"
+                  exit 1
+              fi
+              echo "Removing source archive to save space..."
+              rm qt-everywhere-src-`$qt_version.tar.xz
+          else
+              echo "Error: Qt source file not found"
+              exit 1
+          fi
 
-SRC_QT="`$(pwd)/qt-everywhere-src-`$qt_version"
-BUILD_DIR="`$(pwd)/build"
-INSTALL_DIR="`$(pwd)/output/qt-`$qt_version-`$link_type-gcc`$gcc_version"
+          SRC_QT="`$(pwd)/qt-everywhere-src-`$qt_version"
+          BUILD_DIR="`$(pwd)/build"
+          INSTALL_DIR="`$(pwd)/output/qt-`$qt_version-`$link_type-gcc`$gcc_version"
 
-echo "Source directory: `$SRC_QT"
-echo "Build directory: `$BUILD_DIR"
-echo "Install directory: `$INSTALL_DIR"
+          echo "Source directory: `$SRC_QT"
+          echo "Build directory: `$BUILD_DIR"
+          echo "Install directory: `$INSTALL_DIR"
 
-mkdir -p "`$BUILD_DIR"
-mkdir -p "`$INSTALL_DIR"
-cd "`$BUILD_DIR"
+          mkdir -p "`$BUILD_DIR"
+          mkdir -p "`$INSTALL_DIR"
+          cd "`$BUILD_DIR"
 
-CFG_OPTIONS="-`$link_type -prefix `$INSTALL_DIR -nomake examples -nomake tests -c++std c++20 -skip qtwebengine -opensource -confirm-license -qt-libpng -qt-libjpeg -qt-zlib -qt-pcre -openssl-linked -platform linux-g++ -opengl desktop"
+          CFG_OPTIONS="-`$link_type -prefix `$INSTALL_DIR -nomake examples -nomake tests -c++std c++20 -skip qtwebengine -opensource -confirm-license -qt-libpng -qt-libjpeg -qt-zlib -qt-pcre -openssl-linked -platform linux-g++ -opengl desktop"
 
-if [ "`$build_type" = "debug" ]; then
-    CFG_OPTIONS="`$CFG_OPTIONS -debug"
-else
-    CFG_OPTIONS="`$CFG_OPTIONS -release"
-fi
+          if [ "`$build_type" = "debug" ]; then
+              CFG_OPTIONS="`$CFG_OPTIONS -debug"
+          else
+              CFG_OPTIONS="`$CFG_OPTIONS -release"
+          fi
 
-if [ "`$link_type" = "shared" ] && [ "`$separate_debug" = "true" ]; then
-    CFG_OPTIONS="`$CFG_OPTIONS -force-debug-info -separate-debug-info"
-fi
+          if [ "`$link_type" = "shared" ] && [ "`$separate_debug" = "true" ]; then
+              CFG_OPTIONS="`$CFG_OPTIONS -force-debug-info -separate-debug-info"
+          fi
 
-echo "Configure options: `$CFG_OPTIONS"
+          echo "Configure options: `$CFG_OPTIONS"
 
-echo "=== Disk usage before configure ==="
-df -h
+          echo "=== Disk usage before configure ==="
+          df -h
 
-echo "Configuring Qt..."
-"`$SRC_QT/configure" `$CFG_OPTIONS
-if [ `$? -ne 0 ]; then
-    echo "Configure failed with error code: `$?"
-    exit 1
-fi
+          echo "Configuring Qt..."
+          "`$SRC_QT/configure" `$CFG_OPTIONS
+          if [ `$? -ne 0 ]; then
+              echo "Configure failed with error code: `$?"
+              exit 1
+          fi
 
-echo "=== Disk usage after configure ==="
-df -h
+          echo "=== Disk usage after configure ==="
+          df -h
 
-echo "Building Qt..."
-PARALLEL_JOBS=`$(nproc)
-if [ `$PARALLEL_JOBS -gt 6 ]; then
-    PARALLEL_JOBS=6
-fi
-echo "Using `$PARALLEL_JOBS parallel jobs"
+          echo "Building Qt..."
+          PARALLEL_JOBS=`$(nproc)
+          if [ `$PARALLEL_JOBS -gt 6 ]; then
+              PARALLEL_JOBS=6
+          fi
+          echo "Using `$PARALLEL_JOBS parallel jobs"
 
-(
-    while true; do
-        sleep 300
-        echo "=== Disk usage during build (`$(date)) ==="
-        df -h
-        usage=`$(df / | awk 'NR==2 {print `$5}' | sed 's/%//')
-        if [ "`$usage" -gt 90 ]; then
-            echo "WARNING: Disk usage is at `${usage}%"
-        fi
-    done
-) &
-monitor_pid=`$!
+          (
+              while true; do
+                  sleep 300
+                  echo "=== Disk usage during build (`$(date)) ==="
+                  df -h
+                  usage=`$(df / | awk 'NR==2 {print `$5}' | sed 's/%//')
+                  if [ "`$usage" -gt 90 ]; then
+                      echo "WARNING: Disk usage is at `${usage}%"
+                  fi
+              done
+          ) &
+          monitor_pid=`$!
 
-cmake --build . --parallel `$PARALLEL_JOBS
-build_result=`$?
+          cmake --build . --parallel `$PARALLEL_JOBS
+          build_result=`$?
 
-kill `$monitor_pid 2>/dev/null || true
+          kill `$monitor_pid 2>/dev/null || true
 
-if [ `$build_result -ne 0 ]; then
-    echo "Build failed with error code: `$build_result"
-    echo "=== Disk usage when build failed ==="
-    df -h
-    exit `$build_result
-fi
+          if [ `$build_result -ne 0 ]; then
+              echo "Build failed with error code: `$build_result"
+              echo "=== Disk usage when build failed ==="
+              df -h
+              exit `$build_result
+          fi
 
-echo "=== Disk usage after build ==="
-df -h
+          echo "=== Disk usage after build ==="
+          df -h
 
-echo "Installing Qt..."
-cmake --install .
-if [ `$? -ne 0 ]; then
-    echo "Install failed with error code: `$?"
-    exit 1
-fi
+          echo "Installing Qt..."
+          cmake --install .
+          if [ `$? -ne 0 ]; then
+              echo "Install failed with error code: `$?"
+              exit 1
+          fi
 
-echo "Cleaning up build directory..."
-cd "`$(pwd)/.."
-rm -rf "`$BUILD_DIR"
-rm -rf "qt-everywhere-src-`$qt_version"
+          echo "Cleaning up build directory..."
+          cd "`$(pwd)/.."
+          rm -rf "`$BUILD_DIR"
+          rm -rf "qt-everywhere-src-`$qt_version"
 
-echo "Verifying installation..."
-if [ -d "`$INSTALL_DIR" ]; then
-    echo "Installation successful!"
-    echo "Installation directory contents:"
-    ls -la "`$INSTALL_DIR"
-    
-    if [ -f "`$INSTALL_DIR/bin/qmake" ]; then
-        echo "qmake found: `$INSTALL_DIR/bin/qmake"
-        "`$INSTALL_DIR/bin/qmake" -version
-    else
-        echo "Warning: qmake not found"
-    fi
-    
-    if [ -d "`$INSTALL_DIR/lib" ]; then
-        echo "Libraries directory exists"
-        echo "Library count: `$(find `$INSTALL_DIR/lib -name '*.so*' -o -name '*.a' | wc -l)"
-    else
-        echo "Warning: lib directory not found"
-    fi
-    
-    du -sh "`$INSTALL_DIR"
-    
-else
-    echo "Error: Installation directory does not exist!"
-    exit 1
-fi
+          echo "Verifying installation..."
+          if [ -d "`$INSTALL_DIR" ]; then
+              echo "Installation successful!"
+              echo "Installation directory contents:"
+              ls -la "`$INSTALL_DIR"
+              
+              if [ -f "`$INSTALL_DIR/bin/qmake" ]; then
+                  echo "qmake found: `$INSTALL_DIR/bin/qmake"
+                  "`$INSTALL_DIR/bin/qmake" -version
+              else
+                  echo "Warning: qmake not found"
+              fi
+              
+              if [ -d "`$INSTALL_DIR/lib" ]; then
+                  echo "Libraries directory exists"
+                  echo "Library count: `$(find `$INSTALL_DIR/lib -name '*.so*' -o -name '*.a' | wc -l)"
+              else
+                  echo "Warning: lib directory not found"
+              fi
+              
+              du -sh "`$INSTALL_DIR"
+              
+          else
+              echo "Error: Installation directory does not exist!"
+              exit 1
+          fi
 
-echo "=== Final disk usage ==="
-df -h
+          echo "=== Final disk usage ==="
+          df -h
 
-echo "Qt build completed successfully in WSL2!"
-"@
-          [System.IO.File]::WriteAllText("build-qt6-linux_x86_64_gcc_wsl2.sh", $mainBuildScript.Replace("`r`n", "`n"), [System.Text.UTF8Encoding]::new($false))
+          echo "Qt build completed successfully in WSL2!"
+          "@
+                    [System.IO.File]::WriteAllText("build-qt6-linux_x86_64_gcc_wsl2.sh", $mainBuildScript.Replace("`r`n", "`n"), [System.Text.UTF8Encoding]::new($false))
 
-          # 创建构建脚本调用器
-          $buildScript = @"
-#!/bin/bash
-set -e
+                    # 创建构建脚本调用器
+                    $buildScript = @"
+          #!/bin/bash
+          set -e
 
-qt_version="${{ env.QT_VERSION }}"
-gcc_version="${{ env.GCC_VERSION }}"
-build_type="${{ matrix.build_type }}"
-link_type="${{ matrix.link_type }}"
+          qt_version="${{ env.QT_VERSION }}"
+          gcc_version="${{ env.GCC_VERSION }}"
+          build_type="${{ matrix.build_type }}"
+          link_type="${{ matrix.link_type }}"
 
-actual_build_type="`$build_type"
-separate_debug="false"
-if [ "`$build_type" = "release-sepdbg" ]; then
-  actual_build_type="release"
-  if [ "`$link_type" = "shared" ]; then
-    separate_debug="true"
-  fi
-fi
+          actual_build_type="`$build_type"
+          separate_debug="false"
+          if [ "`$build_type" = "release-sepdbg" ]; then
+            actual_build_type="release"
+            if [ "`$link_type" = "shared" ]; then
+              separate_debug="true"
+            fi
+          fi
 
-echo "Building with parameters:"
-echo "  Qt Version: `$qt_version"
-echo "  GCC Version: `$gcc_version"
-echo "  Build Type: `$actual_build_type"
-echo "  Link Type: `$link_type"
-echo "  Separate Debug: `$separate_debug"
+          echo "Building with parameters:"
+          echo "  Qt Version: `$qt_version"
+          echo "  GCC Version: `$gcc_version"
+          echo "  Build Type: `$actual_build_type"
+          echo "  Link Type: `$link_type"
+          echo "  Separate Debug: `$separate_debug"
 
-export QT_VERSION="`$qt_version"
-export GCC_VERSION="`$gcc_version"
-export BUILD_TYPE="`$actual_build_type"
-export LINK_TYPE="`$link_type"
-export SEPARATE_DEBUG="`$separate_debug"
+          export QT_VERSION="`$qt_version"
+          export GCC_VERSION="`$gcc_version"
+          export BUILD_TYPE="`$actual_build_type"
+          export LINK_TYPE="`$link_type"
+          export SEPARATE_DEBUG="`$separate_debug"
 
-chmod +x ./build-qt6-linux_x86_64_gcc_wsl2.sh
-./build-qt6-linux_x86_64_gcc_wsl2.sh
-"@
-          [System.IO.File]::WriteAllText("build_qt.sh", $buildScript.Replace("`r`n", "`n"), [System.Text.UTF8Encoding]::new($false))
+          chmod +x ./build-qt6-linux_x86_64_gcc_wsl2.sh
+          ./build-qt6-linux_x86_64_gcc_wsl2.sh
+          "@
+                    [System.IO.File]::WriteAllText("build_qt.sh", $buildScript.Replace("`r`n", "`n"), [System.Text.UTF8Encoding]::new($false))
 
-          # 创建打包脚本
-          $packageScript = @"
-#!/bin/bash
-set -e
-qt_version="${{ env.QT_VERSION }}"
-gcc_version="${{ env.GCC_VERSION }}"
-link_type="${{ matrix.link_type }}"
-build_type="${{ matrix.build_type }}"
+                    # 创建打包脚本
+                    $packageScript = @"
+          #!/bin/bash
+          set -e
+          qt_version="${{ env.QT_VERSION }}"
+          gcc_version="${{ env.GCC_VERSION }}"
+          link_type="${{ matrix.link_type }}"
+          build_type="${{ matrix.build_type }}"
 
-case "`$build_type" in
-  "release") build_type_normalized="release" ;;
-  "debug") build_type_normalized="debug" ;;
-  "release-sepdbg") build_type_normalized="relwithdebinfo" ;;
-  *) build_type_normalized=`$(echo "`$build_type" | tr '[:upper:]' '[:lower:]') ;;
-esac
+          case "`$build_type" in
+            "release") build_type_normalized="release" ;;
+            "debug") build_type_normalized="debug" ;;
+            "release-sepdbg") build_type_normalized="relwithdebinfo" ;;
+            *) build_type_normalized=`$(echo "`$build_type" | tr '[:upper:]' '[:lower:]') ;;
+          esac
 
-case "`$link_type" in
-  "static") link_type_normalized="static" ;;
-  "shared") link_type_normalized="shared" ;;
-  *) link_type_normalized=`$(echo "`$link_type" | tr '[:upper:]' '[:lower:]') ;;
-esac
+          case "`$link_type" in
+            "static") link_type_normalized="static" ;;
+            "shared") link_type_normalized="shared" ;;
+            *) link_type_normalized=`$(echo "`$link_type" | tr '[:upper:]' '[:lower:]') ;;
+          esac
 
-archive_name="qt`${qt_version}-linux-x86_64-gcc`${gcc_version}-`${link_type_normalized}_`${build_type_normalized}.tar.xz"
-echo "Creating archive: `$archive_name"
-tar -cJf "`$archive_name" -C output "qt-`$qt_version-`$link_type-gcc`$gcc_version"
-echo "Archive created successfully"
-"@
+          archive_name="qt`${qt_version}-linux-x86_64-gcc`${gcc_version}-`${link_type_normalized}_`${build_type_normalized}.tar.xz"
+          echo "Creating archive: `$archive_name"
+          tar -cJf "`$archive_name" -C output "qt-`$qt_version-`$link_type-gcc`$gcc_version"
+          echo "Archive created successfully"
+          "@
           [System.IO.File]::WriteAllText("package.sh", $packageScript.Replace("`r`n", "`n"), [System.Text.UTF8Encoding]::new($false))
 
           Write-Host "All scripts created successfully"
