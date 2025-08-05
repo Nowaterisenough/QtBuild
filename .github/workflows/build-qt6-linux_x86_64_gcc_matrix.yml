@@ -54,25 +54,26 @@ jobs:
           echo "major_minor=$major_minor" >> $env:GITHUB_OUTPUT
         shell: pwsh
 
-      - name: Setup WSL2 environment and dependencies
+      - name: Create WSL setup script
         run: |
-          wsl bash -c "
+          @'
+          #!/bin/bash
           set -e
-          echo '=== Setting up WSL2 environment ==='
+          echo "=== Setting up WSL2 environment ==="
           
           # 显示系统信息
-          echo 'System info:'
+          echo "System info:"
           lsb_release -a
           uname -a
           df -h
           
           # 更新包列表
-          echo 'Updating package lists...'
+          echo "Updating package lists..."
           export DEBIAN_FRONTEND=noninteractive
           sudo apt-get update
           
           # 安装必需的依赖
-          echo 'Installing dependencies...'
+          echo "Installing dependencies..."
           sudo apt-get install -y --no-install-recommends \
             build-essential \
             gcc-${{ env.GCC_VERSION }} \
@@ -127,12 +128,12 @@ jobs:
             xz-utils
           
           # 设置编译器
-          echo 'Setting up compiler...'
+          echo "Setting up compiler..."
           sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-${{ env.GCC_VERSION }} 100
           sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-${{ env.GCC_VERSION }} 100
           
           # 验证工具版本
-          echo 'Tool versions:'
+          echo "Tool versions:"
           gcc --version
           g++ --version
           cmake --version
@@ -142,74 +143,89 @@ jobs:
           sudo apt-get clean
           sudo rm -rf /var/lib/apt/lists/*
           
-          echo 'WSL2 environment setup completed!'
+          echo "WSL2 environment setup completed!"
           df -h
-          "
+          '@ | Out-File -FilePath "wsl_setup.sh" -Encoding UTF8 -NoNewline
+        shell: pwsh
 
-      - name: Download Qt source in WSL2
+      - name: Setup WSL2 environment and dependencies
         run: |
-          wsl bash -c "
+          wsl bash ./wsl_setup.sh
+
+      - name: Create download script
+        run: |
+          @'
+          #!/bin/bash
           set -e
-          qt_version='${{ env.QT_VERSION }}'
-          major_minor='${{ steps.qt_version.outputs.major_minor }}'
-          source_url=\"https://download.qt.io/official_releases/qt/\$major_minor/\$qt_version/single/qt-everywhere-src-\$qt_version.tar.xz\"
+          qt_version="${{ env.QT_VERSION }}"
+          major_minor="${{ steps.qt_version.outputs.major_minor }}"
+          source_url="https://download.qt.io/official_releases/qt/$major_minor/$qt_version/single/qt-everywhere-src-$qt_version.tar.xz"
           
-          echo 'Downloading Qt source from:' \$source_url
-          cd /mnt/c/Users/runneradmin/work/\$(basename \$PWD)/\$(basename \$PWD)
+          echo "Downloading Qt source from: $source_url"
           
-          wget -O \"qt-everywhere-src-\$qt_version.tar.xz\" \"\$source_url\"
+          wget -O "qt-everywhere-src-$qt_version.tar.xz" "$source_url"
           
           # 验证下载
-          if [ -f \"qt-everywhere-src-\$qt_version.tar.xz\" ]; then
-            file_size=\$(stat -c%s \"qt-everywhere-src-\$qt_version.tar.xz\")
-            echo \"Downloaded file size: \$file_size bytes\"
+          if [ -f "qt-everywhere-src-$qt_version.tar.xz" ]; then
+            file_size=$(stat -c%s "qt-everywhere-src-$qt_version.tar.xz")
+            echo "Downloaded file size: $file_size bytes"
           else
-            echo \"Error: Failed to download Qt source\"
+            echo "Error: Failed to download Qt source"
             exit 1
           fi
           
           # 创建输出目录
           mkdir -p output
-          "
+          '@ | Out-File -FilePath "download_qt.sh" -Encoding UTF8 -NoNewline
+        shell: pwsh
 
-      - name: Build Qt in WSL2
+      - name: Download Qt source in WSL2
         run: |
-          wsl bash -c "
+          wsl bash ./download_qt.sh
+
+      - name: Create build script
+        run: |
+          @'
+          #!/bin/bash
           set -e
-          cd /mnt/c/Users/runneradmin/work/\$(basename \$PWD)/\$(basename \$PWD)
           
-          qt_version='${{ env.QT_VERSION }}'
-          gcc_version='${{ env.GCC_VERSION }}'
-          build_type='${{ matrix.build_type }}'
-          link_type='${{ matrix.link_type }}'
+          qt_version="${{ env.QT_VERSION }}"
+          gcc_version="${{ env.GCC_VERSION }}"
+          build_type="${{ matrix.build_type }}"
+          link_type="${{ matrix.link_type }}"
           
           # 处理 build_type
-          actual_build_type=\"\$build_type\"
-          separate_debug=\"false\"
-          if [ \"\$build_type\" = \"release-sepdbg\" ]; then
-            actual_build_type=\"release\"
-            if [ \"\$link_type\" = \"shared\" ]; then
-              separate_debug=\"true\"
+          actual_build_type="$build_type"
+          separate_debug="false"
+          if [ "$build_type" = "release-sepdbg" ]; then
+            actual_build_type="release"
+            if [ "$link_type" = "shared" ]; then
+              separate_debug="true"
             fi
           fi
           
-          echo 'Building with parameters:'
-          echo \"  Qt Version: \$qt_version\"
-          echo \"  GCC Version: \$gcc_version\"
-          echo \"  Build Type: \$actual_build_type\"
-          echo \"  Link Type: \$link_type\"
-          echo \"  Separate Debug: \$separate_debug\"
+          echo "Building with parameters:"
+          echo "  Qt Version: $qt_version"
+          echo "  GCC Version: $gcc_version"
+          echo "  Build Type: $actual_build_type"
+          echo "  Link Type: $link_type"
+          echo "  Separate Debug: $separate_debug"
           
           # 设置环境变量并运行构建脚本
-          export QT_VERSION=\"\$qt_version\"
-          export GCC_VERSION=\"\$gcc_version\"
-          export BUILD_TYPE=\"\$actual_build_type\"
-          export LINK_TYPE=\"\$link_type\"
-          export SEPARATE_DEBUG=\"\$separate_debug\"
+          export QT_VERSION="$qt_version"
+          export GCC_VERSION="$gcc_version"
+          export BUILD_TYPE="$actual_build_type"
+          export LINK_TYPE="$link_type"
+          export SEPARATE_DEBUG="$separate_debug"
           
           chmod +x ./build-qt6-linux_x86_64_gcc_wsl2.sh
           ./build-qt6-linux_x86_64_gcc_wsl2.sh
-          "
+          '@ | Out-File -FilePath "build_qt.sh" -Encoding UTF8 -NoNewline
+        shell: pwsh
+
+      - name: Build Qt in WSL2
+        run: |
+          wsl bash ./build_qt.sh
 
       - name: Package binaries
         run: |
@@ -240,12 +256,15 @@ jobs:
           Write-Host "Packaging: $sourcePath -> $archiveName"
           
           if (Test-Path $sourcePath) {
+            # 创建打包脚本
+            @"
+          #!/bin/bash
+          tar -cJf $archiveName -C output qt-${qtVersion}-${linkType}-gcc${gccVersion}
+          "@ | Out-File -FilePath "package.sh" -Encoding UTF8 -NoNewline
+            
             # 使用 WSL2 创建 tar.xz 压缩包
             Write-Host "Creating archive with WSL2..."
-            wsl bash -c "
-            cd /mnt/c/Users/runneradmin/work/`$(basename `$PWD)/`$(basename `$PWD)
-            tar -cJf $archiveName -C output qt-${qtVersion}-${linkType}-gcc${gccVersion}
-            "
+            wsl bash ./package.sh
             
             if (Test-Path $archiveName) {
               $fileSize = (Get-Item $archiveName).Length
