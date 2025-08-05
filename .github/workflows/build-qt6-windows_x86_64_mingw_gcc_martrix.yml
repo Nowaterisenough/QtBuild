@@ -219,7 +219,7 @@ jobs:
           $buildType = "${{ matrix.build_type }}"
           $qtVersion = "${{ env.QT_VERSION }}"
           $gccVersion = "${{ env.GCC_VERSION }}"
-          $runtime = "${{ env.RUNTIME }}".ToUpper()
+          $runtime = "${{ env.RUNTIME }}".ToLower()
           
           # 规范化构建类型名称 (小写)
           $buildTypeNormalized = switch ($buildType) {
@@ -236,18 +236,54 @@ jobs:
             default { $linkType.ToLower() }
           }
           
-          # 三段式命名格式 (全小写)：软件名-平台架构编译器-配置类型
-          $archiveName = "qt${qtVersion}-windows_x86_64_mingw_gcc${gccVersion}_${runtime.ToLower()}-${linkTypeNormalized}_${buildTypeNormalized}.7z"
+          # 修正后的命名格式：qt版本-windows-x86_64-mingw_gcc版本-链接类型_构建类型
+          $archiveName = "qt${qtVersion}-windows-x86_64-mingw_gcc${gccVersion}_${runtime}-${linkTypeNormalized}_${buildTypeNormalized}.7z"
           $sourcePath = "D:\a\QtBuild\Qt\$qtVersion-$linkType"
           
           # 检查源目录是否存在
           if (Test-Path $sourcePath) {
-            7z a $archiveName $sourcePath -mx=9
+            # 创建临时目录用于重组目录结构
+            $tempDir = "D:\a\QtBuild\temp_package"
+            $finalDirName = "qt${qtVersion}-windows-x86_64-mingw_gcc${gccVersion}_${runtime}-${linkTypeNormalized}_${buildTypeNormalized}"
+            $finalPath = Join-Path $tempDir $finalDirName
+            
+            # 清理并创建临时目录
+            if (Test-Path $tempDir) {
+              Remove-Item $tempDir -Recurse -Force
+            }
+            New-Item -ItemType Directory -Path $finalPath -Force | Out-Null
+            
+            # 获取编译器目录（mingw15.1.0_64_UCRT格式）
+            $compilerDirs = Get-ChildItem -Path $sourcePath -Directory | Where-Object { $_.Name -like "mingw*" }
+            if ($compilerDirs.Count -eq 0) {
+              Write-Host "Error: No mingw compiler directory found in $sourcePath"
+              Get-ChildItem -Path $sourcePath
+              exit 1
+            }
+            
+            $compilerDir = $compilerDirs[0].FullName
+            Write-Host "Found compiler directory: $compilerDir"
+            
+            # 复制编译器目录下的所有内容到最终目录
+            Copy-Item -Path "$compilerDir\*" -Destination $finalPath -Recurse -Force
+            
+            # 创建压缩包
+            Set-Location $tempDir
+            7z a "..\$archiveName" $finalDirName -mx=9
+            
             echo "Archive created: $archiveName"
-            echo "Source path: $sourcePath"
+            echo "Source path: $compilerDir"
+            echo "Final structure: $finalDirName"
+            
+            # 验证压缩包内容
+            7z l "..\$archiveName" | Select-Object -First 20
             
             # 输出到环境变量供后续步骤使用
             echo "ARCHIVE_NAME=$archiveName" >> $env:GITHUB_ENV
+            
+            # 清理临时目录
+            Set-Location "D:\a\QtBuild"
+            Remove-Item $tempDir -Recurse -Force
           } else {
             echo "Error: Source path does not exist: $sourcePath"
             exit 1
@@ -256,7 +292,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: qt${{ env.QT_VERSION }}-windows_x86_64_mingw_gcc${{ env.GCC_VERSION }}_${{ env.RUNTIME }}-${{ matrix.link_type }}_${{ matrix.build_type == 'release' && 'release' || matrix.build_type == 'debug' && 'debug' || 'relwithdebinfo' }}
+          name: qt${{ env.QT_VERSION }}-windows-x86_64-mingw_gcc${{ env.GCC_VERSION }}_${{ env.RUNTIME }}-${{ matrix.link_type }}_${{ matrix.build_type == 'release' && 'release' || matrix.build_type == 'debug' && 'debug' || 'relwithdebinfo' }}
           path: ${{ env.ARCHIVE_NAME }}
 
   release:
@@ -302,7 +338,7 @@ jobs:
           - \`shared_relwithdebinfo\`: Dynamic linking, Release mode with separate debug info
           
           ## File Naming Convention
-          Files follow the pattern: \`qt{version}-windows_x86_64_mingw_gcc{gcc_version}_{runtime}-{link_type}_{build_type}.7z\`
+          Files follow the pattern: \`qt{version}-windows-x86_64-mingw_gcc{gcc_version}_{runtime}-{link_type}_{build_type}.7z\`
           
           Where:
           - \`{version}\`: Qt version (e.g., 6.9.1)
@@ -314,7 +350,7 @@ jobs:
           ## Installation
           1. Download the appropriate .7z file for your needs
           2. Extract using 7-Zip or compatible software
-          3. The Qt installation will be in the extracted folder
+          3. The Qt installation will be in the extracted folder with bin, lib, qml, etc. directories
           
           ## Notes
           - Static builds do not include debug configurations
@@ -338,4 +374,4 @@ jobs:
       - name: Clean up artifacts
         uses: geekyeggo/delete-artifact@v5
         with:
-          name: qt${{ env.QT_VERSION }}-windows_x86_64_mingw_gcc${{ env.GCC_VERSION }}_${{ env.RUNTIME }}-*
+          name: qt${{ env.QT_VERSION }}-windows-x86_64-mingw_gcc${{ env.GCC_VERSION }}_${{ env.RUNTIME }}-*
