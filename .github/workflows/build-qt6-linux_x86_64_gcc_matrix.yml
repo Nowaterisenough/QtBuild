@@ -47,11 +47,34 @@ jobs:
           echo "major_minor=$major_minor" >> $env:GITHUB_OUTPUT
         shell: pwsh
 
-      - name: Setup Docker
+      - name: Setup Docker for Linux containers
         run: |
-          # 确保 Docker Desktop 正在运行
-          Write-Host "Setting up Docker environment..."
-          docker version
+          # 切换到 Linux 容器模式
+          Write-Host "Switching Docker to Linux containers..."
+          & "C:\Program Files\Docker\Docker\DockerCli.exe" -SwitchLinuxEngine
+          
+          # 等待 Docker 切换完成
+          $timeout = 60
+          $elapsed = 0
+          do {
+            try {
+              docker version
+              Write-Host "Docker is ready"
+              break
+            } catch {
+              Write-Host "Waiting for Docker to switch to Linux containers..."
+              Start-Sleep -Seconds 5
+              $elapsed += 5
+            }
+          } while ($elapsed -lt $timeout)
+          
+          if ($elapsed -ge $timeout) {
+            Write-Error "Timeout waiting for Docker to switch to Linux containers"
+            exit 1
+          }
+          
+          # 验证 Docker 状态
+          docker info
         shell: pwsh
 
       - name: Create build directories
@@ -96,13 +119,6 @@ jobs:
             }
           }
           
-          # 设置环境变量
-          $env:QT_VERSION_VAR = $qtVersion
-          $env:GCC_VERSION_VAR = $gccVersion
-          $env:BUILD_TYPE_VAR = $actualBuildType
-          $env:LINK_TYPE_VAR = $linkType
-          $env:SEPARATE_DEBUG_VAR = $separateDebug
-          
           Write-Host "Building with parameters:"
           Write-Host "  Qt Version: $qtVersion"
           Write-Host "  GCC Version: $gccVersion"
@@ -110,8 +126,11 @@ jobs:
           Write-Host "  Link Type: $linkType"
           Write-Host "  Separate Debug: $separateDebug"
           
-          # 运行 Docker 容器进行编译
-          docker run --rm `
+          # 确保脚本有执行权限（在容器内）
+          Write-Host "Making script executable and running build..."
+          
+          # 运行 Docker 容器进行编译，强制使用 Linux 平台
+          docker run --rm --platform linux/amd64 `
             -v "${PWD}:/workspace" `
             -w /workspace `
             -e QT_VERSION="$qtVersion" `
@@ -153,11 +172,12 @@ jobs:
           
           if (Test-Path $sourcePath) {
             # 使用 Docker 来创建 tar.xz 压缩包（保持 Linux 文件权限）
-            docker run --rm `
+            Write-Host "Creating archive with Docker..."
+            docker run --rm --platform linux/amd64 `
               -v "${PWD}:/workspace" `
               -w /workspace `
               ubuntu:22.04 `
-              bash -c "apt-get update && apt-get install -y xz-utils && tar -cJf $archiveName -C output qt-${qtVersion}-${linkType}-gcc${gccVersion}"
+              bash -c "apt-get update -qq && apt-get install -y -qq xz-utils && tar -cJf $archiveName -C output qt-${qtVersion}-${linkType}-gcc${gccVersion}"
               
             if (Test-Path $archiveName) {
               $fileSize = (Get-Item $archiveName).Length
@@ -169,7 +189,12 @@ jobs:
             }
           } else {
             Write-Error "Source path does not exist: $sourcePath"
-            Get-ChildItem -Path ".\output" -Recurse
+            Write-Host "Available directories in output:"
+            if (Test-Path ".\output") {
+              Get-ChildItem -Path ".\output" -Recurse | Select-Object -First 20
+            } else {
+              Write-Host "Output directory does not exist"
+            }
             exit 1
           }
         shell: pwsh
