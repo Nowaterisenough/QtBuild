@@ -256,13 +256,6 @@ if exist "%FINAL_INSTALL_DIR%" (
         echo Database drivers built:
         dir "%FINAL_INSTALL_DIR%\plugins\sqldrivers\*.dll"
     )
-    
-    REM 验证QDoc是否可用
-    if exist "%FINAL_INSTALL_DIR%\bin\qdoc.exe" (
-        echo QDoc is available
-    ) else (
-        echo QDoc is not available
-    )
 ) else (
     echo Error: Final installation directory does not exist!
     exit /b 1
