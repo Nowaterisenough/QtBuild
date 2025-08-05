@@ -425,7 +425,7 @@ jobs:
           body_path: release_notes.md
           draft: false
           prerelease: false
-          files: artifacts/**/*.7z
+          files: artifacts/*.7z
           fail_on_unmatched_files: true
           generate_release_notes: false
 
