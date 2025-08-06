@@ -114,7 +114,13 @@ if "%BUILD_TYPE%"=="debug" (
 REM 处理分离调试信息（仅对 shared 构建有效）
 if "%LINK_TYPE%"=="shared" (
     if "%SEPARATE_DEBUG%"=="true" (
-        set "CFG_OPTIONS=%CFG_OPTIONS% -separate-debug-info"
+        REM 分离调试信息需要同时启用 force-debug-info
+        set "CFG_OPTIONS=%CFG_OPTIONS% -force-debug-info -separate-debug-info"
+    )
+) else (
+    REM static 构建不使用分离调试信息
+    if "%WITH_DEBUG_INFO%"=="true" (
+        set "CFG_OPTIONS=%CFG_OPTIONS% -force-debug-info"
     )
 )
 
@@ -166,7 +172,11 @@ if %errorlevel% neq 0 (
     
     if "%LINK_TYPE%"=="shared" (
         if "%SEPARATE_DEBUG%"=="true" (
-            set "CFG_OPTIONS_RETRY=%CFG_OPTIONS_RETRY% -separate-debug-info"
+            set "CFG_OPTIONS_RETRY=%CFG_OPTIONS_RETRY% -force-debug-info -separate-debug-info"
+        )
+    ) else (
+        if "%WITH_DEBUG_INFO%"=="true" (
+            set "CFG_OPTIONS_RETRY=%CFG_OPTIONS_RETRY% -force-debug-info"
         )
     )
     

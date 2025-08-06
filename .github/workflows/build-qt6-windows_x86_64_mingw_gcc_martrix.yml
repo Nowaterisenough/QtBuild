@@ -40,7 +40,10 @@ jobs:
       matrix:
         link_type: [static, shared]
         build_type: [release, debug, release-sepdbg]
-      
+        exclude:
+          # static 构建跳过 release-sepdbg
+          - link_type: static
+            build_type: release-sepdbg
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -251,21 +254,19 @@ jobs:
               REM shared 构建使用分离的调试信息
               set SEPARATE_DEBUG=true
             ) else (
-              REM static 构建只是带调试信息的 release，不分离
-              set SEPARATE_DEBUG=false
-              set WITH_DEBUG_INFO=true
+              REM 这个分支不应该执行，因为已经在 exclude 中排除了
+              echo "Error: static release-sepdbg should be excluded"
+              exit /b 1
             )
           ) else if "%BUILD_TYPE%"=="debug" (
             set BUILD_TYPE=debug
             set SEPARATE_DEBUG=false
-            set WITH_DEBUG_INFO=false
           ) else (
             REM release
             set SEPARATE_DEBUG=false
-            set WITH_DEBUG_INFO=false
           )
 
-          call D:\a\QtBuild\QtBuild\Qt6Build\build-qt6-windows_x86_64_mingw_gcc.cmd !QT_VERSION! !GCC_VERSION! !BUILD_TYPE! !LINK_TYPE! !SEPARATE_DEBUG! !RUNTIME! !WITH_DEBUG_INFO!
+          call D:\a\QtBuild\QtBuild\Qt6Build\build-qt6-windows_x86_64_mingw_gcc.cmd !QT_VERSION! !GCC_VERSION! !BUILD_TYPE! !LINK_TYPE! !SEPARATE_DEBUG! !RUNTIME!
 
       - name: Package binaries
         run: |
@@ -403,7 +404,6 @@ jobs:
           ### Static Builds
           - \`static_release\`: Static linking, Release mode
           - \`static_debug\`: Static linking, Debug mode
-          - \`static_relwithdebinfo\`: Static linking, Release mode with debug info (not separated)
           
           ### Shared Builds
           - \`shared_release\`: Dynamic linking, Release mode
@@ -426,9 +426,8 @@ jobs:
           3. The Qt installation will be in the extracted folder with bin, lib, qml, etc. directories
           
           ## Notes
-          - Static builds include debug configurations
-          - Static builds with debug info do NOT use separate debug files
-          - Shared builds with debug info use separate .debug files
+          - Static builds include both release and debug configurations
+          - Shared builds include separate debug symbols for release with debug info version
           - Shared builds include MinGW runtime DLLs
           - All builds skip QtWebEngine and examples/tests
           - Built with C++20 standard
