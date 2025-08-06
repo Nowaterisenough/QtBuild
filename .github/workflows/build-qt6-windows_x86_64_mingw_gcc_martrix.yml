@@ -40,9 +40,7 @@ jobs:
       matrix:
         link_type: [static, shared]
         build_type: [release, debug, release-sepdbg]
-        exclude:
-          - link_type: static
-            build_type: debug
+      
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -250,18 +248,24 @@ jobs:
           if "%BUILD_TYPE%"=="release-sepdbg" (
             set BUILD_TYPE=release
             if "%LINK_TYPE%"=="shared" (
+              REM shared 构建使用分离的调试信息
               set SEPARATE_DEBUG=true
             ) else (
+              REM static 构建只是带调试信息的 release，不分离
               set SEPARATE_DEBUG=false
+              set WITH_DEBUG_INFO=true
             )
           ) else if "%BUILD_TYPE%"=="debug" (
             set BUILD_TYPE=debug
             set SEPARATE_DEBUG=false
+            set WITH_DEBUG_INFO=false
           ) else (
+            REM release
             set SEPARATE_DEBUG=false
+            set WITH_DEBUG_INFO=false
           )
 
-          call D:\a\QtBuild\QtBuild\Qt6Build\build-qt6-windows_x86_64_mingw_gcc.cmd !QT_VERSION! !GCC_VERSION! !BUILD_TYPE! !LINK_TYPE! !SEPARATE_DEBUG! !RUNTIME!
+          call D:\a\QtBuild\QtBuild\Qt6Build\build-qt6-windows_x86_64_mingw_gcc.cmd !QT_VERSION! !GCC_VERSION! !BUILD_TYPE! !LINK_TYPE! !SEPARATE_DEBUG! !RUNTIME! !WITH_DEBUG_INFO!
 
       - name: Package binaries
         run: |
@@ -355,6 +359,18 @@ jobs:
         with:
           path: artifacts/
 
+      - name: List downloaded artifacts
+        run: |
+          echo "Listing artifacts directory structure:"
+          find artifacts -type f -name "*.7z" -ls
+
+      - name: Move artifacts to root level
+        run: |
+          echo "Moving .7z files to artifacts root..."
+          find artifacts -type f -name "*.7z" -exec mv {} artifacts/ \;
+          echo "Files in artifacts directory after move:"
+          ls -la artifacts/*.7z
+
       - name: Generate release tag
         id: release_tag
         run: |
@@ -386,7 +402,8 @@ jobs:
           
           ### Static Builds
           - \`static_release\`: Static linking, Release mode
-          - \`static_relwithdebinfo\`: Static linking, Release mode with separate debug info (if supported)
+          - \`static_debug\`: Static linking, Debug mode
+          - \`static_relwithdebinfo\`: Static linking, Release mode with debug info (not separated)
           
           ### Shared Builds
           - \`shared_release\`: Dynamic linking, Release mode
@@ -409,7 +426,9 @@ jobs:
           3. The Qt installation will be in the extracted folder with bin, lib, qml, etc. directories
           
           ## Notes
-          - Static builds do not include debug configurations
+          - Static builds include debug configurations
+          - Static builds with debug info do NOT use separate debug files
+          - Shared builds with debug info use separate .debug files
           - Shared builds include MinGW runtime DLLs
           - All builds skip QtWebEngine and examples/tests
           - Built with C++20 standard

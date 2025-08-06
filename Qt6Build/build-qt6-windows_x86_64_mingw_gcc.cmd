@@ -2,15 +2,16 @@
 @chcp 65001
 @cd /d %~dp0
 
-REM 参数依次为: Qt版本, GCC版本, BUILD_TYPE, LINK_TYPE, SEPARATE_DEBUG, RUNTIME
+REM 参数依次为: Qt版本, GCC版本, BUILD_TYPE, LINK_TYPE, SEPARATE_DEBUG, RUNTIME, WITH_DEBUG_INFO
 set QT_VERSION=%1
 set GCC_VERSION=%2
 set BUILD_TYPE=%3
 set LINK_TYPE=%4
 set SEPARATE_DEBUG=%5
 set RUNTIME=%6
+set WITH_DEBUG_INFO=%7
 
-REM 例如: 6.9.1  15.1.0  release  static  false  ucrt
+REM 例如: 6.9.1  15.1.0  release  static  false  ucrt  true
 
 set QT_VERSION2=%QT_VERSION:~0,3%
 
@@ -48,6 +49,7 @@ echo GCC Version: %GCC_VERSION%
 echo Build Type: %BUILD_TYPE%
 echo Link Type: %LINK_TYPE%
 echo Separate Debug: %SEPARATE_DEBUG%
+echo With Debug Info: %WITH_DEBUG_INFO%
 echo Source: %SRC_QT%
 echo Final Install Dir: %FINAL_INSTALL_DIR%
 
@@ -103,12 +105,16 @@ if "%BUILD_TYPE%"=="debug" (
     set "CFG_OPTIONS=%CFG_OPTIONS% -debug"
 ) else (
     set "CFG_OPTIONS=%CFG_OPTIONS% -release"
+    REM 对于 release 构建，检查是否需要添加调试信息
+    if "%WITH_DEBUG_INFO%"=="true" (
+        set "CFG_OPTIONS=%CFG_OPTIONS% -force-debug-info"
+    )
 )
 
-REM static 不能分离调试信息
+REM 处理分离调试信息（仅对 shared 构建有效）
 if "%LINK_TYPE%"=="shared" (
     if "%SEPARATE_DEBUG%"=="true" (
-        set "CFG_OPTIONS=%CFG_OPTIONS% -force-debug-info -separate-debug-info"
+        set "CFG_OPTIONS=%CFG_OPTIONS% -separate-debug-info"
     )
 )
 
@@ -153,11 +159,14 @@ if %errorlevel% neq 0 (
         set "CFG_OPTIONS_RETRY=%CFG_OPTIONS_RETRY% -debug"
     ) else (
         set "CFG_OPTIONS_RETRY=%CFG_OPTIONS_RETRY% -release"
+        if "%WITH_DEBUG_INFO%"=="true" (
+            set "CFG_OPTIONS_RETRY=%CFG_OPTIONS_RETRY% -force-debug-info"
+        )
     )
     
     if "%LINK_TYPE%"=="shared" (
         if "%SEPARATE_DEBUG%"=="true" (
-            set "CFG_OPTIONS_RETRY=%CFG_OPTIONS_RETRY% -force-debug-info -separate-debug-info"
+            set "CFG_OPTIONS_RETRY=%CFG_OPTIONS_RETRY% -separate-debug-info"
         )
     )
     
