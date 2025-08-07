@@ -14,6 +14,10 @@ set TEST_MODE=%8
 
 REM 例如: 6.9.1  15.1.0  release  static  false  ucrt  true  false
 
+REM 处理可能为空的参数，设置默认值
+if "%WITH_DEBUG_INFO%"=="" set WITH_DEBUG_INFO=false
+if "%TEST_MODE%"=="" set TEST_MODE=false
+
 set QT_VERSION2=%QT_VERSION:~0,3%
 
 REM 直接根据 runtime 设置，不需要转换函数
@@ -66,7 +70,7 @@ REM 配置参数 - 基本选项
 set "CFG_OPTIONS=-%LINK_TYPE% -prefix %TEMP_INSTALL_DIR% -nomake examples -nomake tests -c++std c++20 -headersclean -opensource -confirm-license -qt-libpng -qt-libjpeg -qt-zlib -qt-pcre -schannel -platform win32-g++ -opengl desktop"
 
 REM 测试模式：只编译 qtbase
-if "%TEST_MODE%"=="true" (
+if /i "%TEST_MODE%"=="true" (
     echo Test mode enabled: Only building qtbase module
     set "CFG_OPTIONS=%CFG_OPTIONS% -submodules qtbase"
 ) else (
@@ -112,25 +116,25 @@ REM 添加SQLite支持（Qt内置）
 set "CFG_OPTIONS=%CFG_OPTIONS% -sql-sqlite"
 
 REM 根据构建类型添加相应选项
-if "%BUILD_TYPE%"=="debug" (
+if /i "%BUILD_TYPE%"=="debug" (
     set "CFG_OPTIONS=%CFG_OPTIONS% -debug"
 ) else (
     set "CFG_OPTIONS=%CFG_OPTIONS% -release"
     REM 对于 release 构建，检查是否需要添加调试信息
-    if "%WITH_DEBUG_INFO%"=="true" (
+    if /i "%WITH_DEBUG_INFO%"=="true" (
         set "CFG_OPTIONS=%CFG_OPTIONS% -force-debug-info"
     )
 )
 
 REM 处理分离调试信息（仅对 shared 构建有效）
-if "%LINK_TYPE%"=="shared" (
-    if "%SEPARATE_DEBUG%"=="true" (
+if /i "%LINK_TYPE%"=="shared" (
+    if /i "%SEPARATE_DEBUG%"=="true" (
         REM 分离调试信息需要同时启用 force-debug-info
         set "CFG_OPTIONS=%CFG_OPTIONS% -force-debug-info -separate-debug-info"
     )
 ) else (
     REM static 构建不使用分离调试信息
-    if "%WITH_DEBUG_INFO%"=="true" (
+    if /i "%WITH_DEBUG_INFO%"=="true" (
         set "CFG_OPTIONS=%CFG_OPTIONS% -force-debug-info"
     )
 )
@@ -173,27 +177,27 @@ if %errorlevel% neq 0 (
     set "CFG_OPTIONS_RETRY=-%LINK_TYPE% -prefix %TEMP_INSTALL_DIR% -nomake examples -nomake tests -c++std c++20 -headersclean -opensource -confirm-license -qt-libpng -qt-libjpeg -qt-zlib -qt-pcre -schannel -platform win32-g++ -opengl desktop -sql-sqlite"
     
     REM 测试模式重试也要保持
-    if "%TEST_MODE%"=="true" (
+    if /i "%TEST_MODE%"=="true" (
         set "CFG_OPTIONS_RETRY=%CFG_OPTIONS_RETRY% -submodules qtbase"
     ) else (
         set "CFG_OPTIONS_RETRY=%CFG_OPTIONS_RETRY% -skip qtwebengine"
     )
     
-    if "%BUILD_TYPE%"=="debug" (
+    if /i "%BUILD_TYPE%"=="debug" (
         set "CFG_OPTIONS_RETRY=%CFG_OPTIONS_RETRY% -debug"
     ) else (
         set "CFG_OPTIONS_RETRY=%CFG_OPTIONS_RETRY% -release"
-        if "%WITH_DEBUG_INFO%"=="true" (
+        if /i "%WITH_DEBUG_INFO%"=="true" (
             set "CFG_OPTIONS_RETRY=%CFG_OPTIONS_RETRY% -force-debug-info"
         )
     )
     
-    if "%LINK_TYPE%"=="shared" (
-        if "%SEPARATE_DEBUG%"=="true" (
+    if /i "%LINK_TYPE%"=="shared" (
+        if /i "%SEPARATE_DEBUG%"=="true" (
             set "CFG_OPTIONS_RETRY=%CFG_OPTIONS_RETRY% -force-debug-info -separate-debug-info"
         )
     ) else (
-        if "%WITH_DEBUG_INFO%"=="true" (
+        if /i "%WITH_DEBUG_INFO%"=="true" (
             set "CFG_OPTIONS_RETRY=%CFG_OPTIONS_RETRY% -force-debug-info"
         )
     )
@@ -208,8 +212,8 @@ if %errorlevel% neq 0 (
 
 REM 构建
 echo Starting build...
-if "%TEST_MODE%"=="true" (
-    echo Building in test mode (qtbase only)...
+if /i "%TEST_MODE%"=="true" (
+    echo Building in test mode - qtbase only...
 )
 cmake --build . --parallel 4
 if %errorlevel% neq 0 (
@@ -261,7 +265,7 @@ if exist "%~dp0qt.conf" (
 )
 
 REM shared需要复制运行时DLL
-if "%LINK_TYPE%"=="shared" (
+if /i "%LINK_TYPE%"=="shared" (
     echo Copying MinGW runtime DLLs...
     copy "D:\a\QtBuild\mingw64\bin\libgcc_s_seh-1.dll" "%FINAL_INSTALL_DIR%\bin\" 2>nul
     copy "D:\a\QtBuild\mingw64\bin\libstdc++-6.dll" "%FINAL_INSTALL_DIR%\bin\" 2>nul
@@ -284,7 +288,7 @@ if "%LINK_TYPE%"=="shared" (
 )
 
 echo Build completed successfully!
-if "%TEST_MODE%"=="true" (
+if /i "%TEST_MODE%"=="true" (
     echo NOTE: Test mode was enabled - only qtbase was built
 )
 echo Installation directory: %FINAL_INSTALL_DIR%
