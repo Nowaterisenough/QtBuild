@@ -321,8 +321,18 @@ jobs:
             $compilerDir = $compilerDirs[0].FullName
             Write-Host "Found compiler directory: $compilerDir"
             
-            # 复制编译器目录下的所有内容到最终目录
-            Copy-Item -Path "$compilerDir\*" -Destination $finalPath -Recurse -Force
+            # 进入编译器目录，查找真正的 Qt 根（包含 bin/qml）
+            $qtRoot = Get-ChildItem -Path $compilerDir -Directory |
+                      Where-Object { Test-Path "$($_.FullName)\bin\qmake.exe" } |
+                      Select-Object -First 1
+
+            if (-not $qtRoot) {
+                Write-Host "Error: Qt root not found in $compilerDir"
+                exit 1
+            }
+
+            # 仅复制 Qt 根内容，避免多出一层目录
+            Copy-Item -Path "$($qtRoot.FullName)\*" -Destination $finalPath -Recurse -Force
             
             # 创建压缩包 - 修正：在当前工作目录创建
             Set-Location $tempDir
@@ -371,6 +381,8 @@ jobs:
           if-no-files-found: error  # 改为 error 以便更容易发现问题
 
   release:
+
+
     needs: build
     runs-on: ubuntu-latest
     if: ${{ github.event.inputs.create_release == 'true' }}
