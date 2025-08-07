@@ -324,22 +324,39 @@ jobs:
             # 复制编译器目录下的所有内容到最终目录
             Copy-Item -Path "$compilerDir\*" -Destination $finalPath -Recurse -Force
             
-            # 创建压缩包
+            # 创建压缩包 - 修正：在当前工作目录创建
             Set-Location $tempDir
-            7z a "..\$archiveName" $finalDirName -mx=9
             
-            echo "Archive created: $archiveName"
+            # 获取当前 GitHub 工作目录
+            $workspaceDir = "${{ github.workspace }}"
+            $archiveFullPath = Join-Path $workspaceDir $archiveName
+            
+            # 创建 7z 压缩包到工作目录
+            7z a "$archiveFullPath" $finalDirName -mx=9
+            
+            echo "Archive created: $archiveFullPath"
             echo "Source path: $compilerDir"
             echo "Final structure: $finalDirName"
             
             # 验证压缩包内容
-            7z l "..\$archiveName" | Select-Object -First 20
+            7z l "$archiveFullPath" | Select-Object -First 20
+            
+            # 验证文件确实存在
+            if (Test-Path $archiveFullPath) {
+              echo "Archive verified at: $archiveFullPath"
+              $fileInfo = Get-Item $archiveFullPath
+              echo "File size: $($fileInfo.Length) bytes"
+            } else {
+              echo "Error: Archive file not found at $archiveFullPath"
+              exit 1
+            }
             
             # 输出到环境变量供后续步骤使用
             echo "ARCHIVE_NAME=$archiveName" >> $env:GITHUB_ENV
+            echo "ARCHIVE_PATH=$archiveFullPath" >> $env:GITHUB_ENV
             
             # 清理临时目录
-            Set-Location "D:\a\QtBuild"
+            Set-Location "${{ github.workspace }}"
             Remove-Item $tempDir -Recurse -Force
           } else {
             echo "Error: Source path does not exist: $sourcePath"
@@ -351,6 +368,7 @@ jobs:
         with:
           name: qt${{ env.QT_VERSION }}-windows-x86_64-mingw_gcc${{ env.GCC_VERSION }}_${{ env.RUNTIME }}-${{ matrix.link_type }}_${{ matrix.build_type == 'release' && 'release' || matrix.build_type == 'debug' && 'debug' || 'relwithdebinfo' }}
           path: ${{ env.ARCHIVE_NAME }}
+          if-no-files-found: error  # 改为 error 以便更容易发现问题
 
   release:
     needs: build
