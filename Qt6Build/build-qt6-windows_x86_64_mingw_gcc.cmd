@@ -2,7 +2,7 @@
 @chcp 65001
 @cd /d %~dp0
 
-REM 参数依次为: Qt版本, GCC版本, BUILD_TYPE, LINK_TYPE, SEPARATE_DEBUG, RUNTIME, WITH_DEBUG_INFO
+REM 参数依次为: Qt版本, GCC版本, BUILD_TYPE, LINK_TYPE, SEPARATE_DEBUG, RUNTIME, WITH_DEBUG_INFO, TEST_MODE
 set QT_VERSION=%1
 set GCC_VERSION=%2
 set BUILD_TYPE=%3
@@ -10,8 +10,9 @@ set LINK_TYPE=%4
 set SEPARATE_DEBUG=%5
 set RUNTIME=%6
 set WITH_DEBUG_INFO=%7
+set TEST_MODE=%8
 
-REM 例如: 6.9.1  15.1.0  release  static  false  ucrt  true
+REM 例如: 6.9.1  15.1.0  release  static  false  ucrt  true  false
 
 set QT_VERSION2=%QT_VERSION:~0,3%
 
@@ -50,6 +51,7 @@ echo Build Type: %BUILD_TYPE%
 echo Link Type: %LINK_TYPE%
 echo Separate Debug: %SEPARATE_DEBUG%
 echo With Debug Info: %WITH_DEBUG_INFO%
+echo Test Mode: %TEST_MODE%
 echo Source: %SRC_QT%
 echo Final Install Dir: %FINAL_INSTALL_DIR%
 
@@ -61,7 +63,16 @@ mkdir "%TEMP_INSTALL_DIR%"
 cd /d "%SHORT_BUILD_PATH%"
 
 REM 配置参数 - 基本选项
-set "CFG_OPTIONS=-%LINK_TYPE% -prefix %TEMP_INSTALL_DIR% -nomake examples -nomake tests -c++std c++20 -headersclean -skip qtwebengine -opensource -confirm-license -qt-libpng -qt-libjpeg -qt-zlib -qt-pcre -schannel -platform win32-g++ -opengl desktop"
+set "CFG_OPTIONS=-%LINK_TYPE% -prefix %TEMP_INSTALL_DIR% -nomake examples -nomake tests -c++std c++20 -headersclean -opensource -confirm-license -qt-libpng -qt-libjpeg -qt-zlib -qt-pcre -schannel -platform win32-g++ -opengl desktop"
+
+REM 测试模式：只编译 qtbase
+if "%TEST_MODE%"=="true" (
+    echo Test mode enabled: Only building qtbase module
+    set "CFG_OPTIONS=%CFG_OPTIONS% -submodules qtbase"
+) else (
+    REM 正常模式：跳过 qtwebengine
+    set "CFG_OPTIONS=%CFG_OPTIONS% -skip qtwebengine"
+)
 
 REM 将反斜杠路径转换为正斜杠，避免CMake转义问题
 set "PG_INCLUDE_PATH="
@@ -159,7 +170,14 @@ if %errorlevel% neq 0 (
     echo Trying alternative configuration without custom include/lib paths...
     
     REM 重试不带自定义路径的配置
-    set "CFG_OPTIONS_RETRY=-%LINK_TYPE% -prefix %TEMP_INSTALL_DIR% -nomake examples -nomake tests -c++std c++20 -headersclean -skip qtwebengine -opensource -confirm-license -qt-libpng -qt-libjpeg -qt-zlib -qt-pcre -schannel -platform win32-g++ -opengl desktop -sql-sqlite"
+    set "CFG_OPTIONS_RETRY=-%LINK_TYPE% -prefix %TEMP_INSTALL_DIR% -nomake examples -nomake tests -c++std c++20 -headersclean -opensource -confirm-license -qt-libpng -qt-libjpeg -qt-zlib -qt-pcre -schannel -platform win32-g++ -opengl desktop -sql-sqlite"
+    
+    REM 测试模式重试也要保持
+    if "%TEST_MODE%"=="true" (
+        set "CFG_OPTIONS_RETRY=%CFG_OPTIONS_RETRY% -submodules qtbase"
+    ) else (
+        set "CFG_OPTIONS_RETRY=%CFG_OPTIONS_RETRY% -skip qtwebengine"
+    )
     
     if "%BUILD_TYPE%"=="debug" (
         set "CFG_OPTIONS_RETRY=%CFG_OPTIONS_RETRY% -debug"
@@ -190,6 +208,9 @@ if %errorlevel% neq 0 (
 
 REM 构建
 echo Starting build...
+if "%TEST_MODE%"=="true" (
+    echo Building in test mode (qtbase only)...
+)
 cmake --build . --parallel 4
 if %errorlevel% neq 0 (
     echo Build failed with error code: %errorlevel%
@@ -263,6 +284,9 @@ if "%LINK_TYPE%"=="shared" (
 )
 
 echo Build completed successfully!
+if "%TEST_MODE%"=="true" (
+    echo NOTE: Test mode was enabled - only qtbase was built
+)
 echo Installation directory: %FINAL_INSTALL_DIR%
 
 REM 验证安装目录存在
