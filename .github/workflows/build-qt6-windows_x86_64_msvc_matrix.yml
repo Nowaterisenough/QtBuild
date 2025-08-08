@@ -48,6 +48,8 @@ jobs:
           # static 构建跳过 release-sepdbg
           - link_type: static
             build_type: release-sepdbg
+          - link_type: static
+            build_type: debug
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
