@@ -4,21 +4,38 @@ on:
   workflow_dispatch:
     inputs:
       qt_version:
-        description: 'Qt版本'
+        description: 'QT Version'
         required: true
         default: '6.9.1'
       msvc_version:
-        description: 'MSVC版本'
+        description: 'MSVC Version'
         required: true
         default: '2022'
         type: choice
         options:
-        - '2019'
         - '2022'
+        - '2019'
+      test_mode:
+        description: 'Test Mode (only build qtbase)'
+        required: true
+        default: 'false'
+        type: choice
+        options:
+        - 'true'
+        - 'false'
+      create_release:
+        description: 'Create Release'
+        required: true
+        default: 'true'
+        type: choice
+        options:
+        - 'true'
+        - 'false'
 
 env:
   QT_VERSION: ${{ github.event.inputs.qt_version || '6.9.1' }}
   MSVC_VERSION: ${{ github.event.inputs.msvc_version || '2022' }}
+  TEST_MODE: ${{ github.event.inputs.test_mode || 'false' }}
 
 jobs:
   build:
@@ -28,19 +45,20 @@ jobs:
         link_type: [static, shared]
         build_type: [release, debug, release-sepdbg]
         exclude:
+          # static 构建跳过 release-sepdbg
           - link_type: static
-            build_type: debug
+            build_type: release-sepdbg
     steps:
-      - name: 检出代码仓库
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: 设置Python环境
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.13'
           architecture: 'x64'
 
-      - name: 提取Qt主次版本号
+      - name: Extract Qt major.minor version
         id: qt_version
         run: |
           $version = "${{ env.QT_VERSION }}"
@@ -49,15 +67,7 @@ jobs:
           echo "major_minor=$major_minor" >> $env:GITHUB_OUTPUT
         shell: pwsh
 
-      - name: 设置MSBuild
-        uses: microsoft/setup-msbuild@v2
-        with:
-          msbuild-architecture: x64
-
-      - name: 设置MSVC开发环境
-        uses: seanmiddleditch/gha-setup-vsdevenv@master
-
-      - name: 准备目录和源码
+      - name: Prepare directories and source
         run: |
           cd ..
           mkdir Qt
@@ -67,7 +77,7 @@ jobs:
           curl -L -o qt-everywhere-src.zip "https://download.qt.io/official_releases/qt/${{ steps.qt_version.outputs.major_minor }}/${{ env.QT_VERSION }}/single/qt-everywhere-src-${{ env.QT_VERSION }}.zip"
           unzip -q qt-everywhere-src.zip -d "./${{ env.QT_VERSION }}"
 
-      - name: 执行构建脚本
+      - name: Run build script
         shell: cmd
         run: |
           setlocal enableextensions enabledelayedexpansion
@@ -76,24 +86,25 @@ jobs:
           set MSVC_VERSION=${{ env.MSVC_VERSION }}
           set BUILD_TYPE=${{ matrix.build_type }}
           set LINK_TYPE=${{ matrix.link_type }}
+          set TEST_MODE=${{ env.TEST_MODE }}
 
           if "%BUILD_TYPE%"=="release-sepdbg" (
             set BUILD_TYPE=release
             if "%LINK_TYPE%"=="shared" (
+              REM shared 构建使用分离的调试信息
               set SEPARATE_DEBUG=true
             ) else (
-              set SEPARATE_DEBUG=false
+              REM 这个分支不应该执行，因为已经在 exclude 中排除了
+              echo "Error: static release-sepdbg should be excluded"
+              exit /b 1
             )
-          ) else if "%BUILD_TYPE%"=="debug" (
-            set BUILD_TYPE=debug
-            set SEPARATE_DEBUG=false
           ) else (
             set SEPARATE_DEBUG=false
           )
 
-          call D:\a\QtBuild\QtBuild\Qt6Build\build-qt6-windows_x86_64_msvc.cmd !QT_VERSION! !MSVC_VERSION! !BUILD_TYPE! !LINK_TYPE! !SEPARATE_DEBUG!
-
-      - name: 打包二进制文件
+          call D:\a\QtBuild\QtBuild\Qt6Build\build-qt6-windows_x86_64_msvc.cmd !QT_VERSION! !MSVC_VERSION! !BUILD_TYPE! !LINK_TYPE! !SEPARATE_DEBUG! !TEST_MODE!
+      
+      - name: Package binaries
         run: |
           $linkType = "${{ matrix.link_type }}"
           $buildType = "${{ matrix.build_type }}"
@@ -115,26 +126,168 @@ jobs:
             default { $linkType.ToLower() }
           }
           
-          # 三段式命名格式：软件名-平台架构编译器-配置类型
-          $archiveName = "qt${qtVersion}-windows_x86_64_msvc${msvcVersion}-${linkTypeNormalized}_${buildTypeNormalized}.7z"
+          # 命名格式：qt版本-windows-x86_64-msvc版本-链接类型_构建类型
+          $archiveName = "qt${qtVersion}-windows-x86_64-msvc${msvcVersion}-${linkTypeNormalized}_${buildTypeNormalized}.7z"
           $sourcePath = "D:\a\QtBuild\Qt\$qtVersion-$linkType"
           
           # 检查源目录是否存在
           if (Test-Path $sourcePath) {
-            7z a $archiveName $sourcePath -mx=9
-            echo "Archive created: $archiveName"
-            echo "Source path: $sourcePath"
+            # 创建临时目录用于重组目录结构
+            $tempDir = "D:\a\QtBuild\temp_package"
+            $finalDirName = "qt${qtVersion}-windows-x86_64-msvc${msvcVersion}-${linkTypeNormalized}_${buildTypeNormalized}"
+            $finalPath = Join-Path $tempDir $finalDirName
+            
+            # 清理并创建临时目录
+            if (Test-Path $tempDir) {
+              Remove-Item $tempDir -Recurse -Force
+            }
+            New-Item -ItemType Directory -Path $finalPath -Force | Out-Null
+            
+            # 获取编译器目录（msvc2022_64格式）
+            $compilerDirs = Get-ChildItem -Path $sourcePath -Directory | Where-Object { $_.Name -like "msvc*" }
+            if ($compilerDirs.Count -eq 0) {
+              Write-Host "Error: No msvc compiler directory found in $sourcePath"
+              Get-ChildItem -Path $sourcePath
+              exit 1
+            }
+            
+            $compilerDir = $compilerDirs[0].FullName
+            Write-Host "Found compiler directory: ${compilerDir}"
+            
+            # 复制Qt安装内容
+            Copy-Item -Path "$compilerDir\*" -Destination $finalPath -Recurse -Force
+            
+            # 创建压缩包
+            Set-Location $tempDir
+            $workspaceDir = "${{ github.workspace }}"
+            $archiveFullPath = Join-Path $workspaceDir $archiveName
+            
+            7z a "$archiveFullPath" $finalDirName -mx=9
+            
+            echo "Archive created: $archiveFullPath"
+            
+            # 验证压缩包
+            if (Test-Path $archiveFullPath) {
+              echo "Archive verified at: $archiveFullPath"
+              $fileInfo = Get-Item $archiveFullPath
+              echo "File size: $($fileInfo.Length) bytes"
+            } else {
+              echo "Error: Archive file not found at $archiveFullPath"
+              exit 1
+            }
             
             # 输出到环境变量供后续步骤使用
             echo "ARCHIVE_NAME=$archiveName" >> $env:GITHUB_ENV
+            echo "ARCHIVE_PATH=$archiveFullPath" >> $env:GITHUB_ENV
+            
+            # 清理临时目录
+            Set-Location "${{ github.workspace }}"
+            Remove-Item $tempDir -Recurse -Force
           } else {
             echo "Error: Source path does not exist: $sourcePath"
             exit 1
           }
         shell: pwsh
-
-      - name: 上传构建产物
-        uses: actions/upload-artifact@v4
+        
+      - uses: actions/upload-artifact@v4
         with:
-          name: qt${{ env.QT_VERSION }}-windows_x86_64_msvc${{ env.MSVC_VERSION }}-${{ matrix.link_type }}_${{ matrix.build_type == 'release' && 'release' || matrix.build_type == 'debug' && 'debug' || 'relwithdebinfo' }}
+          name: qt${{ env.QT_VERSION }}-windows-x86_64-msvc${{ env.MSVC_VERSION }}-${{ matrix.link_type }}_${{ matrix.build_type == 'release' && 'release' || matrix.build_type == 'debug' && 'debug' || 'relwithdebinfo' }}
           path: ${{ env.ARCHIVE_NAME }}
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.create_release == 'true' }}
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: List downloaded artifacts
+        run: |
+          echo "Listing artifacts directory structure:"
+          find artifacts -type f -name "*.7z" -ls
+
+      - name: Move artifacts to root level
+        run: |
+          echo "Moving .7z files to artifacts root..."
+          find artifacts -type f -name "*.7z" -exec mv {} artifacts/ \;
+          echo "Files in artifacts directory after move:"
+          ls -la artifacts/*.7z
+
+      - name: Generate release tag
+        id: release_tag
+        run: |
+          TAG_NAME="qt${{ env.QT_VERSION }}-windows-msvc${{ env.MSVC_VERSION }}-$(date +'%Y%m%d%H%M%S')"
+          echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
+          echo "Tag name: $TAG_NAME"
+
+      - name: Generate release notes
+        id: release_notes
+        run: |
+          cat << EOF > release_notes.md
+          # Qt ${{ env.QT_VERSION }} Windows MSVC Build
+          
+          ## Build Information
+          - **Qt Version**: ${{ env.QT_VERSION }}
+          - **Compiler**: MSVC ${{ env.MSVC_VERSION }}
+          - **Build Date**: $(date +'%Y-%m-%d %H:%M:%S UTC')
+          - **Build Runner**: GitHub Actions (windows-latest)
+          
+          ## Included Features
+          - **Database Driver**: SQLite
+          - **SSL**: Schannel (native Windows SSL)
+          - **OpenGL**: Desktop
+          - **C++ Standard**: C++20
+          
+          ## Included Configurations
+          This release includes the following build configurations:
+          
+          ### Static Builds
+          - \`static_release\`: Static linking, Release mode
+          - \`static_debug\`: Static linking, Debug mode
+          
+          ### Shared Builds
+          - \`shared_release\`: Dynamic linking, Release mode
+          - \`shared_debug\`: Dynamic linking, Debug mode
+          - \`shared_relwithdebinfo\`: Dynamic linking, Release mode with separate debug info
+          
+          ## File Naming Convention
+          Files follow the pattern: \`qt{version}-windows-x86_64-msvc{msvc_version}-{link_type}_{build_type}.7z\`
+          
+          Where:
+          - \`{version}\`: Qt version (e.g., 6.9.1)
+          - \`{msvc_version}\`: MSVC version (e.g., 2022)
+          - \`{link_type}\`: static or shared
+          - \`{build_type}\`: release, debug, or relwithdebinfo
+          
+          ## Installation
+          1. Download the appropriate .7z file for your needs
+          2. Extract using 7-Zip or compatible software
+          3. The Qt installation will be in the extracted folder with bin, lib, qml, etc. directories
+          
+          ## Notes
+          - Static builds include release and debug configurations
+          - Shared builds include separate debug symbols for release with debug info version
+          - All builds skip QtWebEngine and examples/tests
+          - Built with C++20 standard
+          EOF
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release_tag.outputs.tag_name }}
+          name: Qt ${{ env.QT_VERSION }} - MSVC ${{ env.MSVC_VERSION }}
+          body_path: release_notes.md
+          draft: false
+          prerelease: false
+          files: artifacts/*.7z
+          fail_on_unmatched_files: true
+          generate_release_notes: false
+
+      - name: Clean up artifacts
+        uses: geekyeggo/delete-artifact@v5
+        with:
+          name: qt${{ env.QT_VERSION }}-windows-x86_64-msvc${{ env.MSVC_VERSION }}-*
