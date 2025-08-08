@@ -279,6 +279,7 @@ jobs:
           )
 
           call D:\a\QtBuild\QtBuild\Qt6Build\build-qt6-windows_x86_64_mingw_gcc.cmd !QT_VERSION! !GCC_VERSION! !BUILD_TYPE! !LINK_TYPE! !SEPARATE_DEBUG! !RUNTIME! "" !TEST_MODE!
+      
       - name: Package binaries
         run: |
           $linkType = "${{ matrix.link_type }}"
@@ -328,11 +329,11 @@ jobs:
             }
             
             $compilerDir = $compilerDirs[0].FullName
-            Write-Host "Found compiler directory: $compilerDir"
+            Write-Host "Found compiler directory: ${compilerDir}"
             
             # 检查是否 Qt 文件直接在编译器目录下
             if (Test-Path "$compilerDir\bin\qmake.exe") {
-              Write-Host "Qt installation found directly in: $compilerDir"
+              Write-Host "Qt installation found directly in: ${compilerDir}"
               # 直接复制编译器目录的内容
               Copy-Item -Path "$compilerDir\*" -Destination $finalPath -Recurse -Force
             } else {
@@ -347,7 +348,7 @@ jobs:
                 Copy-Item -Path "$($qtRoot.FullName)\*" -Destination $finalPath -Recurse -Force
               } else {
                 # 最后的尝试：列出编译器目录的内容以调试
-                Write-Host "Directory structure of $compilerDir:"
+                Write-Host "Directory structure of ${compilerDir}:"
                 Get-ChildItem -Path $compilerDir -Recurse -Depth 2 | Select-Object FullName
                 Write-Host "Error: Qt installation not found"
                 exit 1
@@ -365,7 +366,7 @@ jobs:
             7z a "$archiveFullPath" $finalDirName -mx=9
             
             echo "Archive created: $archiveFullPath"
-            echo "Source path: $compilerDir"
+            echo "Source path: ${compilerDir}"
             echo "Final structure: $finalDirName"
             
             # 验证压缩包内容
@@ -393,6 +394,7 @@ jobs:
             exit 1
           }
         shell: pwsh
+        
       - uses: actions/upload-artifact@v4
         with:
           name: qt${{ env.QT_VERSION }}-windows-x86_64-mingw_gcc${{ env.GCC_VERSION }}_${{ env.RUNTIME }}-${{ matrix.link_type }}_${{ matrix.build_type == 'release' && 'release' || matrix.build_type == 'debug' && 'debug' || 'relwithdebinfo' }}
