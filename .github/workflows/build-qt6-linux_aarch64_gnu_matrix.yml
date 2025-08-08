@@ -93,18 +93,81 @@ jobs:
           Write-Host "Downloading from: $downloadUrl"
           curl -L -o toolchain.zip $downloadUrl
           
-          Write-Host "Extracting ARM GNU toolchain..."
-          7z x toolchain.zip
+          # 创建临时解压目录
+          $tempExtractDir = "temp_toolchain_extract"
+          if (Test-Path $tempExtractDir) {
+            Remove-Item $tempExtractDir -Recurse -Force
+          }
+          New-Item -ItemType Directory -Path $tempExtractDir -Force | Out-Null
           
-          # 查找并重命名解压后的目录
-          $extractedDir = Get-ChildItem -Directory -Filter "arm-gnu-toolchain-*" | Select-Object -First 1
-          if ($extractedDir) {
-            Rename-Item $extractedDir.Name "arm-gnu-toolchain"
+          Write-Host "Extracting ARM GNU toolchain to temporary directory..."
+          7z x toolchain.zip -o"$tempExtractDir"
+          
+          # 列出解压后的内容以便调试
+          Write-Host "Contents of extracted directory:"
+          Get-ChildItem -Path $tempExtractDir | ForEach-Object {
+            Write-Host "  - $($_.Name) [$(if($_.PSIsContainer){'Directory'}else{'File'})]"
+          }
+          
+          # 查找工具链目录（可能有不同的命名模式）
+          $toolchainDir = $null
+          
+          # 首先查找以 arm-gnu-toolchain 开头的目录
+          $toolchainDir = Get-ChildItem -Path $tempExtractDir -Directory -Filter "arm-gnu-toolchain-*" | Select-Object -First 1
+          
+          # 如果没找到，查找包含 aarch64 的目录
+          if (-not $toolchainDir) {
+            $toolchainDir = Get-ChildItem -Path $tempExtractDir -Directory | Where-Object { $_.Name -like "*aarch64*" } | Select-Object -First 1
+          }
+          
+          # 如果还是没找到，检查是否直接解压到了临时目录
+          if (-not $toolchainDir) {
+            # 检查临时目录中是否有 bin 目录（工具链的典型结构）
+            if (Test-Path "$tempExtractDir\bin") {
+              Write-Host "Toolchain appears to be extracted directly to temp directory"
+              # 直接使用临时目录作为源
+              Move-Item $tempExtractDir "arm-gnu-toolchain"
+              Write-Host "Toolchain moved to: arm-gnu-toolchain"
+            } else {
+              # 如果只有一个子目录，使用它
+              $subDirs = Get-ChildItem -Path $tempExtractDir -Directory
+              if ($subDirs.Count -eq 1) {
+                $toolchainDir = $subDirs[0]
+                Write-Host "Found single directory: $($toolchainDir.Name)"
+              } else {
+                Write-Host "Error: Unable to identify toolchain directory structure"
+                Write-Host "Found directories:"
+                $subDirs | ForEach-Object { Write-Host "  - $($_.Name)" }
+                exit 1
+              }
+            }
+          }
+          
+          # 如果找到了工具链目录，移动它
+          if ($toolchainDir) {
+            Write-Host "Moving $($toolchainDir.FullName) to arm-gnu-toolchain"
+            Move-Item $toolchainDir.FullName "arm-gnu-toolchain"
             Write-Host "Toolchain extracted to: arm-gnu-toolchain"
+            # 清理临时目录
+            if (Test-Path $tempExtractDir) {
+              Remove-Item $tempExtractDir -Recurse -Force
+            }
+          }
+          
+          # 验证最终的工具链目录
+          if (Test-Path "arm-gnu-toolchain\bin") {
+            Write-Host "Toolchain setup completed successfully"
+            Write-Host "Toolchain bin directory contents:"
+            Get-ChildItem "arm-gnu-toolchain\bin" -Filter "*.exe" | Select-Object -First 5 | ForEach-Object {
+              Write-Host "  - $($_.Name)"
+            }
           } else {
-            Write-Host "Error: Toolchain directory not found after extraction"
+            Write-Host "Error: Toolchain bin directory not found"
             exit 1
           }
+          
+          # 清理下载的zip文件
+          Remove-Item toolchain.zip -ErrorAction SilentlyContinue
         shell: pwsh
 
       - name: Setup build tools
