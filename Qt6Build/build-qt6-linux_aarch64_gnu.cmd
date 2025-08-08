@@ -15,14 +15,14 @@ if "%TEST_MODE%"=="" set TEST_MODE=false
 
 set GNU_VERSION=aarch64_none_linux_gnu_%GCC_VERSION%
 
-REM 设置工具链路径 - 修复：使用正确的父目录
-set TOOLCHAIN_ROOT=D:\a\arm-gnu-toolchain
+REM 设置工具链路径 - 使用 D:\a\QtBuild 作为基础路径
+set TOOLCHAIN_ROOT=D:\a\QtBuild\arm-gnu-toolchain
 set TOOLCHAIN_BIN=%TOOLCHAIN_ROOT%\bin
 set TOOLCHAIN_TARGET_DIR=%TOOLCHAIN_ROOT%\aarch64-none-linux-gnu
 set TOOLCHAIN_SYSROOT=%TOOLCHAIN_TARGET_DIR%\libc
 
 REM 设置PATH
-set "PATH=%TOOLCHAIN_BIN%;D:\a\ninja;D:\a\protoc\bin;%PATH%"
+set "PATH=%TOOLCHAIN_BIN%;D:\a\QtBuild\ninja;D:\a\QtBuild\protoc\bin;%PATH%"
 set QT_PATH=D:\a\QtBuild\Qt
 
 REM 使用短路径避免 Windows 路径长度限制
@@ -54,26 +54,19 @@ echo Final Install Dir: %FINAL_INSTALL_DIR%
 echo Toolchain Root: %TOOLCHAIN_ROOT%
 echo =====================================
 
-REM 先检查工具链根目录
+REM 验证工具链目录
 if not exist "%TOOLCHAIN_ROOT%" (
     echo Error: Toolchain root directory not found at %TOOLCHAIN_ROOT%
-    echo Checking parent directory...
-    if exist "D:\a\arm-gnu-toolchain" (
-        set TOOLCHAIN_ROOT=D:\a\arm-gnu-toolchain
-        set TOOLCHAIN_BIN=!TOOLCHAIN_ROOT!\bin
-        set TOOLCHAIN_TARGET_DIR=!TOOLCHAIN_ROOT!\aarch64-none-linux-gnu
-        echo Found toolchain at D:\a\arm-gnu-toolchain
-    ) else (
-        echo Error: No toolchain found
-        exit /b 1
-    )
+    echo Checking current directory structure...
+    dir D:\a\QtBuild\
+    exit /b 1
 )
 
 REM 列出工具链bin目录内容（用于调试）
 echo Checking toolchain bin directory: %TOOLCHAIN_BIN%
 if exist "%TOOLCHAIN_BIN%" (
     echo Toolchain bin directory exists
-    dir "%TOOLCHAIN_BIN%\aarch64-none-linux-gnu-*.exe" 2>nul | findstr /i "gcc g++"
+    dir "%TOOLCHAIN_BIN%\*.exe" | findstr /i "gcc g++ ar strip"
 ) else (
     echo Error: Toolchain bin directory not found at %TOOLCHAIN_BIN%
     exit /b 1
@@ -86,34 +79,12 @@ set GPP_FULL_PATH=%TOOLCHAIN_BIN%\%TOOLCHAIN_PREFIX%-g++.exe
 
 if not exist "%GCC_FULL_PATH%" (
     echo Error: ARM GNU toolchain GCC not found at %GCC_FULL_PATH%
-    echo Looking for alternative GCC names...
-    
-    REM 尝试查找其他可能的gcc名称
-    for %%f in ("%TOOLCHAIN_BIN%\*gcc.exe") do (
-        echo Found: %%f
-        set GCC_FULL_PATH=%%f
-    )
-    
-    if not exist "!GCC_FULL_PATH!" (
-        echo Error: Could not find any GCC executable
-        exit /b 1
-    )
+    exit /b 1
 )
 
 if not exist "%GPP_FULL_PATH%" (
     echo Error: ARM GNU toolchain G++ not found at %GPP_FULL_PATH%
-    echo Looking for alternative G++ names...
-    
-    REM 尝试查找其他可能的g++名称
-    for %%f in ("%TOOLCHAIN_BIN%\*g++.exe") do (
-        echo Found: %%f
-        set GPP_FULL_PATH=%%f
-    )
-    
-    if not exist "!GPP_FULL_PATH!" (
-        echo Error: Could not find any G++ executable
-        exit /b 1
-    )
+    exit /b 1
 )
 
 REM 检查sysroot位置
@@ -125,8 +96,8 @@ if exist "%TOOLCHAIN_TARGET_DIR%\libc" (
 ) else if exist "%TOOLCHAIN_TARGET_DIR%" (
     set TOOLCHAIN_SYSROOT=%TOOLCHAIN_TARGET_DIR%
 ) else (
-    echo Warning: No valid sysroot found, using toolchain root
-    set TOOLCHAIN_SYSROOT=%TOOLCHAIN_ROOT%
+    echo Error: No valid sysroot found
+    exit /b 1
 )
 
 echo Using sysroot: %TOOLCHAIN_SYSROOT%

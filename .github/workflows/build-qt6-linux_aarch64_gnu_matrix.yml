@@ -78,7 +78,10 @@ jobs:
 
       - name: Setup ARM GNU Toolchain
         run: |
-          cd ..
+          # 在 D:\a\QtBuild 目录下操作（而不是上一级）
+          cd D:\a\QtBuild
+          Write-Host "Current directory: $(Get-Location)"
+          
           Write-Host "Downloading ARM GNU Toolchain ${{ env.GCC_VERSION }}..."
           
           # 根据版本选择下载URL
@@ -155,14 +158,17 @@ jobs:
           }
           
           # 验证最终的工具链目录
-          if (Test-Path "arm-gnu-toolchain\bin") {
-            Write-Host "Toolchain setup completed successfully"
+          $finalToolchainPath = "D:\a\QtBuild\arm-gnu-toolchain"
+          if (Test-Path "$finalToolchainPath\bin") {
+            Write-Host "Toolchain setup completed successfully at: $finalToolchainPath"
             Write-Host "Toolchain bin directory contents:"
-            Get-ChildItem "arm-gnu-toolchain\bin" -Filter "*.exe" | Select-Object -First 5 | ForEach-Object {
+            Get-ChildItem "$finalToolchainPath\bin" -Filter "*.exe" | Select-Object -First 5 | ForEach-Object {
               Write-Host "  - $($_.Name)"
             }
           } else {
-            Write-Host "Error: Toolchain bin directory not found"
+            Write-Host "Error: Toolchain bin directory not found at $finalToolchainPath\bin"
+            Write-Host "Current directory contents:"
+            Get-ChildItem | ForEach-Object { Write-Host "  - $($_.Name)" }
             exit 1
           }
           
@@ -172,7 +178,8 @@ jobs:
 
       - name: Setup build tools
         run: |
-          cd ..
+          # 在 D:\a\QtBuild 目录下操作
+          cd D:\a\QtBuild
           
           # Setup Ninja
           Write-Host "Setting up Ninja..."
@@ -188,7 +195,9 @@ jobs:
 
       - name: Download Host Qt
         run: |
-          cd ..
+          # 在 D:\a\QtBuild 目录下操作
+          cd D:\a\QtBuild
+          Write-Host "Current directory: $(Get-Location)"
           Write-Host "Downloading Host Qt..."
           New-Item -ItemType Directory -Force -Path "Qt/${{ env.QT_VERSION }}-host"
           cd "Qt/${{ env.QT_VERSION }}-host"
@@ -210,7 +219,7 @@ jobs:
 
       - name: Prepare directories and source
         run: |
-          cd ..
+          cd D:\a\QtBuild
           mkdir Qt -ErrorAction SilentlyContinue
           cd Qt
           mkdir "${{ env.QT_VERSION }}" -ErrorAction SilentlyContinue
@@ -220,7 +229,6 @@ jobs:
           curl -L -o qt-everywhere-src.zip "https://download.qt.io/official_releases/qt/${{ steps.qt_version.outputs.major_minor }}/${{ env.QT_VERSION }}/single/qt-everywhere-src-${{ env.QT_VERSION }}.zip"
           7z x qt-everywhere-src.zip -o"${{ env.QT_VERSION }}"
         shell: pwsh
-
       - name: Run cross-compile build
         shell: cmd
         run: |
