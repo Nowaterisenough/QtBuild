@@ -20,8 +20,6 @@ REM 移除参数中的引号，避免路径问题
 set BIN_PATH=%BIN_PATH:"=%
 set VERSION_CODE=%VERSION_CODE:"=%
 
-REM 例如: 6.9.1  20.1  release  static  false  ucrt  "D:\a\QtBuild\llvm-mingw-20250528-ucrt-x86_64\bin"  "llvm-mingw20.1.6_64_UCRT"  false
-
 REM 处理可能为空的参数，设置默认值
 if "%TEST_MODE%"=="" set TEST_MODE=false
 
@@ -69,10 +67,56 @@ clang --version
 clang++ --version
 echo.
 
-REM 跳过Windows SDK检测，直接使用LLVM工具链
-echo Using LLVM-MinGW toolchain (self-contained)...
-echo Skipping Windows SDK detection - LLVM-MinGW includes all necessary tools.
+REM 检测Windows SDK - LLVM-RC需要Windows头文件
+echo Detecting Windows SDK for llvm-rc...
+set "WINDOWS_SDK_ROOT="
+set "WINDOWS_SDK_VERSION="
 
+REM 尝试常见的Windows SDK安装路径
+if exist "C:\Program Files (x86)\Windows Kits\10\Include" (
+    set "WINDOWS_SDK_ROOT=C:\Program Files (x86)\Windows Kits\10"
+    call :FindSDKVersion
+) else if exist "C:\Program Files\Windows Kits\10\Include" (
+    set "WINDOWS_SDK_ROOT=C:\Program Files\Windows Kits\10"
+    call :FindSDKVersion
+)
+
+REM 如果找到了Windows SDK，配置环境
+if defined WINDOWS_SDK_VERSION (
+    echo Found Windows SDK: %WINDOWS_SDK_VERSION% at %WINDOWS_SDK_ROOT%
+    call :ConfigureSDK
+) else (
+    echo ERROR: Windows SDK not found. LLVM-RC requires Windows SDK headers.
+    echo Please ensure Windows SDK 10 is installed.
+    exit /b 1
+)
+
+goto :ContinueBuild
+
+:FindSDKVersion
+REM 查找最新的SDK版本
+for /f "delims=" %%i in ('dir "%WINDOWS_SDK_ROOT%\Include" /b /ad /o-n 2^>nul') do (
+    if "%%i" geq "10.0" (
+        set "WINDOWS_SDK_VERSION=%%i"
+        goto :eof
+    )
+)
+goto :eof
+
+:ConfigureSDK
+set "WINDOWS_SDK_INCLUDE=%WINDOWS_SDK_ROOT%\Include\%WINDOWS_SDK_VERSION%"
+set "WINDOWS_SDK_LIB=%WINDOWS_SDK_ROOT%\Lib\%WINDOWS_SDK_VERSION%"
+
+REM 设置 Windows SDK 环境变量 - 重要：为llvm-rc设置包含路径
+set "INCLUDE=%WINDOWS_SDK_INCLUDE%\um;%WINDOWS_SDK_INCLUDE%\shared;%WINDOWS_SDK_INCLUDE%\winrt;%WINDOWS_SDK_INCLUDE%\ucrt"
+set "LIB=%WINDOWS_SDK_LIB%\um\x64;%WINDOWS_SDK_LIB%\ucrt\x64"
+set "LIBPATH=%WINDOWS_SDK_LIB%\um\x64;%WINDOWS_SDK_LIB%\ucrt\x64"
+
+echo Windows SDK configured successfully.
+echo INCLUDE=%INCLUDE%
+goto :eof
+
+:ContinueBuild
 REM 显式设置编译器环境变量
 set CC=clang
 set CXX=clang++
@@ -86,7 +130,6 @@ echo CXX=%CXX%
 echo AR=%AR%
 echo RANLIB=%RANLIB%
 echo RC=%RC%
-echo Cleaned PATH=%PATH%
 
 REM 清理并创建build目录
 rmdir /s /q "%BUILD_DIR%" 2>nul
@@ -145,16 +188,11 @@ call "%SRC_QT%\configure.bat" %CFG_OPTIONS%
 if %errorlevel% neq 0 (
     echo Configure failed with error code: %errorlevel%
     echo.
-    echo Troubleshooting suggestions:
-    echo 1. Verify LLVM-Clang installation
-    echo 2. Check environment variables
-    echo 3. Ensure all required tools are in PATH
-    echo.
     echo Current environment:
     echo CC=%CC%
     echo CXX=%CXX%
     echo RC=%RC%
-    echo PATH=%PATH%
+    echo INCLUDE=%INCLUDE%
     exit /b %errorlevel%
 )
 
@@ -167,10 +205,14 @@ echo Note: Using conservative parallel build settings for stability...
 
 REM 在构建前再次确认环境
 echo Current working directory: %CD%
-echo Ninja available:
-where ninja
-echo CMake available:
-where cmake
+echo Windows SDK Include Path: %INCLUDE%
+echo Checking if windows.h is accessible:
+echo. | clang -E -xc - -include windows.h >nul 2>&1
+if %errorlevel%==0 (
+    echo windows.h is accessible to clang
+) else (
+    echo WARNING: windows.h may not be accessible to clang
+)
 
 REM 开始构建
 cmake --build . --parallel 2
@@ -182,17 +224,18 @@ if %errorlevel% neq 0 (
     if %errorlevel% neq 0 (
         echo Single-threaded build also failed with error code: %errorlevel%
         echo.
-        echo Additional troubleshooting:
-        echo 1. Check if all LLVM tools are available
-        echo 2. Verify resource compiler setup
-        echo 3. Check CMake cache and regenerate if needed
-        echo.
+        echo Troubleshooting information:
+        echo INCLUDE environment: %INCLUDE%
+        echo LIB environment: %LIB%
         echo Available tools:
         where clang 2>nul
-        where clang++ 2>nul
         where llvm-rc 2>nul
-        where ninja 2>nul
-        where cmake 2>nul
+        echo.
+        echo Testing windows.h availability:
+        echo #include ^<windows.h^> > test.c
+        echo int main(){return 0;} >> test.c
+        clang -c test.c -o test.obj 2>&1
+        del test.c test.obj 2>nul
         exit /b %errorlevel%
     )
 )
@@ -267,7 +310,7 @@ echo Build Type: %LINK_TYPE% %BUILD_TYPE%
 echo Test Mode: %TEST_MODE%
 echo Build Date: %DATE% %TIME%
 echo Install Path: %FINAL_INSTALL_DIR%
-echo Toolchain: LLVM-MinGW ^(self-contained^)
+echo Toolchain: LLVM-MinGW with Windows SDK %WINDOWS_SDK_VERSION%
 echo Resource Compiler: %RC%
 echo.
 if "%SEPARATE_DEBUG%"=="true" (
