@@ -5,7 +5,7 @@
 REM 启用扩展命令，禁用延迟扩展（避免路径中 '!' 问题）
 setlocal enableextensions disabledelayedexpansion
 
-REM 参数依次为: Qt版本, Clang版本, BUILD_TYPE, LINK_TYPE, SEPARATE_DEBUG, RUNTIME, BIN_PATH, VERSION_CODE, TEST_MODE
+REM 参数: Qt版本, Clang版本, BUILD_TYPE, LINK_TYPE, SEPARATE_DEBUG, RUNTIME, BIN_PATH, VERSION_CODE, TEST_MODE
 set "QT_VERSION=%~1"
 set "CLANG_VERSION=%~2"
 set "BUILD_TYPE=%~3"
@@ -64,8 +64,23 @@ set "INCLUDE=%WINDOWS_SDK_INCLUDE%\um;%WINDOWS_SDK_INCLUDE%\shared;%WINDOWS_SDK_
 set "LIB=%WINDOWS_SDK_LIB%\um\x64;%WINDOWS_SDK_LIB%\ucrt\x64"
 set "LIBPATH=%WINDOWS_SDK_LIB%\um\x64;%WINDOWS_SDK_LIB%\ucrt\x64"
 
-REM 为 llvm-rc 显式准备 -I 标志（注意：不要在括号块里拼装）
-set "RC_INCLUDE_FLAGS=-I\"%WINDOWS_SDK_INCLUDE%\um\" -I\"%WINDOWS_SDK_INCLUDE%\shared\" -I\"%WINDOWS_SDK_INCLUDE%\ucrt\" -I\"%WINDOWS_SDK_INCLUDE%\winrt\""
+REM 生成无空格的 8.3 短路径，便于放进 -I 参数且不需要再嵌套引号
+set "SDK_UM_DIR=%WINDOWS_SDK_INCLUDE%\um"
+set "SDK_SHARED_DIR=%WINDOWS_SDK_INCLUDE%\shared"
+set "SDK_UCRT_DIR=%WINDOWS_SDK_INCLUDE%\ucrt"
+set "SDK_WINRT_DIR=%WINDOWS_SDK_INCLUDE%\winrt"
+
+for %%I in ("%SDK_UM_DIR%") do set "SDK_UM_SHORT=%%~sI"
+for %%I in ("%SDK_SHARED_DIR%") do set "SDK_SHARED_SHORT=%%~sI"
+for %%I in ("%SDK_UCRT_DIR%") do set "SDK_UCRT_SHORT=%%~sI"
+for %%I in ("%SDK_WINRT_DIR%") do set "SDK_WINRT_SHORT=%%~sI"
+
+REM 如果短路径意外仍含空格（极少见），则回退到长路径并在最终 -D 参数中整体加引号保护
+set "RC_INCLUDE_FLAGS=-I%SDK_UM_SHORT% -I%SDK_SHARED_SHORT% -I%SDK_UCRT_SHORT% -I%SDK_WINRT_SHORT%"
+
+REM llvm-rc 本身也用短路径，进一步降低空格风险
+set "RC=%BIN_PATH%\llvm-rc.exe"
+for %%I in ("%RC%") do set "RC_SHORT=%%~sI"
 
 echo Windows SDK configured successfully.
 echo INCLUDE=%INCLUDE%
@@ -78,7 +93,7 @@ set "CC=clang"
 set "CXX=clang++"
 set "AR=llvm-ar"
 set "RANLIB=llvm-ranlib"
-set "RC=%BIN_PATH%\llvm-rc.exe"
+set "RC=%RC_SHORT%"
 
 echo Using LLVM tools:
 echo CC=%CC%
@@ -95,7 +110,7 @@ mkdir "%SHORT_BUILD_PATH%" 2>nul
 mkdir "%TEMP_INSTALL_DIR%" 2>nul
 cd /d "%SHORT_BUILD_PATH%"
 
-REM 配置参数（尽量避免在括号块里追加含括号路径的值）
+REM 配置参数
 set "CFG_OPTIONS=-%LINK_TYPE% -prefix \"%TEMP_INSTALL_DIR%\" -platform win32-clang-g++ -nomake examples -nomake tests -c++std c++20 -opensource -confirm-license -qt-libpng -qt-libjpeg -qt-zlib -qt-pcre -qt-freetype -schannel -opengl desktop"
 
 if /i "%TEST_MODE%"=="true" (
@@ -129,8 +144,9 @@ if "%CLANG_VERSION%"=="17.0" (
 
 set "CFG_OPTIONS=%CFG_OPTIONS% -silent"
 
-REM 额外传给 CMake 的 RC 设置，放在 -- 之后（避免在 if 块中追加）
-set "CMAKE_EXTRA=-- -DCMAKE_RC_COMPILER:FILEPATH=\"%RC%\" -DCMAKE_RC_FLAGS:STRING=%RC_INCLUDE_FLAGS%"
+REM 额外传给 CMake 的 RC 设置：
+REM 把整条 -DCMAKE_RC_FLAGS:STRING=... 作为一个带引号的单一参数传入（内部使用无空格短路径，避免再嵌套引号）
+set "CMAKE_EXTRA=-- -DCMAKE_RC_COMPILER:FILEPATH=\"%RC%\" \"-DCMAKE_RC_FLAGS:STRING=%RC_INCLUDE_FLAGS%\""
 
 echo Configure options:
 echo   %CFG_OPTIONS%
@@ -246,7 +262,7 @@ REM 去除尾部反斜杠并验证
 if defined SDK_ROOT if "%SDK_ROOT:~-1%"=="\" set "SDK_ROOT=%SDK_ROOT:~0,-1%"
 if defined SDK_ROOT if not exist "%SDK_ROOT%\Include" set "SDK_ROOT="
 
-REM 2) 常见路径（避免 for in 集合里写含括号路径）
+REM 2) 常见路径（避免在 for in 集合里写含括号路径）
 if not defined SDK_ROOT if exist "%ProgramFiles(x86)%\Windows Kits\10\Include" set "SDK_ROOT=%ProgramFiles(x86)%\Windows Kits\10"
 if not defined SDK_ROOT if exist "%ProgramFiles%\Windows Kits\10\Include" set "SDK_ROOT=%ProgramFiles%\Windows Kits\10"
 
