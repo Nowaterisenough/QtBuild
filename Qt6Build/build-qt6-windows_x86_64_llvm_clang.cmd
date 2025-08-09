@@ -48,47 +48,35 @@ clang --version
 clang++ --version
 echo.
 
-REM ========== 纯 CMD 版 Windows SDK 检测（仅匹配 Include\10.*） ==========
-echo Detecting Windows SDK for llvm-rc...
-call :FindWindowsSDK
-if errorlevel 1 (
-    echo ERROR: Windows SDK not found. LLVM-RC requires Windows SDK headers.
-    echo Please ensure Windows SDK 10 is installed.
-    exit /b 1
-)
-echo Found Windows SDK: %WINDOWS_SDK_VERSION% at %WINDOWS_SDK_ROOT%
+REM ========== 仅为 llvm-rc 配置 MinGW 头文件搜索路径（不要把 SDK 加到 C/C++） ==========
+REM 推导 llvm-mingw 根目录
+for %%I in ("%BIN_PATH%\..") do set "MINGW_ROOT=%%~fI"
 
-set "WINDOWS_SDK_INCLUDE=%WINDOWS_SDK_ROOT%\Include\%WINDOWS_SDK_VERSION%"
-set "WINDOWS_SDK_LIB=%WINDOWS_SDK_ROOT%\Lib\%WINDOWS_SDK_VERSION%"
+REM MinGW-w64 头文件目录
+set "MINGW_INC1=%MINGW_ROOT%\include"
+set "MINGW_INC2=%MINGW_ROOT%\x86_64-w64-windows-gnu\include"
 
-REM 仅为 llvm-rc 准备 -I（不设置全局 INCLUDE/LIB/LIBPATH，避免影响 C/C++ 编译）
-set "SDK_UM_DIR=%WINDOWS_SDK_INCLUDE%\um"
-set "SDK_SHARED_DIR=%WINDOWS_SDK_INCLUDE%\shared"
-set "SDK_UCRT_DIR=%WINDOWS_SDK_INCLUDE%\ucrt"
-set "SDK_WINRT_DIR=%WINDOWS_SDK_INCLUDE%\winrt"
+REM 转为 8.3 短路径，避免空格引发拆词
+for %%I in ("%MINGW_INC1%") do set "MINGW_INC1_SHORT=%%~sI"
+for %%I in ("%MINGW_INC2%") do set "MINGW_INC2_SHORT=%%~sI"
 
-for %%I in ("%SDK_UM_DIR%") do set "SDK_UM_SHORT=%%~sI"
-for %%I in ("%SDK_SHARED_DIR%") do set "SDK_SHARED_SHORT=%%~sI"
-for %%I in ("%SDK_UCRT_DIR%") do set "SDK_UCRT_SHORT=%%~sI"
-for %%I in ("%SDK_WINRT_DIR%") do set "SDK_WINRT_SHORT=%%~sI"
-
-set "RC_INCLUDE_FLAGS=-I%SDK_UM_SHORT% -I%SDK_SHARED_SHORT% -I%SDK_UCRT_SHORT% -I%SDK_WINRT_SHORT%"
-
-REM 为 C/C++ 编译器也添加 SDK 的 system include，补齐 shared 等，解决 kernelspecs.h 缺失
-set "SDK_ISYS_FLAGS=-isystem%SDK_UM_SHORT% -isystem%SDK_SHARED_SHORT% -isystem%SDK_UCRT_SHORT% -isystem%SDK_WINRT_SHORT%"
-set "CFLAGS=%CFLAGS% %SDK_ISYS_FLAGS%"
-set "CXXFLAGS=%CXXFLAGS% %SDK_ISYS_FLAGS%"
-
-REM llvm-rc 路径使用短路径，避免空格
+REM llvm-rc 路径也用短路径
 set "RC=%BIN_PATH%\llvm-rc.exe"
 for %%I in ("%RC%") do set "RC_SHORT=%%~sI"
 set "RC=%RC_SHORT%"
 
-echo Windows SDK configured successfully.
-echo RC include flags for llvm-rc:
+REM 仅为 RC 构造 -I 参数；注意：整条 -DCMAKE_RC_FLAGS:STRING=... 必须作为单一参数传入
+set "RC_INCLUDE_FLAGS=-I%MINGW_INC1_SHORT% -I%MINGW_INC2_SHORT%"
+
+REM 确保不带入任何遗留的 SDK 注入（清空可能的环境残留）
+set "INCLUDE="
+set "LIB="
+set "LIBPATH="
+set "CFLAGS="
+set "CXXFLAGS="
+
+echo RC will use MinGW headers:
 echo   %RC_INCLUDE_FLAGS%
-echo C/C++ extra system include flags:
-echo   %SDK_ISYS_FLAGS%
 echo.
 
 REM 显式设置编译器环境变量
@@ -236,49 +224,4 @@ if /i "%LINK_TYPE%"=="shared" (
 echo Build completed successfully!
 if /i "%TEST_MODE%"=="true" echo NOTE: Test mode was enabled - only qtbase was built
 echo Installation directory: %FINAL_INSTALL_DIR%
-exit /b 0
-
-
-REM ============================================
-REM 子程序：查找 Windows SDK（纯 CMD，无 PowerShell）
-REM 仅匹配 Include\10.* 版本目录，避免误选 wdf 等
-REM 输出：设置 WINDOWS_SDK_ROOT 与 WINDOWS_SDK_VERSION
-REM 返回：errorlevel 0 => 成功；1 => 失败
-REM ============================================
-:FindWindowsSDK
-setlocal
-set "SDK_ROOT="
-set "SDK_VER="
-
-REM 1) 注册表（优先 WOW6432Node）
-for /f "skip=2 tokens=2,*" %%A in ('reg query "HKLM\SOFTWARE\WOW6432Node\Microsoft\Microsoft SDKs\Windows\v10.0" /v InstallationFolder 2^>nul') do set "SDK_ROOT=%%B"
-if not defined SDK_ROOT (
-    for /f "skip=2 tokens=2,*" %%A in ('reg query "HKLM\SOFTWARE\Microsoft\Microsoft SDKs\Windows\v10.0" /v InstallationFolder 2^>nul') do set "SDK_ROOT=%%B"
-)
-
-REM 去除尾部反斜杠并验证
-if defined SDK_ROOT if "%SDK_ROOT:~-1%"=="\" set "SDK_ROOT=%SDK_ROOT:~0,-1%"
-if defined SDK_ROOT if not exist "%SDK_ROOT%\Include" set "SDK_ROOT="
-
-REM 2) 常见路径（避免在 for in 集合里写含括号路径）
-if not defined SDK_ROOT if exist "%ProgramFiles(x86)%\Windows Kits\10\Include" set "SDK_ROOT=%ProgramFiles(x86)%\Windows Kits\10"
-if not defined SDK_ROOT if exist "%ProgramFiles%\Windows Kits\10\Include" set "SDK_ROOT=%ProgramFiles%\Windows Kits\10"
-
-if not defined SDK_ROOT (
-    endlocal & exit /b 1
-)
-
-REM 3) 仅从 Include\10.* 目录中选择最高版本
-for /f "delims=" %%V in ('dir /b /ad "%SDK_ROOT%\Include\10.*" 2^>nul ^| sort /R') do (
-    if not defined SDK_VER set "SDK_VER=%%~V"
-)
-
-if not defined SDK_VER (
-    endlocal & exit /b 1
-)
-
-endlocal & (
-    set "WINDOWS_SDK_ROOT=%SDK_ROOT%"
-    set "WINDOWS_SDK_VERSION=%SDK_VER%"
-)
 exit /b 0
