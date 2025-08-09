@@ -15,17 +15,11 @@ set "RUNTIME=%~6"
 set "BIN_PATH=%~7"
 set "VERSION_CODE=%~8"
 set "TEST_MODE=%~9"
-
 if "%TEST_MODE%"=="" set "TEST_MODE=false"
 
-REM 清理PATH，避免系统工具冲突
+REM 清理 PATH，避免系统工具冲突
 echo Cleaning PATH to avoid conflicts with system tools...
-set "CLEAN_PATH="
-set "CLEAN_PATH=%BIN_PATH%;D:\a\QtBuild\ninja"
-set "CLEAN_PATH=%CLEAN_PATH%;C:\Windows\System32"
-set "CLEAN_PATH=%CLEAN_PATH%;C:\Windows"
-set "CLEAN_PATH=%CLEAN_PATH%;C:\Program Files\Git\bin"
-set "CLEAN_PATH=%CLEAN_PATH%;C:\Program Files\CMake\bin"
+set "CLEAN_PATH=%BIN_PATH%;D:\a\QtBuild\ninja;C:\Windows\System32;C:\Windows;C:\Program Files\Git\bin;C:\Program Files\CMake\bin"
 set "PATH=%CLEAN_PATH%"
 
 set "QT_PATH=D:\a\QtBuild\Qt"
@@ -54,7 +48,7 @@ clang --version
 clang++ --version
 echo.
 
-REM ========== 纯 CMD 版 Windows SDK 检测 ==========
+REM ========== 纯 CMD 版 Windows SDK 检测（仅匹配 Include\10.*） ==========
 echo Detecting Windows SDK for llvm-rc...
 call :FindWindowsSDK
 if errorlevel 1 (
@@ -70,8 +64,13 @@ set "INCLUDE=%WINDOWS_SDK_INCLUDE%\um;%WINDOWS_SDK_INCLUDE%\shared;%WINDOWS_SDK_
 set "LIB=%WINDOWS_SDK_LIB%\um\x64;%WINDOWS_SDK_LIB%\ucrt\x64"
 set "LIBPATH=%WINDOWS_SDK_LIB%\um\x64;%WINDOWS_SDK_LIB%\ucrt\x64"
 
+REM 为 llvm-rc 显式准备 -I 标志（注意：不要在括号块里拼装）
+set "RC_INCLUDE_FLAGS=-I\"%WINDOWS_SDK_INCLUDE%\um\" -I\"%WINDOWS_SDK_INCLUDE%\shared\" -I\"%WINDOWS_SDK_INCLUDE%\ucrt\" -I\"%WINDOWS_SDK_INCLUDE%\winrt\""
+
 echo Windows SDK configured successfully.
 echo INCLUDE=%INCLUDE%
+echo RC include flags for llvm-rc:
+echo   %RC_INCLUDE_FLAGS%
 echo.
 
 REM 显式设置编译器环境变量
@@ -79,7 +78,7 @@ set "CC=clang"
 set "CXX=clang++"
 set "AR=llvm-ar"
 set "RANLIB=llvm-ranlib"
-set "RC=llvm-rc"
+set "RC=%BIN_PATH%\llvm-rc.exe"
 
 echo Using LLVM tools:
 echo CC=%CC%
@@ -96,8 +95,8 @@ mkdir "%SHORT_BUILD_PATH%" 2>nul
 mkdir "%TEMP_INSTALL_DIR%" 2>nul
 cd /d "%SHORT_BUILD_PATH%"
 
-REM 配置参数
-set "CFG_OPTIONS=-%LINK_TYPE% -prefix "%TEMP_INSTALL_DIR%" -platform win32-clang-g++ -nomake examples -nomake tests -c++std c++20 -opensource -confirm-license -qt-libpng -qt-libjpeg -qt-zlib -qt-pcre -qt-freetype -schannel -opengl desktop"
+REM 配置参数（尽量避免在括号块里追加含括号路径的值）
+set "CFG_OPTIONS=-%LINK_TYPE% -prefix \"%TEMP_INSTALL_DIR%\" -platform win32-clang-g++ -nomake examples -nomake tests -c++std c++20 -opensource -confirm-license -qt-libpng -qt-libjpeg -qt-zlib -qt-pcre -qt-freetype -schannel -opengl desktop"
 
 if /i "%TEST_MODE%"=="true" (
     echo Test mode enabled: Only building qtbase module
@@ -130,12 +129,17 @@ if "%CLANG_VERSION%"=="17.0" (
 
 set "CFG_OPTIONS=%CFG_OPTIONS% -silent"
 
-echo Configure options: %CFG_OPTIONS%
+REM 额外传给 CMake 的 RC 设置，放在 -- 之后（避免在 if 块中追加）
+set "CMAKE_EXTRA=-- -DCMAKE_RC_COMPILER:FILEPATH=\"%RC%\" -DCMAKE_RC_FLAGS:STRING=%RC_INCLUDE_FLAGS%"
+
+echo Configure options:
+echo   %CFG_OPTIONS%
+echo   %CMAKE_EXTRA%
 echo.
 
-REM 运行 configure（用标签处理错误，避免在括号内展开包含括号的变量）
+REM 运行 configure（用标签处理错误，避免括号展开问题）
 echo Starting Qt configure...
-call "%SRC_QT%\configure.bat" %CFG_OPTIONS%
+call "%SRC_QT%\configure.bat" %CFG_OPTIONS% %CMAKE_EXTRA%
 set "CFGERR=%errorlevel%"
 if "%CFGERR%"=="0" goto :CFG_OK
 
@@ -151,12 +155,12 @@ exit /b %CFGERR%
 
 :CFG_OK
 
-REM 构建（同样用标签处理错误）
+REM 构建
 echo Starting build...
 if /i "%TEST_MODE%"=="true" echo Building in test mode - qtbase only...
 echo Note: Using conservative parallel build settings for stability...
 echo Current working directory: %CD%
-echo Windows SDK Include Path: %INCLUDE%
+echo Windows SDK Include (um): %WINDOWS_SDK_INCLUDE%\um
 echo.
 
 cmake --build . --parallel 2
@@ -189,7 +193,7 @@ exit /b %INSTERR%
 REM 创建最终安装目录父目录
 mkdir "%QT_PATH%\%QT_VERSION%-%LINK_TYPE%" 2>nul
 
-REM 移动或复制文件到最终目录（避免括号块）
+REM 移动或复制文件到最终目录
 echo Moving files to final directory...
 move "%TEMP_INSTALL_DIR%" "%FINAL_INSTALL_DIR%" >nul
 set "MVERR=%errorlevel%"
@@ -223,6 +227,7 @@ exit /b 0
 
 REM ============================================
 REM 子程序：查找 Windows SDK（纯 CMD，无 PowerShell）
+REM 仅匹配 Include\10.* 版本目录，避免误选 wdf 等
 REM 输出：设置 WINDOWS_SDK_ROOT 与 WINDOWS_SDK_VERSION
 REM 返回：errorlevel 0 => 成功；1 => 失败
 REM ============================================
@@ -238,12 +243,10 @@ if not defined SDK_ROOT (
 )
 
 REM 去除尾部反斜杠并验证
-if defined SDK_ROOT (
-    if "%SDK_ROOT:~-1%"=="\" set "SDK_ROOT=%SDK_ROOT:~0,-1%"
-)
+if defined SDK_ROOT if "%SDK_ROOT:~-1%"=="\" set "SDK_ROOT=%SDK_ROOT:~0,-1%"
 if defined SDK_ROOT if not exist "%SDK_ROOT%\Include" set "SDK_ROOT="
 
-REM 2) 常见路径（避免 for in 集合里出现含括号路径）
+REM 2) 常见路径（避免 for in 集合里写含括号路径）
 if not defined SDK_ROOT if exist "%ProgramFiles(x86)%\Windows Kits\10\Include" set "SDK_ROOT=%ProgramFiles(x86)%\Windows Kits\10"
 if not defined SDK_ROOT if exist "%ProgramFiles%\Windows Kits\10\Include" set "SDK_ROOT=%ProgramFiles%\Windows Kits\10"
 
@@ -251,21 +254,10 @@ if not defined SDK_ROOT (
     endlocal & exit /b 1
 )
 
-REM 3) 在 Include 下选择最高版本目录
-set "TMPA=%TEMP%\__sdk_dirs.txt"
-set "TMPB=%TEMP%\__sdk_dirs_sorted.txt"
-dir /b /ad "%SDK_ROOT%\Include" > "%TMPA%" 2>nul
-if errorlevel 1 (
-    del /q "%TMPA%" 2>nul
-    endlocal & exit /b 1
+REM 3) 仅从 Include\10.* 目录中选择最高版本
+for /f "delims=" %%V in ('dir /b /ad "%SDK_ROOT%\Include\10.*" 2^>nul ^| sort /R') do (
+    if not defined SDK_VER set "SDK_VER=%%~V"
 )
-sort /R "%TMPA%" > "%TMPB%" 2>nul
-
-REM 取排序后第一行
-for /f "usebackq delims=" %%V in ("%TMPB%") do if not defined SDK_VER set "SDK_VER=%%~V"
-
-del /q "%TMPA%" 2>nul
-del /q "%TMPB%" 2>nul
 
 if not defined SDK_VER (
     endlocal & exit /b 1
