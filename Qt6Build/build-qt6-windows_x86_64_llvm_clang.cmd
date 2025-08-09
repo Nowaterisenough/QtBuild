@@ -2,7 +2,7 @@
 @chcp 65001
 @cd /d %~dp0
 
-REM 参数依次为: Qt版本, Clang版本, BUILD_TYPE, LINK_TYPE, SEPARATE_DEBUG, RUNTIME, BIN_PATH, VERSION_CODE
+REM 参数依次为: Qt版本, Clang版本, BUILD_TYPE, LINK_TYPE, SEPARATE_DEBUG, RUNTIME, BIN_PATH, VERSION_CODE, TEST_MODE
 set QT_VERSION=%1
 set CLANG_VERSION=%2
 set BUILD_TYPE=%3
@@ -11,12 +11,16 @@ set SEPARATE_DEBUG=%5
 set RUNTIME=%6
 set BIN_PATH=%7
 set VERSION_CODE=%8
+set TEST_MODE=%9
 
 REM 移除参数中的引号，避免路径问题
 set BIN_PATH=%BIN_PATH:"=%
 set VERSION_CODE=%VERSION_CODE:"=%
 
-REM 例如: 6.9.1  20.1  release  static  false  ucrt  "D:\a\QtBuild\llvm-mingw-20250528-ucrt-x86_64\bin"  "llvm-mingw20.1.6_64_UCRT"
+REM 例如: 6.9.1  20.1  release  static  false  ucrt  "D:\a\QtBuild\llvm-mingw-20250528-ucrt-x86_64\bin"  "llvm-mingw20.1.6_64_UCRT"  false
+
+REM 处理可能为空的参数，设置默认值
+if "%TEST_MODE%"=="" set TEST_MODE=false
 
 REM 设置编译器路径和工具
 set PATH=%BIN_PATH%;D:\a\QtBuild\ninja;%PATH%
@@ -39,6 +43,7 @@ echo Build Type: %BUILD_TYPE%
 echo Link Type: %LINK_TYPE%
 echo Separate Debug: %SEPARATE_DEBUG%
 echo Runtime: %RUNTIME%
+echo Test Mode: %TEST_MODE%
 echo Compiler Path: %BIN_PATH%
 echo Version Code: %VERSION_CODE%
 echo Source: %SRC_QT%
@@ -127,10 +132,22 @@ if defined WINDOWS_SDK_ROOT if defined WINDOWS_SDK_VERSION (
 echo Using Resource Compiler: %RC%
 
 REM 配置参数 - 使用正确的平台
-set CFG_OPTIONS=-%LINK_TYPE% -prefix "%TEMP_INSTALL_DIR%" -platform win32-clang-g++ -nomake examples -nomake tests -c++std c++20 -skip qtwebengine -opensource -confirm-license -qt-libpng -qt-libjpeg -qt-zlib -qt-pcre -qt-freetype -schannel -opengl desktop
+set CFG_OPTIONS=-%LINK_TYPE% -prefix "%TEMP_INSTALL_DIR%" -platform win32-clang-g++ -nomake examples -nomake tests -c++std c++20 -opensource -confirm-license -qt-libpng -qt-libjpeg -qt-zlib -qt-pcre -qt-freetype -schannel -opengl desktop
+
+REM 测试模式：只编译 qtbase
+if /i "%TEST_MODE%"=="true" (
+    echo Test mode enabled: Only building qtbase module
+    set "CFG_OPTIONS=%CFG_OPTIONS% -submodules qtbase"
+) else (
+    REM 正常模式：跳过 qtwebengine
+    set "CFG_OPTIONS=%CFG_OPTIONS% -skip qtwebengine"
+)
+
+REM 添加SQLite支持（Qt内置）
+set "CFG_OPTIONS=%CFG_OPTIONS% -sql-sqlite"
 
 REM 根据构建类型添加相应选项
-if "%BUILD_TYPE%"=="debug" (
+if /i "%BUILD_TYPE%"=="debug" (
     set CFG_OPTIONS=%CFG_OPTIONS% -debug
 ) else (
     set CFG_OPTIONS=%CFG_OPTIONS% -release
@@ -173,6 +190,9 @@ if %errorlevel% neq 0 (
 
 REM 构建 - 使用更保守的并行设置
 echo Starting build...
+if /i "%TEST_MODE%"=="true" (
+    echo Building in test mode - qtbase only...
+)
 echo Note: Using conservative parallel build settings for stability...
 cmake --build . --parallel 2
 if %errorlevel% neq 0 (
@@ -258,6 +278,7 @@ echo Qt Version: %QT_VERSION%
 echo Compiler: LLVM-Clang %CLANG_VERSION%
 echo Runtime: %RUNTIME%
 echo Build Type: %LINK_TYPE% %BUILD_TYPE%
+echo Test Mode: %TEST_MODE%
 echo Build Date: %DATE% %TIME%
 echo Install Path: %FINAL_INSTALL_DIR%
 if defined WINDOWS_SDK_VERSION (
@@ -273,10 +294,17 @@ if "%SEPARATE_DEBUG%"=="true" (
   echo Debug Info: Embedded
 )
 echo.
+if /i "%TEST_MODE%"=="true" (
+  echo NOTE: Test mode was enabled - only qtbase was built
+)
+echo.
 echo Build completed successfully!
 ) > "%FINAL_INSTALL_DIR%\build-info.txt"
 
 echo Build completed successfully!
+if /i "%TEST_MODE%"=="true" (
+    echo NOTE: Test mode was enabled - only qtbase was built
+)
 echo Installation directory: %FINAL_INSTALL_DIR%
 
 REM 验证安装目录存在
@@ -297,5 +325,8 @@ if exist "%FINAL_INSTALL_DIR%" (
 echo.
 echo ================================
 echo Build completed successfully!
+if /i "%TEST_MODE%"=="true" (
+    echo NOTE: Test mode was enabled - only qtbase was built
+)
 echo Installation directory: %FINAL_INSTALL_DIR%
 echo ================================

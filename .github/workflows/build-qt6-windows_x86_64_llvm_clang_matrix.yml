@@ -23,11 +23,28 @@ on:
         options:
         - ucrt
         - msvcrt
+      test_mode:
+        description: 'Test Mode (only build qtbase)'
+        required: true
+        default: 'false'
+        type: choice
+        options:
+        - 'true'
+        - 'false'
+      create_release:
+        description: 'Create Release'
+        required: true
+        default: 'true'
+        type: choice
+        options:
+        - 'true'
+        - 'false'
 
 env:
   QT_VERSION: ${{ github.event.inputs.qt_version || '6.9.1' }}
   CLANG_VERSION: ${{ github.event.inputs.clang_version || '20.1' }}
   RUNTIME: ${{ github.event.inputs.runtime || 'ucrt' }}
+  TEST_MODE: ${{ github.event.inputs.test_mode || 'false' }}
 
 jobs:
   build:
@@ -36,6 +53,12 @@ jobs:
       matrix:
         link_type: [static, shared]
         build_type: [release, debug, release-sepdbg]
+        exclude:
+          # static 构建跳过 release-sepdbg
+          - link_type: static
+            build_type: release-sepdbg
+          - link_type: static
+            build_type: debug
     steps:
       - name: 检出代码仓库
         uses: actions/checkout@v4
@@ -136,6 +159,7 @@ jobs:
           set BUILD_TYPE=${{ matrix.build_type }}
           set LINK_TYPE=${{ matrix.link_type }}
           set RUNTIME=${{ env.RUNTIME }}
+          set TEST_MODE=${{ env.TEST_MODE }}
           set BIN_PATH=${{ steps.llvm_info.outputs.bin_path }}
           set VERSION_CODE=${{ steps.llvm_info.outputs.version_code }}
 
@@ -153,7 +177,7 @@ jobs:
             set SEPARATE_DEBUG=false
           )
 
-          call D:\a\QtBuild\QtBuild\Qt6Build\build-qt6-windows_x86_64_llvm_clang.cmd !QT_VERSION! !CLANG_VERSION! !BUILD_TYPE! !LINK_TYPE! !SEPARATE_DEBUG! !RUNTIME! "!BIN_PATH!" "!VERSION_CODE!"
+          call D:\a\QtBuild\QtBuild\Qt6Build\build-qt6-windows_x86_64_llvm_clang.cmd !QT_VERSION! !CLANG_VERSION! !BUILD_TYPE! !LINK_TYPE! !SEPARATE_DEBUG! !RUNTIME! "!BIN_PATH!" "!VERSION_CODE!" !TEST_MODE!
 
       - name: 打包二进制文件
         run: |
@@ -178,18 +202,63 @@ jobs:
             default { $linkType.ToLower() }
           }
           
-          # 三段式命名格式：软件名-平台架构编译器-配置类型
-          $archiveName = "qt${qtVersion}-windows_x86_64_llvm_clang${clangVersion}_${runtime}-${linkTypeNormalized}_${buildTypeNormalized}.7z"
+          # 命名格式：qt版本-windows-x86_64-llvm_clang版本_运行时-链接类型_构建类型
+          $archiveName = "qt${qtVersion}-windows-x86_64-llvm_clang${clangVersion}_${runtime}-${linkTypeNormalized}_${buildTypeNormalized}.7z"
           $sourcePath = "D:\a\QtBuild\Qt\$qtVersion-$linkType"
           
           # 检查源目录是否存在
           if (Test-Path $sourcePath) {
-            7z a $archiveName $sourcePath -mx=9
-            echo "Archive created: $archiveName"
-            echo "Source path: $sourcePath"
+            # 创建临时目录用于重组目录结构
+            $tempDir = "D:\a\QtBuild\temp_package"
+            $finalDirName = "qt${qtVersion}-windows-x86_64-llvm_clang${clangVersion}_${runtime}-${linkTypeNormalized}_${buildTypeNormalized}"
+            $finalPath = Join-Path $tempDir $finalDirName
+            
+            # 清理并创建临时目录
+            if (Test-Path $tempDir) {
+              Remove-Item $tempDir -Recurse -Force
+            }
+            New-Item -ItemType Directory -Path $finalPath -Force | Out-Null
+            
+            # 获取编译器目录（llvm-mingw版本格式）
+            $compilerDirs = Get-ChildItem -Path $sourcePath -Directory | Where-Object { $_.Name -like "llvm-mingw*" }
+            if ($compilerDirs.Count -eq 0) {
+              Write-Host "Error: No llvm-mingw compiler directory found in $sourcePath"
+              Get-ChildItem -Path $sourcePath
+              exit 1
+            }
+            
+            $compilerDir = $compilerDirs[0].FullName
+            Write-Host "Found compiler directory: ${compilerDir}"
+            
+            # 复制Qt安装内容
+            Copy-Item -Path "$compilerDir\*" -Destination $finalPath -Recurse -Force
+            
+            # 创建压缩包
+            Set-Location $tempDir
+            $workspaceDir = "${{ github.workspace }}"
+            $archiveFullPath = Join-Path $workspaceDir $archiveName
+            
+            7z a "$archiveFullPath" $finalDirName -mx=9
+            
+            echo "Archive created: $archiveFullPath"
+            
+            # 验证压缩包
+            if (Test-Path $archiveFullPath) {
+              echo "Archive verified at: $archiveFullPath"
+              $fileInfo = Get-Item $archiveFullPath
+              echo "File size: $($fileInfo.Length) bytes"
+            } else {
+              echo "Error: Archive file not found at $archiveFullPath"
+              exit 1
+            }
             
             # 输出到环境变量供后续步骤使用
             echo "ARCHIVE_NAME=$archiveName" >> $env:GITHUB_ENV
+            echo "ARCHIVE_PATH=$archiveFullPath" >> $env:GITHUB_ENV
+            
+            # 清理临时目录
+            Set-Location "${{ github.workspace }}"
+            Remove-Item $tempDir -Recurse -Force
           } else {
             echo "Error: Source path does not exist: $sourcePath"
             exit 1
@@ -199,5 +268,105 @@ jobs:
       - name: 上传构建产物
         uses: actions/upload-artifact@v4
         with:
-          name: qt${{ env.QT_VERSION }}-windows_x86_64_llvm_clang${{ env.CLANG_VERSION }}_${{ env.RUNTIME }}-${{ matrix.link_type }}_${{ matrix.build_type == 'release' && 'release' || matrix.build_type == 'debug' && 'debug' || 'relwithdebinfo' }}
+          name: qt${{ env.QT_VERSION }}-windows-x86_64-llvm_clang${{ env.CLANG_VERSION }}_${{ env.RUNTIME }}-${{ matrix.link_type }}_${{ matrix.build_type == 'release' && 'release' || matrix.build_type == 'debug' && 'debug' || 'relwithdebinfo' }}
           path: ${{ env.ARCHIVE_NAME }}
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.create_release == 'true' }}
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: List downloaded artifacts
+        run: |
+          echo "Listing artifacts directory structure:"
+          find artifacts -type f -name "*.7z" -ls
+
+      - name: Move artifacts to root level
+        run: |
+          echo "Moving .7z files to artifacts root..."
+          find artifacts -type f -name "*.7z" -exec mv {} artifacts/ \;
+          echo "Files in artifacts directory after move:"
+          ls -la artifacts/*.7z
+
+      - name: Generate release tag
+        id: release_tag
+        run: |
+          TAG_NAME="qt${{ env.QT_VERSION }}-windows-llvm_clang${{ env.CLANG_VERSION }}-${{ env.RUNTIME }}-$(date +'%Y%m%d%H%M%S')"
+          echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
+          echo "Tag name: $TAG_NAME"
+
+      - name: Generate release notes
+        id: release_notes
+        run: |
+          cat << EOF > release_notes.md
+          # Qt ${{ env.QT_VERSION }} Windows LLVM Clang Build
+          
+          ## Build Information
+          - **Qt Version**: ${{ env.QT_VERSION }}
+          - **Compiler**: LLVM Clang ${{ env.CLANG_VERSION }}
+          - **Runtime**: ${{ env.RUNTIME }}
+          - **Build Date**: $(date +'%Y-%m-%d %H:%M:%S UTC')
+          - **Build Runner**: GitHub Actions (windows-latest)
+          
+          ## Included Features
+          - **Database Driver**: SQLite
+          - **SSL**: Schannel (native Windows SSL)
+          - **OpenGL**: Desktop
+          - **C++ Standard**: C++20
+          
+          ## Included Configurations
+          This release includes the following build configurations:
+          
+          ### Static Builds
+          - \`static_release\`: Static linking, Release mode
+          
+          ### Shared Builds
+          - \`shared_release\`: Dynamic linking, Release mode
+          - \`shared_debug\`: Dynamic linking, Debug mode
+          - \`shared_relwithdebinfo\`: Dynamic linking, Release mode with separate debug info
+          
+          ## File Naming Convention
+          Files follow the pattern: \`qt{version}-windows-x86_64-llvm_clang{clang_version}_{runtime}-{link_type}_{build_type}.7z\`
+          
+          Where:
+          - \`{version}\`: Qt version (e.g., 6.9.1)
+          - \`{clang_version}\`: Clang version (e.g., 20.1)
+          - \`{runtime}\`: Runtime library (ucrt or msvcrt)
+          - \`{link_type}\`: static or shared
+          - \`{build_type}\`: release, debug, or relwithdebinfo
+          
+          ## Installation
+          1. Download the appropriate .7z file for your needs
+          2. Extract using 7-Zip or compatible software
+          3. The Qt installation will be in the extracted folder with bin, lib, qml, etc. directories
+          
+          ## Notes
+          - Static builds include release configurations only
+          - Shared builds include separate debug symbols for release with debug info version
+          - Shared builds include LLVM-MinGW runtime DLLs
+          - All builds skip QtWebEngine and examples/tests
+          - Built with C++20 standard
+          EOF
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release_tag.outputs.tag_name }}
+          name: Qt ${{ env.QT_VERSION }} - LLVM Clang ${{ env.CLANG_VERSION }} (${{ env.RUNTIME }})
+          body_path: release_notes.md
+          draft: false
+          prerelease: false
+          files: artifacts/*.7z
+          fail_on_unmatched_files: true
+          generate_release_notes: false
+
+      - name: Clean up artifacts
+        uses: geekyeggo/delete-artifact@v5
+        with:
+          name: qt${{ env.QT_VERSION }}-windows-x86_64-llvm_clang${{ env.CLANG_VERSION }}_${{ env.RUNTIME }}-*
