@@ -60,11 +60,8 @@ echo Found Windows SDK: %WINDOWS_SDK_VERSION% at %WINDOWS_SDK_ROOT%
 
 set "WINDOWS_SDK_INCLUDE=%WINDOWS_SDK_ROOT%\Include\%WINDOWS_SDK_VERSION%"
 set "WINDOWS_SDK_LIB=%WINDOWS_SDK_ROOT%\Lib\%WINDOWS_SDK_VERSION%"
-set "INCLUDE=%WINDOWS_SDK_INCLUDE%\um;%WINDOWS_SDK_INCLUDE%\shared;%WINDOWS_SDK_INCLUDE%\winrt;%WINDOWS_SDK_INCLUDE%\ucrt"
-set "LIB=%WINDOWS_SDK_LIB%\um\x64;%WINDOWS_SDK_LIB%\ucrt\x64"
-set "LIBPATH=%WINDOWS_SDK_LIB%\um\x64;%WINDOWS_SDK_LIB%\ucrt\x64"
 
-REM 生成无空格的 8.3 短路径，便于放进 -I 参数且不需要再嵌套引号
+REM 仅为 llvm-rc 准备 -I（不设置全局 INCLUDE/LIB/LIBPATH，避免影响 C/C++ 编译）
 set "SDK_UM_DIR=%WINDOWS_SDK_INCLUDE%\um"
 set "SDK_SHARED_DIR=%WINDOWS_SDK_INCLUDE%\shared"
 set "SDK_UCRT_DIR=%WINDOWS_SDK_INCLUDE%\ucrt"
@@ -75,17 +72,23 @@ for %%I in ("%SDK_SHARED_DIR%") do set "SDK_SHARED_SHORT=%%~sI"
 for %%I in ("%SDK_UCRT_DIR%") do set "SDK_UCRT_SHORT=%%~sI"
 for %%I in ("%SDK_WINRT_DIR%") do set "SDK_WINRT_SHORT=%%~sI"
 
-REM 如果短路径意外仍含空格（极少见），则回退到长路径并在最终 -D 参数中整体加引号保护
 set "RC_INCLUDE_FLAGS=-I%SDK_UM_SHORT% -I%SDK_SHARED_SHORT% -I%SDK_UCRT_SHORT% -I%SDK_WINRT_SHORT%"
 
-REM llvm-rc 本身也用短路径，进一步降低空格风险
+REM 为 C/C++ 编译器也添加 SDK 的 system include，补齐 shared 等，解决 kernelspecs.h 缺失
+set "SDK_ISYS_FLAGS=-isystem%SDK_UM_SHORT% -isystem%SDK_SHARED_SHORT% -isystem%SDK_UCRT_SHORT% -isystem%SDK_WINRT_SHORT%"
+set "CFLAGS=%CFLAGS% %SDK_ISYS_FLAGS%"
+set "CXXFLAGS=%CXXFLAGS% %SDK_ISYS_FLAGS%"
+
+REM llvm-rc 路径使用短路径，避免空格
 set "RC=%BIN_PATH%\llvm-rc.exe"
 for %%I in ("%RC%") do set "RC_SHORT=%%~sI"
+set "RC=%RC_SHORT%"
 
 echo Windows SDK configured successfully.
-echo INCLUDE=%INCLUDE%
 echo RC include flags for llvm-rc:
 echo   %RC_INCLUDE_FLAGS%
+echo C/C++ extra system include flags:
+echo   %SDK_ISYS_FLAGS%
 echo.
 
 REM 显式设置编译器环境变量
@@ -93,7 +96,6 @@ set "CC=clang"
 set "CXX=clang++"
 set "AR=llvm-ar"
 set "RANLIB=llvm-ranlib"
-set "RC=%RC_SHORT%"
 
 echo Using LLVM tools:
 echo CC=%CC%
@@ -144,8 +146,7 @@ if "%CLANG_VERSION%"=="17.0" (
 
 set "CFG_OPTIONS=%CFG_OPTIONS% -silent"
 
-REM 额外传给 CMake 的 RC 设置：
-REM 把整条 -DCMAKE_RC_FLAGS:STRING=... 作为一个带引号的单一参数传入（内部使用无空格短路径，避免再嵌套引号）
+REM 仅把 RC 的设置传给 CMake（作为单一参数）
 set "CMAKE_EXTRA=-- -DCMAKE_RC_COMPILER:FILEPATH=\"%RC%\" \"-DCMAKE_RC_FLAGS:STRING=%RC_INCLUDE_FLAGS%\""
 
 echo Configure options:
@@ -153,7 +154,7 @@ echo   %CFG_OPTIONS%
 echo   %CMAKE_EXTRA%
 echo.
 
-REM 运行 configure（用标签处理错误，避免括号展开问题）
+REM 运行 configure（用标签处理错误）
 echo Starting Qt configure...
 call "%SRC_QT%\configure.bat" %CFG_OPTIONS% %CMAKE_EXTRA%
 set "CFGERR=%errorlevel%"
@@ -162,11 +163,9 @@ if "%CFGERR%"=="0" goto :CFG_OK
 :CFG_FAIL
 echo Configure failed with error code: %CFGERR%
 echo.
-echo Current environment:
 echo CC=%CC%
 echo CXX=%CXX%
 echo RC=%RC%
-echo INCLUDE=%INCLUDE%
 exit /b %CFGERR%
 
 :CFG_OK
@@ -176,7 +175,6 @@ echo Starting build...
 if /i "%TEST_MODE%"=="true" echo Building in test mode - qtbase only...
 echo Note: Using conservative parallel build settings for stability...
 echo Current working directory: %CD%
-echo Windows SDK Include (um): %WINDOWS_SDK_INCLUDE%\um
 echo.
 
 cmake --build . --parallel 2
