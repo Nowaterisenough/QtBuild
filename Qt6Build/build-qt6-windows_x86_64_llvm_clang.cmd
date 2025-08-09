@@ -55,84 +55,65 @@ clang --version
 clang++ --version
 echo.
 
-REM 检测和设置 Windows SDK 路径 - 修复版本
+REM 简化的Windows SDK检测 - 直接使用常见路径
 echo Detecting Windows SDK...
 set "WINDOWS_SDK_ROOT="
 set "WINDOWS_SDK_VERSION="
+set "RC=llvm-rc"
 
-REM 尝试从注册表获取Windows SDK路径 - 使用更安全的方法
-reg query "HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\Microsoft\Microsoft SDKs\Windows\v10.0" /v "InstallationFolder" >nul 2>&1
-if %errorlevel%==0 (
-    for /f "skip=2 tokens=2*" %%a in ('reg query "HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\Microsoft\Microsoft SDKs\Windows\v10.0" /v "InstallationFolder" 2^>nul') do (
-        set "WINDOWS_SDK_ROOT=%%b"
-        goto :check_sdk_version
-    )
+REM 尝试常见的Windows SDK安装路径
+if exist "C:\Program Files (x86)\Windows Kits\10\Include" (
+    set "WINDOWS_SDK_ROOT=C:\Program Files (x86)\Windows Kits\10\"
+    call :FindSDKVersion
+) else if exist "C:\Program Files\Windows Kits\10\Include" (
+    set "WINDOWS_SDK_ROOT=C:\Program Files\Windows Kits\10\"
+    call :FindSDKVersion
 )
 
-REM 如果WOW6432Node失败，尝试直接路径
-reg query "HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Microsoft SDKs\Windows\v10.0" /v "InstallationFolder" >nul 2>&1
-if %errorlevel%==0 (
-    for /f "skip=2 tokens=2*" %%a in ('reg query "HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Microsoft SDKs\Windows\v10.0" /v "InstallationFolder" 2^>nul') do (
-        set "WINDOWS_SDK_ROOT=%%b"
-        goto :check_sdk_version
-    )
-)
-
-REM 如果注册表方法失败，尝试常见安装路径
-if not defined WINDOWS_SDK_ROOT (
-    if exist "C:\Program Files (x86)\Windows Kits\10\" (
-        set "WINDOWS_SDK_ROOT=C:\Program Files (x86)\Windows Kits\10\"
-    ) else if exist "C:\Program Files\Windows Kits\10\" (
-        set "WINDOWS_SDK_ROOT=C:\Program Files\Windows Kits\10\"
-    )
-)
-
-:check_sdk_version
-REM 查找最新的Windows SDK版本
-if defined WINDOWS_SDK_ROOT (
-    if exist "%WINDOWS_SDK_ROOT%Include" (
-        for /f "delims=" %%i in ('dir "%WINDOWS_SDK_ROOT%Include" /b /ad /o-n 2^>nul ^| findstr "^10\." ^| head -1') do (
-            set "WINDOWS_SDK_VERSION=%%i"
-            goto :sdk_configure
-        )
-        
-        REM 如果上面的方法失败，使用更简单的方法
-        for /f %%i in ('dir "%WINDOWS_SDK_ROOT%Include" /b /ad /o-n 2^>nul') do (
-            if "%%i" geq "10.0" (
-                set "WINDOWS_SDK_VERSION=%%i"
-                goto :sdk_configure
-            )
-        )
-    )
-)
-
-:sdk_configure
-if defined WINDOWS_SDK_ROOT if defined WINDOWS_SDK_VERSION (
+REM 如果找到了Windows SDK，配置环境
+if defined WINDOWS_SDK_VERSION (
     echo Found Windows SDK: %WINDOWS_SDK_VERSION% at %WINDOWS_SDK_ROOT%
-    set "WINDOWS_SDK_INCLUDE=%WINDOWS_SDK_ROOT%Include\%WINDOWS_SDK_VERSION%"
-    set "WINDOWS_SDK_LIB=%WINDOWS_SDK_ROOT%Lib\%WINDOWS_SDK_VERSION%"
-    
-    REM 设置 Windows SDK 环境变量
-    set "INCLUDE=%WINDOWS_SDK_INCLUDE%\um;%WINDOWS_SDK_INCLUDE%\shared;%WINDOWS_SDK_INCLUDE%\winrt;%WINDOWS_SDK_INCLUDE%\ucrt;%INCLUDE%"
-    set "LIB=%WINDOWS_SDK_LIB%\um\x64;%WINDOWS_SDK_LIB%\ucrt\x64;%LIB%"
-    set "LIBPATH=%WINDOWS_SDK_LIB%\um\x64;%WINDOWS_SDK_LIB%\ucrt\x64;%LIBPATH%"
-    
-    echo Windows SDK configured successfully.
-    
-    REM 设置资源编译器
-    set "RC=%WINDOWS_SDK_ROOT%bin\%WINDOWS_SDK_VERSION%\x64\rc.exe"
-    if not exist "%RC%" (
-        set "RC=%WINDOWS_SDK_ROOT%bin\x64\rc.exe"
-    )
-    if not exist "%RC%" (
-        set "RC=llvm-rc"
-        echo WARNING: Using llvm-rc as fallback
-    )
+    call :ConfigureSDK
 ) else (
     echo WARNING: Windows SDK not found. Using llvm-rc as resource compiler.
-    set "RC=llvm-rc"
+    echo Available paths will be limited to LLVM tools.
 )
 
+goto :ContinueBuild
+
+:FindSDKVersion
+REM 查找最新的SDK版本
+for /f "delims=" %%i in ('dir "%WINDOWS_SDK_ROOT%Include" /b /ad /o-n 2^>nul') do (
+    if "%%i" geq "10.0" (
+        set "WINDOWS_SDK_VERSION=%%i"
+        goto :eof
+    )
+)
+goto :eof
+
+:ConfigureSDK
+set "WINDOWS_SDK_INCLUDE=%WINDOWS_SDK_ROOT%Include\%WINDOWS_SDK_VERSION%"
+set "WINDOWS_SDK_LIB=%WINDOWS_SDK_ROOT%Lib\%WINDOWS_SDK_VERSION%"
+
+REM 设置 Windows SDK 环境变量
+set "INCLUDE=%WINDOWS_SDK_INCLUDE%\um;%WINDOWS_SDK_INCLUDE%\shared;%WINDOWS_SDK_INCLUDE%\winrt;%WINDOWS_SDK_INCLUDE%\ucrt;%INCLUDE%"
+set "LIB=%WINDOWS_SDK_LIB%\um\x64;%WINDOWS_SDK_LIB%\ucrt\x64;%LIB%"
+set "LIBPATH=%WINDOWS_SDK_LIB%\um\x64;%WINDOWS_SDK_LIB%\ucrt\x64;%LIBPATH%"
+
+REM 设置资源编译器
+set "RC=%WINDOWS_SDK_ROOT%bin\%WINDOWS_SDK_VERSION%\x64\rc.exe"
+if not exist "%RC%" (
+    set "RC=%WINDOWS_SDK_ROOT%bin\x64\rc.exe"
+)
+if not exist "%RC%" (
+    set "RC=llvm-rc"
+    echo WARNING: Windows SDK rc.exe not found, using llvm-rc as fallback
+)
+
+echo Windows SDK configured successfully.
+goto :eof
+
+:ContinueBuild
 echo Using Resource Compiler: %RC%
 
 REM 清理并创建build目录
@@ -205,6 +186,12 @@ if %errorlevel% neq 0 (
     echo 1. Check if Windows SDK is properly installed
     echo 2. Verify LLVM-Clang installation
     echo 3. Check environment variables
+    echo.
+    echo Current environment:
+    echo CC=%CC%
+    echo CXX=%CXX%
+    echo RC=%RC%
+    echo PATH=%PATH%
     exit /b %errorlevel%
 )
 
