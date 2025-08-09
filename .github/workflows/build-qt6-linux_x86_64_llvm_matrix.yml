@@ -42,6 +42,8 @@ jobs:
         exclude:
           - link_type: static
             build_type: debug
+          - link_type: static
+            build_type: release-sepdbg
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
