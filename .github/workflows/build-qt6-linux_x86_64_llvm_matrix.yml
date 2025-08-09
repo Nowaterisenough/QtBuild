@@ -18,7 +18,6 @@ on:
         - '17'
         - '18'
         - '19'
-        - '20'
       create_release:
         description: 'Create Release'
         required: true
@@ -34,7 +33,7 @@ env:
 
 jobs:
   build:
-    runs-on: ubuntu-24.04
+    runs-on: windows-latest
     strategy:
       matrix:
         link_type: [static, shared]
@@ -46,18 +45,30 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Setup WSL2 with Ubuntu 24.04
+        uses: Vampire/setup-wsl@v3
+        with:
+          distribution: Ubuntu-24.04
+          use-cache: 'false'
+          set-as-default: 'true'
+
       - name: Extract Qt major.minor version
         id: qt_version
         run: |
-          version="${{ env.QT_VERSION }}"
-          major_minor=$(echo $version | cut -d. -f1-2)
-          echo "major_minor=$major_minor" >> $GITHUB_OUTPUT
+          $version = "${{ env.QT_VERSION }}"
+          $parts = $version.Split('.')
+          $major_minor = "$($parts[0]).$($parts[1])"
+          echo "major_minor=$major_minor" >> $env:GITHUB_OUTPUT
+        shell: pwsh
 
-      - name: Setup LLVM/Clang environment
+      - name: Create scripts with proper line endings
         run: |
+          # WSL 设置脚本
+          $setupScript = @"
+          #!/bin/bash
           set -e
-          echo "Setting up LLVM/Clang ${{ env.LLVM_VERSION }} environment..."
-          
+          echo "Setting up WSL2 environment with LLVM/Clang..."
+
           export DEBIAN_FRONTEND=noninteractive
           
           # 添加 LLVM APT 源
@@ -121,7 +132,7 @@ jobs:
             wget \
             curl \
             xz-utils
-          
+
           # 设置默认编译器
           sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-${{ env.LLVM_VERSION }} 100
           sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-${{ env.LLVM_VERSION }} 100
@@ -131,165 +142,184 @@ jobs:
           clang-${{ env.LLVM_VERSION }} --version
           clang++-${{ env.LLVM_VERSION }} --version
           lld-${{ env.LLVM_VERSION }} --version
-          
+
           sudo apt-get clean
           sudo rm -rf /var/lib/apt/lists/*
+          "@
+          [System.IO.File]::WriteAllText("wsl_setup.sh", $setupScript.Replace("`r`n", "`n"), [System.Text.UTF8Encoding]::new($false))
 
-      - name: Download Qt source
-        run: |
+          # 下载脚本
+          $downloadScript = @"
+          #!/bin/bash
           set -e
           qt_version="${{ env.QT_VERSION }}"
           major_minor="${{ steps.qt_version.outputs.major_minor }}"
-          source_url="https://download.qt.io/official_releases/qt/$major_minor/$qt_version/single/qt-everywhere-src-$qt_version.tar.xz"
-          
-          echo "Downloading Qt source from: $source_url"
-          wget -O "qt-everywhere-src-$qt_version.tar.xz" "$source_url"
+          source_url="https://download.qt.io/official_releases/qt/`$major_minor/`$qt_version/single/qt-everywhere-src-`$qt_version.tar.xz"
 
-      - name: Create build script
-        run: |
-          cat > build-qt6-linux_x86_64_llvm.sh << 'EOF'
+          echo "Downloading Qt source..."
+          wget -O "qt-everywhere-src-`$qt_version.tar.xz" "`$source_url"
+          "@
+          [System.IO.File]::WriteAllText("download_qt.sh", $downloadScript.Replace("`r`n", "`n"), [System.Text.UTF8Encoding]::new($false))
+
+          # 主构建脚本
+          $mainBuildScript = @"
           #!/bin/bash
-          
           set -e
-          
-          echo "Starting Qt Linux build script with LLVM/Clang..."
-          
-          # 参数处理
-          qt_version="$QT_VERSION"
-          llvm_version="$LLVM_VERSION"
-          build_type="$BUILD_TYPE"
-          link_type="$LINK_TYPE"
-          separate_debug="$SEPARATE_DEBUG"
-          
+
+          echo "Starting Qt Linux build script with LLVM/Clang in WSL2..."
+
+          qt_version="`$QT_VERSION"
+          llvm_version="`$LLVM_VERSION"
+          build_type="`$BUILD_TYPE"
+          link_type="`$LINK_TYPE"
+          separate_debug="`$SEPARATE_DEBUG"
+
           echo "=== Build Parameters ==="
-          echo "Qt Version: $qt_version"
-          echo "LLVM Version: $llvm_version"
-          echo "Build Type: $build_type"
-          echo "Link Type: $link_type"
-          echo "Separate Debug: $separate_debug"
+          echo "Qt Version: `$qt_version"
+          echo "LLVM Version: `$llvm_version"
+          echo "Build Type: `$build_type"
+          echo "Link Type: `$link_type"
+          echo "Separate Debug: `$separate_debug"
           echo "========================"
-          
+
           echo "Extracting Qt source..."
-          if [ -f "qt-everywhere-src-$qt_version.tar.xz" ]; then
-              tar -xf qt-everywhere-src-$qt_version.tar.xz
-              rm qt-everywhere-src-$qt_version.tar.xz
+          if [ -f "qt-everywhere-src-`$qt_version.tar.xz" ]; then
+              tar -xf qt-everywhere-src-`$qt_version.tar.xz
+              rm qt-everywhere-src-`$qt_version.tar.xz
           else
               echo "Error: Qt source file not found"
               exit 1
           fi
-          
-          SRC_QT="$(pwd)/qt-everywhere-src-$qt_version"
-          BUILD_DIR="$(pwd)/build"
-          INSTALL_DIR="$(pwd)/output"
-          
-          mkdir -p "$BUILD_DIR"
-          mkdir -p "$INSTALL_DIR"
-          cd "$BUILD_DIR"
-          
+
+          SRC_QT="`$(pwd)/qt-everywhere-src-`$qt_version"
+          BUILD_DIR="`$(pwd)/build"
+          INSTALL_DIR="`$(pwd)/output"
+
+          mkdir -p "`$BUILD_DIR"
+          mkdir -p "`$INSTALL_DIR"
+          cd "`$BUILD_DIR"
+
           # 设置编译器环境变量
-          export CC=clang-${llvm_version}
-          export CXX=clang++-${llvm_version}
-          export LLVM_INSTALL_DIR=/usr/lib/llvm-${llvm_version}
-          
-          CFG_OPTIONS="-$link_type -prefix $INSTALL_DIR -nomake examples -nomake tests -c++std c++20 -skip qtwebengine -opensource -confirm-license -qt-libpng -qt-libjpeg -qt-zlib -qt-pcre -openssl-linked -platform linux-clang -opengl desktop"
-          
-          if [ "$build_type" = "debug" ]; then
-              CFG_OPTIONS="$CFG_OPTIONS -debug"
+          export CC=clang-`${llvm_version}
+          export CXX=clang++-`${llvm_version}
+          export LLVM_INSTALL_DIR=/usr/lib/llvm-`${llvm_version}
+
+          CFG_OPTIONS="-`$link_type -prefix `$INSTALL_DIR -nomake examples -nomake tests -c++std c++20 -skip qtwebengine -opensource -confirm-license -qt-libpng -qt-libjpeg -qt-zlib -qt-pcre -openssl-linked -platform linux-clang -opengl desktop"
+
+          if [ "`$build_type" = "debug" ]; then
+              CFG_OPTIONS="`$CFG_OPTIONS -debug"
           else
-              CFG_OPTIONS="$CFG_OPTIONS -release"
+              CFG_OPTIONS="`$CFG_OPTIONS -release"
           fi
-          
-          if [ "$link_type" = "shared" ] && [ "$separate_debug" = "true" ]; then
-              CFG_OPTIONS="$CFG_OPTIONS -force-debug-info -separate-debug-info"
+
+          if [ "`$link_type" = "shared" ] && [ "`$separate_debug" = "true" ]; then
+              CFG_OPTIONS="`$CFG_OPTIONS -force-debug-info -separate-debug-info"
           fi
-          
+
           # 设置额外的编译器和链接器标志
           export CFLAGS="-fuse-ld=lld"
           export CXXFLAGS="-fuse-ld=lld -stdlib=libc++"
           export LDFLAGS="-fuse-ld=lld -stdlib=libc++"
-          
+
           echo "Configuring Qt with Clang/LLVM..."
-          echo "Using CC=$CC, CXX=$CXX"
-          "$SRC_QT/configure" $CFG_OPTIONS
-          
+          echo "Using CC=`$CC, CXX=`$CXX"
+          "`$SRC_QT/configure" `$CFG_OPTIONS
+
           echo "Building Qt..."
-          PARALLEL_JOBS=$(nproc)
-          if [ $PARALLEL_JOBS -gt 6 ]; then
+          PARALLEL_JOBS=`$(nproc)
+          if [ `$PARALLEL_JOBS -gt 6 ]; then
               PARALLEL_JOBS=6
           fi
-          
-          cmake --build . --parallel $PARALLEL_JOBS
-          
+
+          cmake --build . --parallel `$PARALLEL_JOBS
+
           echo "Installing Qt..."
           cmake --install .
-          
-          cd "$(pwd)/.."
-          rm -rf "$BUILD_DIR"
-          rm -rf "qt-everywhere-src-$qt_version"
-          
-          echo "Qt build with LLVM/Clang completed successfully!"
-          EOF
-          
-          chmod +x build-qt6-linux_x86_64_llvm.sh
 
-      - name: Build Qt
-        run: |
+          cd "`$(pwd)/.."
+          rm -rf "`$BUILD_DIR"
+          rm -rf "qt-everywhere-src-`$qt_version"
+
+          echo "Qt build with LLVM/Clang completed successfully!"
+          "@
+          [System.IO.File]::WriteAllText("build-qt6-linux_x86_64_llvm.sh", $mainBuildScript.Replace("`r`n", "`n"), [System.Text.UTF8Encoding]::new($false))
+
+          # 构建脚本调用器
+          $buildScript = @"
+          #!/bin/bash
           set -e
-          
+
           qt_version="${{ env.QT_VERSION }}"
           llvm_version="${{ env.LLVM_VERSION }}"
           build_type="${{ matrix.build_type }}"
           link_type="${{ matrix.link_type }}"
-          
-          actual_build_type="$build_type"
+
+          actual_build_type="`$build_type"
           separate_debug="false"
-          if [ "$build_type" = "release-sepdbg" ]; then
+          if [ "`$build_type" = "release-sepdbg" ]; then
             actual_build_type="release"
-            if [ "$link_type" = "shared" ]; then
+            if [ "`$link_type" = "shared" ]; then
               separate_debug="true"
             fi
           fi
-          
-          export QT_VERSION="$qt_version"
-          export LLVM_VERSION="$llvm_version"
-          export BUILD_TYPE="$actual_build_type"
-          export LINK_TYPE="$link_type"
-          export SEPARATE_DEBUG="$separate_debug"
-          
+
+          export QT_VERSION="`$qt_version"
+          export LLVM_VERSION="`$llvm_version"
+          export BUILD_TYPE="`$actual_build_type"
+          export LINK_TYPE="`$link_type"
+          export SEPARATE_DEBUG="`$separate_debug"
+
+          chmod +x ./build-qt6-linux_x86_64_llvm.sh
           ./build-qt6-linux_x86_64_llvm.sh
+          "@
+          [System.IO.File]::WriteAllText("build_qt.sh", $buildScript.Replace("`r`n", "`n"), [System.Text.UTF8Encoding]::new($false))
+        shell: pwsh
+
+      - name: Setup WSL2 environment and dependencies
+        run: |
+          wsl bash ./wsl_setup.sh
+
+      - name: Download Qt source in WSL2
+        run: |
+          wsl bash ./download_qt.sh
+
+      - name: Build Qt in WSL2
+        run: |
+          wsl bash ./build_qt.sh
 
       - name: Package binaries
         run: |
-          link_type="${{ matrix.link_type }}"
-          build_type="${{ matrix.build_type }}"
-          qt_version="${{ env.QT_VERSION }}"
-          llvm_version="${{ env.LLVM_VERSION }}"
+          $linkType = "${{ matrix.link_type }}"
+          $buildType = "${{ matrix.build_type }}"
+          $qtVersion = "${{ env.QT_VERSION }}"
+          $llvmVersion = "${{ env.LLVM_VERSION }}"
           
-          case "$build_type" in
-            "release") build_type_normalized="release" ;;
-            "debug") build_type_normalized="debug" ;;
-            "release-sepdbg") build_type_normalized="relwithdebinfo" ;;
-            *) build_type_normalized=$(echo "$build_type" | tr '[:upper:]' '[:lower:]') ;;
-          esac
+          $buildTypeNormalized = switch ($buildType) {
+            "release" { "release" }
+            "debug" { "debug" }
+            "release-sepdbg" { "relwithdebinfo" }
+            default { $buildType.ToLower() }
+          }
           
-          case "$link_type" in
-            "static") link_type_normalized="static" ;;
-            "shared") link_type_normalized="shared" ;;
-            *) link_type_normalized=$(echo "$link_type" | tr '[:upper:]' '[:lower:]') ;;
-          esac
+          $linkTypeNormalized = switch ($linkType) {
+            "static" { "static" }
+            "shared" { "shared" }
+            default { $linkType.ToLower() }
+          }
           
-          archive_name="qt${qt_version}-linux-x86_64-llvm${llvm_version}-${link_type_normalized}_${build_type_normalized}.tar.xz"
+          $archiveName = "qt${qtVersion}-linux-x86_64-llvm${llvmVersion}-${linkTypeNormalized}_${buildTypeNormalized}.tar.xz"
           
-          echo "Creating archive: $archive_name"
-          tar -cJf "$archive_name" -C output .
+          Write-Host "Creating archive: $archiveName"
+          wsl tar -cJf $archiveName -C output .
           
-          if [ -f "$archive_name" ]; then
-            echo "Archive created successfully"
-            echo "ARCHIVE_NAME=$archive_name" >> $GITHUB_ENV
-          else
-            echo "Failed to create archive"
+          if (Test-Path $archiveName) {
+            Write-Host "Archive created successfully"
+            echo "ARCHIVE_NAME=$archiveName" >> $env:GITHUB_ENV
+          } else {
+            Write-Error "Failed to create archive"
             exit 1
-          fi
+          }
+        shell: pwsh
 
       - uses: actions/upload-artifact@v4
         with:
@@ -316,7 +346,7 @@ jobs:
         id: release_notes
         run: |
           cat << EOF > release_notes.md
-          # Qt ${{ env.QT_VERSION }} Linux LLVM/Clang Build
+          # Qt ${{ env.QT_VERSION }} Linux LLVM/Clang Build (WSL2)
           
           ## Build Information
           - **Qt Version**: ${{ env.QT_VERSION }}
@@ -324,6 +354,7 @@ jobs:
           - **Platform**: Linux x86_64
           - **C++ Standard Library**: libc++
           - **Linker**: lld
+          - **Build Environment**: WSL2 Ubuntu 24.04
           - **Build Date**: $(date +'%Y-%m-%d %H:%M:%S UTC')
           
           ## Included Configurations
@@ -344,17 +375,18 @@ jobs:
           ## Notes
           - Built with C++20 standard
           - Uses libc++ standard library instead of libstdc++
-          - Uses lld linker for faster linking
+          - Uses lld linker for faster linking and smaller binaries
           - Skips QtWebEngine and examples/tests
           - Static builds do not include debug configurations
-          - Requires libc++ runtime on target systems
+          - Requires libc++ runtime on target systems for shared builds
+          - Built in WSL2 environment for consistent Linux ABI compatibility
           EOF
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.release_tag.outputs.tag_name }}
-          name: Qt ${{ env.QT_VERSION }} - Linux LLVM/Clang ${{ env.LLVM_VERSION }}
+          name: Qt ${{ env.QT_VERSION }} - Linux LLVM/Clang ${{ env.LLVM_VERSION }} (WSL2)
           body_path: release_notes.md
           draft: false
           prerelease: false
