@@ -1,0 +1,367 @@
+name: build-qt6-linux_x86_64_llvm_matrix
+
+on:
+  workflow_dispatch:
+    inputs:
+      qt_version:
+        description: 'QT Version'
+        required: true
+        default: '6.9.1'
+      llvm_version:
+        description: 'LLVM Version'
+        required: true
+        default: '18'
+        type: choice
+        options:
+        - '15'
+        - '16'
+        - '17'
+        - '18'
+        - '19'
+        - '20'
+      create_release:
+        description: 'Create Release'
+        required: true
+        default: 'true'
+        type: choice
+        options:
+        - 'true'
+        - 'false'
+
+env:
+  QT_VERSION: ${{ github.event.inputs.qt_version || '6.9.1' }}
+  LLVM_VERSION: ${{ github.event.inputs.llvm_version || '18' }}
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        link_type: [static, shared]
+        build_type: [release, debug, release-sepdbg]
+        exclude:
+          - link_type: static
+            build_type: debug
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Extract Qt major.minor version
+        id: qt_version
+        run: |
+          version="${{ env.QT_VERSION }}"
+          major_minor=$(echo $version | cut -d. -f1-2)
+          echo "major_minor=$major_minor" >> $GITHUB_OUTPUT
+
+      - name: Setup LLVM/Clang environment
+        run: |
+          set -e
+          echo "Setting up LLVM/Clang ${{ env.LLVM_VERSION }} environment..."
+          
+          export DEBIAN_FRONTEND=noninteractive
+          
+          # 添加 LLVM APT 源
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc
+          echo "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-${{ env.LLVM_VERSION }} main" | sudo tee /etc/apt/sources.list.d/llvm.list
+          
+          sudo apt-get update
+          
+          # 安装 LLVM/Clang 和相关工具
+          sudo apt-get install -y --no-install-recommends \
+            clang-${{ env.LLVM_VERSION }} \
+            clang++-${{ env.LLVM_VERSION }} \
+            lld-${{ env.LLVM_VERSION }} \
+            libc++-${{ env.LLVM_VERSION }}-dev \
+            libc++abi-${{ env.LLVM_VERSION }}-dev \
+            llvm-${{ env.LLVM_VERSION }}-dev \
+            cmake \
+            ninja-build \
+            python3 \
+            pkg-config \
+            libgl1-mesa-dev \
+            libglu1-mesa-dev \
+            libxkbcommon-dev \
+            libxkbcommon-x11-dev \
+            libxcb1-dev \
+            libxcb-util-dev \
+            libxcb-image0-dev \
+            libxcb-keysyms1-dev \
+            libxcb-render0-dev \
+            libxcb-render-util0-dev \
+            libxcb-randr0-dev \
+            libxcb-xtest0-dev \
+            libxcb-xinerama0-dev \
+            libxcb-shape0-dev \
+            libxcb-sync-dev \
+            libxcb-xfixes0-dev \
+            libxcb-icccm4-dev \
+            libxcb-shm0-dev \
+            libxcb-cursor-dev \
+            libfontconfig1-dev \
+            libfreetype6-dev \
+            libx11-dev \
+            libxext-dev \
+            libxfixes-dev \
+            libxi-dev \
+            libxrender-dev \
+            libxrandr-dev \
+            libxcursor-dev \
+            libxinerama-dev \
+            libxss-dev \
+            libglib2.0-dev \
+            libegl1-mesa-dev \
+            libwayland-dev \
+            libssl-dev \
+            libasound2-dev \
+            libpulse-dev \
+            libnss3-dev \
+            libxcomposite-dev \
+            libxdamage-dev \
+            libdrm-dev \
+            wget \
+            curl \
+            xz-utils
+          
+          # 设置默认编译器
+          sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-${{ env.LLVM_VERSION }} 100
+          sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-${{ env.LLVM_VERSION }} 100
+          sudo update-alternatives --install /usr/bin/lld lld /usr/bin/lld-${{ env.LLVM_VERSION }} 100
+          
+          # 验证安装
+          clang-${{ env.LLVM_VERSION }} --version
+          clang++-${{ env.LLVM_VERSION }} --version
+          lld-${{ env.LLVM_VERSION }} --version
+          
+          sudo apt-get clean
+          sudo rm -rf /var/lib/apt/lists/*
+
+      - name: Download Qt source
+        run: |
+          set -e
+          qt_version="${{ env.QT_VERSION }}"
+          major_minor="${{ steps.qt_version.outputs.major_minor }}"
+          source_url="https://download.qt.io/official_releases/qt/$major_minor/$qt_version/single/qt-everywhere-src-$qt_version.tar.xz"
+          
+          echo "Downloading Qt source from: $source_url"
+          wget -O "qt-everywhere-src-$qt_version.tar.xz" "$source_url"
+
+      - name: Create build script
+        run: |
+          cat > build-qt6-linux_x86_64_llvm.sh << 'EOF'
+          #!/bin/bash
+          
+          set -e
+          
+          echo "Starting Qt Linux build script with LLVM/Clang..."
+          
+          # 参数处理
+          qt_version="$QT_VERSION"
+          llvm_version="$LLVM_VERSION"
+          build_type="$BUILD_TYPE"
+          link_type="$LINK_TYPE"
+          separate_debug="$SEPARATE_DEBUG"
+          
+          echo "=== Build Parameters ==="
+          echo "Qt Version: $qt_version"
+          echo "LLVM Version: $llvm_version"
+          echo "Build Type: $build_type"
+          echo "Link Type: $link_type"
+          echo "Separate Debug: $separate_debug"
+          echo "========================"
+          
+          echo "Extracting Qt source..."
+          if [ -f "qt-everywhere-src-$qt_version.tar.xz" ]; then
+              tar -xf qt-everywhere-src-$qt_version.tar.xz
+              rm qt-everywhere-src-$qt_version.tar.xz
+          else
+              echo "Error: Qt source file not found"
+              exit 1
+          fi
+          
+          SRC_QT="$(pwd)/qt-everywhere-src-$qt_version"
+          BUILD_DIR="$(pwd)/build"
+          INSTALL_DIR="$(pwd)/output"
+          
+          mkdir -p "$BUILD_DIR"
+          mkdir -p "$INSTALL_DIR"
+          cd "$BUILD_DIR"
+          
+          # 设置编译器环境变量
+          export CC=clang-${llvm_version}
+          export CXX=clang++-${llvm_version}
+          export LLVM_INSTALL_DIR=/usr/lib/llvm-${llvm_version}
+          
+          CFG_OPTIONS="-$link_type -prefix $INSTALL_DIR -nomake examples -nomake tests -c++std c++20 -skip qtwebengine -opensource -confirm-license -qt-libpng -qt-libjpeg -qt-zlib -qt-pcre -openssl-linked -platform linux-clang -opengl desktop"
+          
+          if [ "$build_type" = "debug" ]; then
+              CFG_OPTIONS="$CFG_OPTIONS -debug"
+          else
+              CFG_OPTIONS="$CFG_OPTIONS -release"
+          fi
+          
+          if [ "$link_type" = "shared" ] && [ "$separate_debug" = "true" ]; then
+              CFG_OPTIONS="$CFG_OPTIONS -force-debug-info -separate-debug-info"
+          fi
+          
+          # 设置额外的编译器和链接器标志
+          export CFLAGS="-fuse-ld=lld"
+          export CXXFLAGS="-fuse-ld=lld -stdlib=libc++"
+          export LDFLAGS="-fuse-ld=lld -stdlib=libc++"
+          
+          echo "Configuring Qt with Clang/LLVM..."
+          echo "Using CC=$CC, CXX=$CXX"
+          "$SRC_QT/configure" $CFG_OPTIONS
+          
+          echo "Building Qt..."
+          PARALLEL_JOBS=$(nproc)
+          if [ $PARALLEL_JOBS -gt 6 ]; then
+              PARALLEL_JOBS=6
+          fi
+          
+          cmake --build . --parallel $PARALLEL_JOBS
+          
+          echo "Installing Qt..."
+          cmake --install .
+          
+          cd "$(pwd)/.."
+          rm -rf "$BUILD_DIR"
+          rm -rf "qt-everywhere-src-$qt_version"
+          
+          echo "Qt build with LLVM/Clang completed successfully!"
+          EOF
+          
+          chmod +x build-qt6-linux_x86_64_llvm.sh
+
+      - name: Build Qt
+        run: |
+          set -e
+          
+          qt_version="${{ env.QT_VERSION }}"
+          llvm_version="${{ env.LLVM_VERSION }}"
+          build_type="${{ matrix.build_type }}"
+          link_type="${{ matrix.link_type }}"
+          
+          actual_build_type="$build_type"
+          separate_debug="false"
+          if [ "$build_type" = "release-sepdbg" ]; then
+            actual_build_type="release"
+            if [ "$link_type" = "shared" ]; then
+              separate_debug="true"
+            fi
+          fi
+          
+          export QT_VERSION="$qt_version"
+          export LLVM_VERSION="$llvm_version"
+          export BUILD_TYPE="$actual_build_type"
+          export LINK_TYPE="$link_type"
+          export SEPARATE_DEBUG="$separate_debug"
+          
+          ./build-qt6-linux_x86_64_llvm.sh
+
+      - name: Package binaries
+        run: |
+          link_type="${{ matrix.link_type }}"
+          build_type="${{ matrix.build_type }}"
+          qt_version="${{ env.QT_VERSION }}"
+          llvm_version="${{ env.LLVM_VERSION }}"
+          
+          case "$build_type" in
+            "release") build_type_normalized="release" ;;
+            "debug") build_type_normalized="debug" ;;
+            "release-sepdbg") build_type_normalized="relwithdebinfo" ;;
+            *) build_type_normalized=$(echo "$build_type" | tr '[:upper:]' '[:lower:]') ;;
+          esac
+          
+          case "$link_type" in
+            "static") link_type_normalized="static" ;;
+            "shared") link_type_normalized="shared" ;;
+            *) link_type_normalized=$(echo "$link_type" | tr '[:upper:]' '[:lower:]') ;;
+          esac
+          
+          archive_name="qt${qt_version}-linux-x86_64-llvm${llvm_version}-${link_type_normalized}_${build_type_normalized}.tar.xz"
+          
+          echo "Creating archive: $archive_name"
+          tar -cJf "$archive_name" -C output .
+          
+          if [ -f "$archive_name" ]; then
+            echo "Archive created successfully"
+            echo "ARCHIVE_NAME=$archive_name" >> $GITHUB_ENV
+          else
+            echo "Failed to create archive"
+            exit 1
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qt${{ env.QT_VERSION }}-linux-x86_64-llvm${{ env.LLVM_VERSION }}-${{ matrix.link_type }}_${{ matrix.build_type == 'release' && 'release' || matrix.build_type == 'debug' && 'debug' || 'relwithdebinfo' }}
+          path: ${{ env.ARCHIVE_NAME }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.create_release == 'true' }}
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Generate release tag
+        id: release_tag
+        run: |
+          TAG_NAME="qt${{ env.QT_VERSION }}-linux-llvm${{ env.LLVM_VERSION }}-$(date +'%Y%m%d%H%M%S')"
+          echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
+
+      - name: Generate release notes
+        id: release_notes
+        run: |
+          cat << EOF > release_notes.md
+          # Qt ${{ env.QT_VERSION }} Linux LLVM/Clang Build
+          
+          ## Build Information
+          - **Qt Version**: ${{ env.QT_VERSION }}
+          - **Compiler**: LLVM/Clang ${{ env.LLVM_VERSION }}
+          - **Platform**: Linux x86_64
+          - **C++ Standard Library**: libc++
+          - **Linker**: lld
+          - **Build Date**: $(date +'%Y-%m-%d %H:%M:%S UTC')
+          
+          ## Included Configurations
+          ### Static Builds
+          - \`static_release\`: Static linking, Release mode
+          - \`static_relwithdebinfo\`: Static linking, Release mode with separate debug info
+          
+          ### Shared Builds
+          - \`shared_release\`: Dynamic linking, Release mode
+          - \`shared_debug\`: Dynamic linking, Debug mode
+          - \`shared_relwithdebinfo\`: Dynamic linking, Release mode with separate debug info
+          
+          ## Installation
+          1. Download the appropriate .tar.xz file
+          2. Extract using: \`tar -xJf filename.tar.xz\`
+          3. The Qt installation will be extracted with bin, lib, qml, etc. directories
+          
+          ## Notes
+          - Built with C++20 standard
+          - Uses libc++ standard library instead of libstdc++
+          - Uses lld linker for faster linking
+          - Skips QtWebEngine and examples/tests
+          - Static builds do not include debug configurations
+          - Requires libc++ runtime on target systems
+          EOF
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release_tag.outputs.tag_name }}
+          name: Qt ${{ env.QT_VERSION }} - Linux LLVM/Clang ${{ env.LLVM_VERSION }}
+          body_path: release_notes.md
+          draft: false
+          prerelease: false
+          files: artifacts/**/*.tar.xz
+          fail_on_unmatched_files: true
+
+      - name: Clean up artifacts
+        uses: geekyeggo/delete-artifact@v5
+        with:
+          name: qt${{ env.QT_VERSION }}-linux-x86_64-llvm${{ env.LLVM_VERSION }}-*
