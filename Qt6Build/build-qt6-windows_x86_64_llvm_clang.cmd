@@ -67,56 +67,89 @@ clang --version
 clang++ --version
 echo.
 
-REM 检测Windows SDK - LLVM-RC需要Windows头文件
-echo Detecting Windows SDK for llvm-rc...
+REM 使用PowerShell检测Windows SDK以避免批处理路径问题
+echo Detecting Windows SDK for llvm-rc using PowerShell...
+
+REM 创建PowerShell脚本内容
+set "PS_SCRIPT=%TEMP%\find-sdk.ps1"
+(
+echo $ErrorActionPreference = "SilentlyContinue"
+echo $sdkRoot = $null
+echo $sdkVersion = $null
+echo.
+echo # 尝试常见路径
+echo $commonPaths = @^(
+echo     "${env:ProgramFiles^(x86^)}\Windows Kits\10",
+echo     "${env:ProgramFiles}\Windows Kits\10"
+echo ^)
+echo.
+echo foreach ^($path in $commonPaths^) {
+echo     if ^(Test-Path "$path\Include"^) {
+echo         $sdkRoot = $path
+echo         break
+echo     }
+echo }
+echo.
+echo # 查找SDK版本
+echo if ^($sdkRoot^) {
+echo     $includePath = Join-Path $sdkRoot "Include"
+echo     if ^(Test-Path $includePath^) {
+echo         $versions = Get-ChildItem $includePath -Directory ^| 
+echo                    Where-Object { $_.Name -like "10.*" } ^| 
+echo                    Sort-Object Name -Descending
+echo         
+echo         if ^($versions^) {
+echo             $sdkVersion = $versions[0].Name
+echo         }
+echo     }
+echo }
+echo.
+echo # 输出结果
+echo if ^($sdkRoot -and $sdkVersion^) {
+echo     $sdkRoot = $sdkRoot.TrimEnd^('\'^)
+echo     Write-Host "SDK_ROOT=$sdkRoot"
+echo     Write-Host "SDK_VERSION=$sdkVersion"
+echo } else {
+echo     Write-Host "SDK_NOT_FOUND"
+echo }
+) > "%PS_SCRIPT%"
+
+REM 执行PowerShell脚本并捕获输出
+set "SDK_RESULT_FILE=%TEMP%\sdk_result.txt"
+powershell -ExecutionPolicy Bypass -File "%PS_SCRIPT%" > "%SDK_RESULT_FILE%" 2>&1
+
+REM 解析结果
 set "WINDOWS_SDK_ROOT="
 set "WINDOWS_SDK_VERSION="
 
-REM 尝试常见的Windows SDK安装路径
-if exist "C:\Program Files (x86)\Windows Kits\10\Include" (
-    set "WINDOWS_SDK_ROOT=C:\Program Files (x86)\Windows Kits\10"
-    call :FindSDKVersion
-) else if exist "C:\Program Files\Windows Kits\10\Include" (
-    set "WINDOWS_SDK_ROOT=C:\Program Files\Windows Kits\10"
-    call :FindSDKVersion
+for /f "tokens=1,2 delims==" %%a in ('type "%SDK_RESULT_FILE%"') do (
+    if "%%a"=="SDK_ROOT" set "WINDOWS_SDK_ROOT=%%b"
+    if "%%a"=="SDK_VERSION" set "WINDOWS_SDK_VERSION=%%b"
 )
 
-REM 如果找到了Windows SDK，配置环境
-if defined WINDOWS_SDK_VERSION (
+REM 清理临时文件
+del "%PS_SCRIPT%" 2>nul
+del "%SDK_RESULT_FILE%" 2>nul
+
+REM 检查结果并配置环境
+if defined WINDOWS_SDK_ROOT if defined WINDOWS_SDK_VERSION (
     echo Found Windows SDK: %WINDOWS_SDK_VERSION% at %WINDOWS_SDK_ROOT%
-    call :ConfigureSDK
+    
+    REM 设置Windows SDK环境变量
+    set "WINDOWS_SDK_INCLUDE=%WINDOWS_SDK_ROOT%\Include\%WINDOWS_SDK_VERSION%"
+    set "WINDOWS_SDK_LIB=%WINDOWS_SDK_ROOT%\Lib\%WINDOWS_SDK_VERSION%"
+    set "INCLUDE=%WINDOWS_SDK_INCLUDE%\um;%WINDOWS_SDK_INCLUDE%\shared;%WINDOWS_SDK_INCLUDE%\winrt;%WINDOWS_SDK_INCLUDE%\ucrt"
+    set "LIB=%WINDOWS_SDK_LIB%\um\x64;%WINDOWS_SDK_LIB%\ucrt\x64"
+    set "LIBPATH=%WINDOWS_SDK_LIB%\um\x64;%WINDOWS_SDK_LIB%\ucrt\x64"
+    
+    echo Windows SDK configured successfully.
+    echo INCLUDE=%INCLUDE%
 ) else (
     echo ERROR: Windows SDK not found. LLVM-RC requires Windows SDK headers.
     echo Please ensure Windows SDK 10 is installed.
     exit /b 1
 )
 
-goto :ContinueBuild
-
-:FindSDKVersion
-REM 查找最新的SDK版本
-for /f "delims=" %%i in ('dir "%WINDOWS_SDK_ROOT%\Include" /b /ad /o-n 2^>nul') do (
-    if "%%i" geq "10.0" (
-        set "WINDOWS_SDK_VERSION=%%i"
-        goto :eof
-    )
-)
-goto :eof
-
-:ConfigureSDK
-set "WINDOWS_SDK_INCLUDE=%WINDOWS_SDK_ROOT%\Include\%WINDOWS_SDK_VERSION%"
-set "WINDOWS_SDK_LIB=%WINDOWS_SDK_ROOT%\Lib\%WINDOWS_SDK_VERSION%"
-
-REM 设置 Windows SDK 环境变量 - 重要：为llvm-rc设置包含路径
-set "INCLUDE=%WINDOWS_SDK_INCLUDE%\um;%WINDOWS_SDK_INCLUDE%\shared;%WINDOWS_SDK_INCLUDE%\winrt;%WINDOWS_SDK_INCLUDE%\ucrt"
-set "LIB=%WINDOWS_SDK_LIB%\um\x64;%WINDOWS_SDK_LIB%\ucrt\x64"
-set "LIBPATH=%WINDOWS_SDK_LIB%\um\x64;%WINDOWS_SDK_LIB%\ucrt\x64"
-
-echo Windows SDK configured successfully.
-echo INCLUDE=%INCLUDE%
-goto :eof
-
-:ContinueBuild
 REM 显式设置编译器环境变量
 set CC=clang
 set CXX=clang++
@@ -206,13 +239,6 @@ echo Note: Using conservative parallel build settings for stability...
 REM 在构建前再次确认环境
 echo Current working directory: %CD%
 echo Windows SDK Include Path: %INCLUDE%
-echo Checking if windows.h is accessible:
-echo. | clang -E -xc - -include windows.h >nul 2>&1
-if %errorlevel%==0 (
-    echo windows.h is accessible to clang
-) else (
-    echo WARNING: windows.h may not be accessible to clang
-)
 
 REM 开始构建
 cmake --build . --parallel 2
@@ -223,19 +249,6 @@ if %errorlevel% neq 0 (
     cmake --build . --parallel 1
     if %errorlevel% neq 0 (
         echo Single-threaded build also failed with error code: %errorlevel%
-        echo.
-        echo Troubleshooting information:
-        echo INCLUDE environment: %INCLUDE%
-        echo LIB environment: %LIB%
-        echo Available tools:
-        where clang 2>nul
-        where llvm-rc 2>nul
-        echo.
-        echo Testing windows.h availability:
-        echo #include ^<windows.h^> > test.c
-        echo int main(){return 0;} >> test.c
-        clang -c test.c -o test.obj 2>&1
-        del test.c test.obj 2>nul
         exit /b %errorlevel%
     )
 )
@@ -253,26 +266,15 @@ mkdir "%QT_PATH%\%QT_VERSION%-%LINK_TYPE%" 2>nul
 
 REM 移动文件到最终目录
 echo Moving files to final directory...
-echo Source: "%TEMP_INSTALL_DIR%"
-echo Destination: "%FINAL_INSTALL_DIR%"
-
 move "%TEMP_INSTALL_DIR%" "%FINAL_INSTALL_DIR%"
 if %errorlevel% neq 0 (
     echo Failed to move to final directory with error code: %errorlevel%
-    REM 尝试复制而不是移动
-    echo Trying to copy instead...
     xcopy "%TEMP_INSTALL_DIR%\*" "%FINAL_INSTALL_DIR%\" /E /I /H /Y
     if %errorlevel% neq 0 (
         echo Copy also failed with error code: %errorlevel%
         exit /b %errorlevel%
     )
-    REM 清理临时目录
     rmdir /s /q "%TEMP_INSTALL_DIR%" 2>nul
-)
-
-REM 复制qt.conf (如果存在)
-if exist "%~dp0qt.conf" (
-    copy "%~dp0qt.conf" "%FINAL_INSTALL_DIR%\bin\"
 )
 
 REM shared需要复制LLVM-MinGW运行时DLL
@@ -281,77 +283,10 @@ if "%LINK_TYPE%"=="shared" (
     copy "%BIN_PATH%\libc++.dll" "%FINAL_INSTALL_DIR%\bin\" 2>nul
     copy "%BIN_PATH%\libunwind.dll" "%FINAL_INSTALL_DIR%\bin\" 2>nul
     copy "%BIN_PATH%\libwinpthread-1.dll" "%FINAL_INSTALL_DIR%\bin\" 2>nul
-    
-    REM 创建部署指南
-    echo Creating deployment guide...
-    (
-    echo @echo off
-    echo echo LLVM-Clang Qt6 Shared Library Deployment Guide
-    echo echo ============================================
-    echo echo Required Runtime Libraries:
-    echo echo - libc++.dll
-    echo echo - libunwind.dll
-    echo echo - libwinpthread-1.dll
-    echo echo.
-    echo echo Usage: Copy these DLLs with your application
-    echo pause
-    ) > "%FINAL_INSTALL_DIR%\deployment_guide.cmd"
 )
-
-REM 创建构建信息文件
-echo Creating build info...
-(
-echo Qt6 LLVM-Clang Build Information
-echo ================================
-echo Qt Version: %QT_VERSION%
-echo Compiler: LLVM-Clang %CLANG_VERSION%
-echo Runtime: %RUNTIME%
-echo Build Type: %LINK_TYPE% %BUILD_TYPE%
-echo Test Mode: %TEST_MODE%
-echo Build Date: %DATE% %TIME%
-echo Install Path: %FINAL_INSTALL_DIR%
-echo Toolchain: LLVM-MinGW with Windows SDK %WINDOWS_SDK_VERSION%
-echo Resource Compiler: %RC%
-echo.
-if "%SEPARATE_DEBUG%"=="true" (
-  echo Debug Info: Separated ^(PDB files generated^)
-) else (
-  echo Debug Info: Embedded
-)
-echo.
-if /i "%TEST_MODE%"=="true" (
-  echo NOTE: Test mode was enabled - only qtbase was built
-)
-echo.
-echo Build completed successfully!
-) > "%FINAL_INSTALL_DIR%\build-info.txt"
 
 echo Build completed successfully!
 if /i "%TEST_MODE%"=="true" (
     echo NOTE: Test mode was enabled - only qtbase was built
 )
 echo Installation directory: %FINAL_INSTALL_DIR%
-
-REM 验证安装目录存在
-if exist "%FINAL_INSTALL_DIR%" (
-    echo Final installation directory verified.
-    if "%LINK_TYPE%"=="shared" (
-        echo Generated Qt libraries:
-        dir /b "%FINAL_INSTALL_DIR%\bin\Qt6*.dll" 2>nul
-    )
-    echo.
-    echo Directory contents:
-    dir "%FINAL_INSTALL_DIR%"
-) else (
-    echo Error: Final installation directory does not exist!
-    exit /b 1
-)
-
-echo.
-echo ================================
-echo Build completed successfully!
-if /i "%TEST_MODE%"=="true" (
-    echo NOTE: Test mode was enabled - only qtbase was built
-)
-echo Installation directory: %FINAL_INSTALL_DIR%
-echo ================================
