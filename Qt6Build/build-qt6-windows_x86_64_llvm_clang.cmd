@@ -2,6 +2,9 @@
 @chcp 65001
 @cd /d %~dp0
 
+REM 禁用延迟变量扩展以避免路径问题
+setlocal disabledelayedexpansion
+
 REM 参数依次为: Qt版本, Clang版本, BUILD_TYPE, LINK_TYPE, SEPARATE_DEBUG, RUNTIME, BIN_PATH, VERSION_CODE, TEST_MODE
 set QT_VERSION=%1
 set CLANG_VERSION=%2
@@ -22,8 +25,19 @@ REM 例如: 6.9.1  20.1  release  static  false  ucrt  "D:\a\QtBuild\llvm-mingw-
 REM 处理可能为空的参数，设置默认值
 if "%TEST_MODE%"=="" set TEST_MODE=false
 
-REM 设置编译器路径和工具
-set PATH=%BIN_PATH%;D:\a\QtBuild\ninja;%PATH%
+REM 清理PATH，移除可能有问题的路径
+echo Cleaning PATH to avoid conflicts with system tools...
+set "CLEAN_PATH="
+
+REM 只保留必要的路径，避免NSIS等工具干扰
+set "CLEAN_PATH=%BIN_PATH%;D:\a\QtBuild\ninja"
+set "CLEAN_PATH=%CLEAN_PATH%;C:\Windows\System32"
+set "CLEAN_PATH=%CLEAN_PATH%;C:\Windows"
+set "CLEAN_PATH=%CLEAN_PATH%;C:\Program Files\Git\bin"
+set "CLEAN_PATH=%CLEAN_PATH%;C:\Program Files\CMake\bin"
+
+REM 设置清理后的PATH
+set "PATH=%CLEAN_PATH%"
 
 set QT_PATH=D:\a\QtBuild\Qt
 
@@ -59,9 +73,6 @@ REM 跳过Windows SDK检测，直接使用LLVM工具链
 echo Using LLVM-MinGW toolchain (self-contained)...
 echo Skipping Windows SDK detection - LLVM-MinGW includes all necessary tools.
 
-REM 确保LLVM-Clang编译器优先级最高
-set PATH=%BIN_PATH%;D:\a\QtBuild\ninja;%PATH%
-
 REM 显式设置编译器环境变量
 set CC=clang
 set CXX=clang++
@@ -75,6 +86,7 @@ echo CXX=%CXX%
 echo AR=%AR%
 echo RANLIB=%RANLIB%
 echo RC=%RC%
+echo Cleaned PATH=%PATH%
 
 REM 清理并创建build目录
 rmdir /s /q "%BUILD_DIR%" 2>nul
@@ -152,6 +164,15 @@ if /i "%TEST_MODE%"=="true" (
     echo Building in test mode - qtbase only...
 )
 echo Note: Using conservative parallel build settings for stability...
+
+REM 在构建前再次确认环境
+echo Current working directory: %CD%
+echo Ninja available:
+where ninja
+echo CMake available:
+where cmake
+
+REM 开始构建
 cmake --build . --parallel 2
 if %errorlevel% neq 0 (
     echo Build failed with error code: %errorlevel%
@@ -165,6 +186,13 @@ if %errorlevel% neq 0 (
         echo 1. Check if all LLVM tools are available
         echo 2. Verify resource compiler setup
         echo 3. Check CMake cache and regenerate if needed
+        echo.
+        echo Available tools:
+        where clang 2>nul
+        where clang++ 2>nul
+        where llvm-rc 2>nul
+        where ninja 2>nul
+        where cmake 2>nul
         exit /b %errorlevel%
     )
 )
