@@ -55,73 +55,9 @@ clang --version
 clang++ --version
 echo.
 
-REM 简化的Windows SDK检测 - 直接使用常见路径
-echo Detecting Windows SDK...
-set "WINDOWS_SDK_ROOT="
-set "WINDOWS_SDK_VERSION="
-set "RC=llvm-rc"
-
-REM 尝试常见的Windows SDK安装路径
-if exist "C:\Program Files (x86)\Windows Kits\10\Include" (
-    set "WINDOWS_SDK_ROOT=C:\Program Files (x86)\Windows Kits\10\"
-    call :FindSDKVersion
-) else if exist "C:\Program Files\Windows Kits\10\Include" (
-    set "WINDOWS_SDK_ROOT=C:\Program Files\Windows Kits\10\"
-    call :FindSDKVersion
-)
-
-REM 如果找到了Windows SDK，配置环境
-if defined WINDOWS_SDK_VERSION (
-    echo Found Windows SDK: %WINDOWS_SDK_VERSION% at %WINDOWS_SDK_ROOT%
-    call :ConfigureSDK
-) else (
-    echo WARNING: Windows SDK not found. Using llvm-rc as resource compiler.
-    echo Available paths will be limited to LLVM tools.
-)
-
-goto :ContinueBuild
-
-:FindSDKVersion
-REM 查找最新的SDK版本
-for /f "delims=" %%i in ('dir "%WINDOWS_SDK_ROOT%Include" /b /ad /o-n 2^>nul') do (
-    if "%%i" geq "10.0" (
-        set "WINDOWS_SDK_VERSION=%%i"
-        goto :eof
-    )
-)
-goto :eof
-
-:ConfigureSDK
-set "WINDOWS_SDK_INCLUDE=%WINDOWS_SDK_ROOT%Include\%WINDOWS_SDK_VERSION%"
-set "WINDOWS_SDK_LIB=%WINDOWS_SDK_ROOT%Lib\%WINDOWS_SDK_VERSION%"
-
-REM 设置 Windows SDK 环境变量
-set "INCLUDE=%WINDOWS_SDK_INCLUDE%\um;%WINDOWS_SDK_INCLUDE%\shared;%WINDOWS_SDK_INCLUDE%\winrt;%WINDOWS_SDK_INCLUDE%\ucrt;%INCLUDE%"
-set "LIB=%WINDOWS_SDK_LIB%\um\x64;%WINDOWS_SDK_LIB%\ucrt\x64;%LIB%"
-set "LIBPATH=%WINDOWS_SDK_LIB%\um\x64;%WINDOWS_SDK_LIB%\ucrt\x64;%LIBPATH%"
-
-REM 设置资源编译器
-set "RC=%WINDOWS_SDK_ROOT%bin\%WINDOWS_SDK_VERSION%\x64\rc.exe"
-if not exist "%RC%" (
-    set "RC=%WINDOWS_SDK_ROOT%bin\x64\rc.exe"
-)
-if not exist "%RC%" (
-    set "RC=llvm-rc"
-    echo WARNING: Windows SDK rc.exe not found, using llvm-rc as fallback
-)
-
-echo Windows SDK configured successfully.
-goto :eof
-
-:ContinueBuild
-echo Using Resource Compiler: %RC%
-
-REM 清理并创建build目录
-rmdir /s /q "%BUILD_DIR%" 2>nul
-rmdir /s /q "%TEMP_INSTALL_DIR%" 2>nul
-mkdir "%SHORT_BUILD_PATH%" 
-mkdir "%TEMP_INSTALL_DIR%"
-cd /d "%SHORT_BUILD_PATH%"
+REM 跳过Windows SDK检测，直接使用LLVM工具链
+echo Using LLVM-MinGW toolchain (self-contained)...
+echo Skipping Windows SDK detection - LLVM-MinGW includes all necessary tools.
 
 REM 确保LLVM-Clang编译器优先级最高
 set PATH=%BIN_PATH%;D:\a\QtBuild\ninja;%PATH%
@@ -131,6 +67,21 @@ set CC=clang
 set CXX=clang++
 set AR=llvm-ar
 set RANLIB=llvm-ranlib
+set RC=llvm-rc
+
+echo Using LLVM tools:
+echo CC=%CC%
+echo CXX=%CXX%
+echo AR=%AR%
+echo RANLIB=%RANLIB%
+echo RC=%RC%
+
+REM 清理并创建build目录
+rmdir /s /q "%BUILD_DIR%" 2>nul
+rmdir /s /q "%TEMP_INSTALL_DIR%" 2>nul
+mkdir "%SHORT_BUILD_PATH%" 
+mkdir "%TEMP_INSTALL_DIR%"
+cd /d "%SHORT_BUILD_PATH%"
 
 REM 配置参数 - 使用正确的平台
 set CFG_OPTIONS=-%LINK_TYPE% -prefix "%TEMP_INSTALL_DIR%" -platform win32-clang-g++ -nomake examples -nomake tests -c++std c++20 -opensource -confirm-license -qt-libpng -qt-libjpeg -qt-zlib -qt-pcre -qt-freetype -schannel -opengl desktop
@@ -183,9 +134,9 @@ if %errorlevel% neq 0 (
     echo Configure failed with error code: %errorlevel%
     echo.
     echo Troubleshooting suggestions:
-    echo 1. Check if Windows SDK is properly installed
-    echo 2. Verify LLVM-Clang installation
-    echo 3. Check environment variables
+    echo 1. Verify LLVM-Clang installation
+    echo 2. Check environment variables
+    echo 3. Ensure all required tools are in PATH
     echo.
     echo Current environment:
     echo CC=%CC%
@@ -211,7 +162,7 @@ if %errorlevel% neq 0 (
         echo Single-threaded build also failed with error code: %errorlevel%
         echo.
         echo Additional troubleshooting:
-        echo 1. Check Windows SDK installation
+        echo 1. Check if all LLVM tools are available
         echo 2. Verify resource compiler setup
         echo 3. Check CMake cache and regenerate if needed
         exit /b %errorlevel%
@@ -288,11 +239,7 @@ echo Build Type: %LINK_TYPE% %BUILD_TYPE%
 echo Test Mode: %TEST_MODE%
 echo Build Date: %DATE% %TIME%
 echo Install Path: %FINAL_INSTALL_DIR%
-if defined WINDOWS_SDK_VERSION (
-  echo Windows SDK: %WINDOWS_SDK_VERSION%
-) else (
-  echo Windows SDK: Not detected
-)
+echo Toolchain: LLVM-MinGW ^(self-contained^)
 echo Resource Compiler: %RC%
 echo.
 if "%SEPARATE_DEBUG%"=="true" (
