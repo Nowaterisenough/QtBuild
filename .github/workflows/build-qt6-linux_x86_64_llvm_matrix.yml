@@ -18,6 +18,7 @@ on:
         - '17'
         - '18'
         - '19'
+        - '20'
       create_release:
         description: 'Create Release'
         required: true
