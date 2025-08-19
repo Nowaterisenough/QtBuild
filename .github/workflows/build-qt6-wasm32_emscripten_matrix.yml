@@ -136,19 +136,32 @@ jobs:
         run: |
           cd ..
           Write-Host "Downloading Host Qt..."
-          New-Item -ItemType Directory -Force -Path "Qt/${{ env.QT_VERSION }}-host" | Out-Null
-          cd "Qt/${{ env.QT_VERSION }}-host"
-          curl -L -o host-qt.7z "${{ env.HOST_QT_URL }}"
-          # 直接解压到当前目录，且不做额外子目录移动
-          7z x host-qt.7z -o. | Out-Null
-          Remove-Item host-qt.7z -ErrorAction SilentlyContinue
+          $hostRoot = Join-Path (Get-Location) "Qt/${{ env.QT_VERSION }}-host"
+          New-Item -ItemType Directory -Force -Path $hostRoot | Out-Null
+          $archive = Join-Path $hostRoot "host-qt.7z"
 
-          # 校验 Qt6HostInfo 是否存在
-          $cfg = Get-ChildItem -Path . -Recurse -Filter "Qt6HostInfoConfig.cmake" -ErrorAction SilentlyContinue | Select-Object -First 1
+          # 下载
+          curl -L -o $archive "${{ env.HOST_QT_URL }}"
+
+          # 解压：必须使用紧跟路径的 -o"dir" 语法，避免 Too short switch
+          Write-Host "Extracting to: $hostRoot"
+          & 7z x $archive "-o$hostRoot" | Out-Null
+
+          # 清理压缩包
+          Remove-Item $archive -ErrorAction SilentlyContinue
+
+          # 打印前两级结构，便于确认包布局
+          Write-Host "Host Qt directory snapshot:"
+          Get-ChildItem -Path $hostRoot
+          Get-ChildItem -Path (Join-Path $hostRoot "lib") -ErrorAction SilentlyContinue | Select-Object -First 10 | ForEach-Object { $_.FullName }
+
+          # 校验 Qt6HostInfo 是否存在（典型路径：lib/cmake/Qt6HostInfo/Qt6HostInfoConfig.cmake）
+          $cfg = Get-ChildItem -Path $hostRoot -Recurse -Filter "Qt6HostInfoConfig.cmake" -ErrorAction SilentlyContinue | Select-Object -First 1
           if (-not $cfg) {
-            Write-Host "Directory tree (first 3 levels):"
-            Get-ChildItem -Recurse -Depth 3 | Select-Object FullName
-            throw "Qt6HostInfoConfig.cmake not found under $(Get-Location). Check HOST_QT_URL package layout."
+            Write-Host "Did not find Qt6HostInfoConfig.cmake."
+            Write-Host "Listing first 3 levels under $hostRoot for troubleshooting:"
+            Get-ChildItem -Path $hostRoot -Recurse -Depth 3 | Select-Object FullName
+            throw "Qt6HostInfoConfig.cmake not found under $hostRoot. Check HOST_QT_URL package contents (it must include lib/cmake/Qt6HostInfo)."
           } else {
             Write-Host "Qt6HostInfo found at: $($cfg.FullName)"
           }
