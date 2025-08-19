@@ -143,27 +143,61 @@ jobs:
           # 下载
           curl -L -o $archive "${{ env.HOST_QT_URL }}"
 
-          # 解压：必须使用紧跟路径的 -o"dir" 语法，避免 Too short switch
-          Write-Host "Extracting to: $hostRoot"
-          & 7z x $archive "-o$hostRoot" | Out-Null
+          # 解压：检查压缩包内部结构
+          Write-Host "Checking archive structure..."
+          & 7z l $archive | Select-Object -First 20
 
-          # 清理压缩包
+          # 解压到临时目录以检查结构
+          $tempDir = Join-Path $hostRoot "temp"
+          New-Item -ItemType Directory -Force -Path $tempDir | Out-Null
+          & 7z x $archive "-o$tempDir" | Out-Null
+
+          # 检查解压后的结构
+          Write-Host "Extracted structure:"
+          Get-ChildItem -Path $tempDir -Depth 2 | Select-Object FullName
+
+          # 查找实际的 Qt 安装目录（可能在子目录中）
+          $qtDirs = Get-ChildItem -Path $tempDir -Directory | Where-Object { 
+            Test-Path (Join-Path $_.FullName "lib/cmake/Qt6HostInfo/Qt6HostInfoConfig.cmake")
+          }
+
+          if ($qtDirs) {
+            $actualQtDir = $qtDirs[0].FullName
+            Write-Host "Found Qt directory at: $actualQtDir"
+            # 移动文件到正确位置
+            Get-ChildItem -Path $actualQtDir | Move-Item -Destination $hostRoot -Force
+          } else {
+            # 如果在根目录找到配置文件，直接移动
+            $configFile = Get-ChildItem -Path $tempDir -Recurse -Filter "Qt6HostInfoConfig.cmake" | Select-Object -First 1
+            if ($configFile) {
+              Write-Host "Qt6HostInfo found at: $($configFile.FullName)"
+              # 计算相对于 temp 的 Qt 根目录
+              $qtRoot = $configFile.Directory.Parent.Parent.Parent.FullName
+              if (Test-Path $qtRoot) {
+                Get-ChildItem -Path $qtRoot | Move-Item -Destination $hostRoot -Force
+              } else {
+                # 移动整个 temp 内容
+                Get-ChildItem -Path $tempDir | Move-Item -Destination $hostRoot -Force
+              }
+            } else {
+              Write-Host "No Qt6HostInfoConfig.cmake found, moving all content"
+              Get-ChildItem -Path $tempDir | Move-Item -Destination $hostRoot -Force
+            }
+          }
+
+          # 清理
+          Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue
           Remove-Item $archive -ErrorAction SilentlyContinue
 
-          # 打印前两级结构，便于确认包布局
-          Write-Host "Host Qt directory snapshot:"
-          Get-ChildItem -Path $hostRoot
-          Get-ChildItem -Path (Join-Path $hostRoot "lib") -ErrorAction SilentlyContinue | Select-Object -First 10 | ForEach-Object { $_.FullName }
-
-          # 校验 Qt6HostInfo 是否存在（典型路径：lib/cmake/Qt6HostInfo/Qt6HostInfoConfig.cmake）
-          $cfg = Get-ChildItem -Path $hostRoot -Recurse -Filter "Qt6HostInfoConfig.cmake" -ErrorAction SilentlyContinue | Select-Object -First 1
-          if (-not $cfg) {
-            Write-Host "Did not find Qt6HostInfoConfig.cmake."
-            Write-Host "Listing first 3 levels under $hostRoot for troubleshooting:"
+          # 最终验证
+          $finalConfig = Join-Path $hostRoot "lib/cmake/Qt6HostInfo/Qt6HostInfoConfig.cmake"
+          if (-not (Test-Path $finalConfig)) {
+            Write-Host "ERROR: Qt6HostInfoConfig.cmake still not found at expected location"
+            Write-Host "Final directory structure:"
             Get-ChildItem -Path $hostRoot -Recurse -Depth 3 | Select-Object FullName
-            throw "Qt6HostInfoConfig.cmake not found under $hostRoot. Check HOST_QT_URL package contents (it must include lib/cmake/Qt6HostInfo)."
+            throw "Host Qt setup failed - Qt6HostInfoConfig.cmake not found"
           } else {
-            Write-Host "Qt6HostInfo found at: $($cfg.FullName)"
+            Write-Host "SUCCESS: Qt6HostInfo found at: $finalConfig"
           }
         shell: pwsh
 
