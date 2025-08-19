@@ -15,6 +15,19 @@ on:
         options:
         - '3.1.70'
         - '4.0.11'
+      gcc_version:
+        description: 'Host GCC版本 (MinGW，用于交叉编译的宿主工具链)'
+        required: true
+        default: '15.2.0'
+        type: choice
+        options:
+        - '15.2.0'
+        - '15.1.0'
+        - '14.2.0'
+        - '14.1.0'
+        - '13.2.0'
+        - '13.1.0'
+        - '12.2.0'
       host_qt_url:
         description: 'Host Qt下载地址'
         required: false
@@ -24,10 +37,19 @@ on:
         required: false
         type: boolean
         default: false
+      create_release:
+        description: '是否创建Release'
+        required: true
+        type: choice
+        default: 'true'
+        options:
+        - 'true'
+        - 'false'
 
 env:
   QT_VERSION: ${{ github.event.inputs.qt_version || '6.9.1' }}
   EMSCRIPTEN_VERSION: ${{ github.event.inputs.emscripten_version || '4.0.11' }}
+  GCC_VERSION: ${{ github.event.inputs.gcc_version || '15.2.0' }}
   HOST_QT_URL: ${{ github.event.inputs.host_qt_url || 'https://github.com/yuanpeirong/buildQt/releases/download/Qt6.9.1_rev0/Qt_6.9.1-static-Release_mingw1510_64_UCRT.7z' }}
 
 jobs:
@@ -35,9 +57,7 @@ jobs:
     runs-on: windows-latest
     strategy:
       matrix:
-        # WebAssembly 只支持静态构建
-        link_type: [static]
-        # 根据用户输入决定是否包含debug构建
+        link_type: [static]  # WebAssembly 只支持静态构建
         build_type: ${{ github.event.inputs.build_debug == 'true' && fromJson('["release", "debug", "release-and-debug"]') || fromJson('["release"]') }}
     steps:
       - name: 检出代码仓库
@@ -58,12 +78,46 @@ jobs:
           echo "major_minor=$major_minor" >> $env:GITHUB_OUTPUT
         shell: pwsh
 
-      - name: 设置MinGW工具链
+      - name: 设置MinGW工具链 (Host，用于交叉编译构建工具)
+        id: setup_mingw
         run: |
           cd ..
-          Write-Host "Downloading MinGW for build tools..."
-          curl -L -o x86_64-release-posix-seh-ucrt.7z https://github.com/niXman/mingw-builds-binaries/releases/download/15.1.0-rt_v12-rev0/x86_64-15.1.0-release-posix-seh-ucrt-rt_v12-rev0.7z
-          7z x x86_64-release-posix-seh-ucrt.7z
+          $gcc = "${{ env.GCC_VERSION }}"
+          $runtime = "ucrt"
+          # 简化：优先尝试API发现，否则回退常见映射
+          try {
+            $releases = Invoke-RestMethod -Uri "https://api.github.com/repos/niXman/mingw-builds-binaries/releases" -Headers @{ "User-Agent"="GitHub-Actions" }
+            $target = $releases | Where-Object { $_.tag_name -like "$gcc-rt_v*-rev*" } | Select-Object -First 1
+            if ($target) {
+              if ($target.tag_name -match "$gcc-rt_(v\d+)-(rev\d+)") {
+                $rt=$matches[1]; $rev=$matches[2]
+                $name = "x86_64-$gcc-release-posix-seh-$runtime-rt_$rt-$rev.7z"
+                $asset = $target.assets | Where-Object { $_.name -eq $name } | Select-Object -First 1
+                if ($asset) {
+                  Write-Host "Downloading $name"
+                  curl -L -o $name $asset.browser_download_url
+                  7z x $name
+                  exit 0
+                }
+              }
+            }
+          } catch { Write-Host "API lookup failed, fallback..." }
+          # fallback
+          $map = @{
+            "15.2.0" = @{ rt="rt_v13"; rev="rev0" }
+            "15.1.0" = @{ rt="rt_v12"; rev="rev0" }
+            "14.2.0" = @{ rt="rt_v12"; rev="rev2" }
+            "14.1.0" = @{ rt="rt_v12"; rev="rev0" }
+            "13.2.0" = @{ rt="rt_v11"; rev="rev1" }
+            "13.1.0" = @{ rt="rt_v11"; rev="rev1" }
+            "12.2.0" = @{ rt="rt_v10"; rev="rev2" }
+          }
+          if ($map.ContainsKey($gcc)) { $rt=$map[$gcc].rt; $rev=$map[$gcc].rev } else { $rt="rt_v12"; $rev="rev0" }
+          $fname = "x86_64-$gcc-release-posix-seh-$runtime-$rt-$rev.7z"
+          $url = "https://github.com/niXman/mingw-builds-binaries/releases/download/$gcc-$rt-$rev/$fname"
+          Write-Host "Fallback download: $url"
+          curl -L -o $fname $url
+          7z x $fname
         shell: pwsh
 
       - name: 设置Ninja构建工具
@@ -89,12 +143,8 @@ jobs:
           Write-Host "Downloading Host Qt..."
           New-Item -ItemType Directory -Force -Path "Qt/${{ env.QT_VERSION }}-host"
           cd "Qt/${{ env.QT_VERSION }}-host"
-          
-          # 下载Host Qt并解压到正确位置
           curl -L -o host-qt.7z "${{ env.HOST_QT_URL }}"
           7z x host-qt.7z
-          
-          # 移动到正确的目录结构
           if (Test-Path "${{ env.QT_VERSION }}-static") {
             $subDir = Get-ChildItem "${{ env.QT_VERSION }}-static" | Select-Object -First 1
             if ($subDir) {
@@ -103,7 +153,6 @@ jobs:
             }
           }
           Remove-Item host-qt.7z -ErrorAction SilentlyContinue
-          
           Write-Host "Host Qt setup completed."
         shell: pwsh
 
@@ -114,7 +163,6 @@ jobs:
           cd Qt
           mkdir "${{ env.QT_VERSION }}" -ErrorAction SilentlyContinue
           mkdir "${{ env.QT_VERSION }}-${{ matrix.link_type }}" -ErrorAction SilentlyContinue
-          
           Write-Host "Downloading Qt source code..."
           curl -L -o qt-everywhere-src.zip "https://download.qt.io/official_releases/qt/${{ steps.qt_version.outputs.major_minor }}/${{ env.QT_VERSION }}/single/qt-everywhere-src-${{ env.QT_VERSION }}.zip"
           7z x qt-everywhere-src.zip -o"${{ env.QT_VERSION }}"
@@ -124,12 +172,10 @@ jobs:
         shell: cmd
         run: |
           setlocal enableextensions enabledelayedexpansion
-
           set QT_VERSION=${{ env.QT_VERSION }}
           set EMSCRIPTEN_VERSION=${{ env.EMSCRIPTEN_VERSION }}
           set BUILD_TYPE=${{ matrix.build_type }}
           set LINK_TYPE=${{ matrix.link_type }}
-
           call D:\a\QtBuild\QtBuild\Qt6Build\build-qt6-wasm32_emscripten.cmd !QT_VERSION! !EMSCRIPTEN_VERSION! !BUILD_TYPE! !LINK_TYPE!
 
       - name: 打包二进制文件
@@ -138,32 +184,24 @@ jobs:
           $buildType = "${{ matrix.build_type }}"
           $qtVersion = "${{ env.QT_VERSION }}"
           $emscriptenVersion = "${{ env.EMSCRIPTEN_VERSION }}"
-          
-          # 规范化构建类型名称 (小写)
+          $gccVersion = "${{ env.GCC_VERSION }}"
           $buildTypeNormalized = switch ($buildType) {
             "release" { "release" }
             "debug" { "debug" }
             "release-and-debug" { "release_and_debug" }
             default { $buildType.ToLower() }
           }
-          
-          # 规范化链接类型名称 (小写)
           $linkTypeNormalized = switch ($linkType) {
             "static" { "static" }
             default { $linkType.ToLower() }
           }
-          
-          # 三段式命名格式：软件名-平台架构编译器-配置类型
-          $archiveName = "qt${qtVersion}-wasm32_emscripten${emscriptenVersion}-${linkTypeNormalized}_${buildTypeNormalized}.7z"
+          # 在命名中体现交叉编译与 host GCC
+          $archiveName = "qt${qtVersion}-wasm32_emscripten${emscriptenVersion}-cross_mingw_gcc${gccVersion}-${linkTypeNormalized}_${buildTypeNormalized}.7z"
           $sourcePath = "D:\a\QtBuild\Qt\$qtVersion-$linkType"
-          
-          # 检查源目录是否存在
           if (Test-Path $sourcePath) {
             7z a $archiveName $sourcePath -mx=9
             echo "Archive created: $archiveName"
             echo "Source path: $sourcePath"
-            
-            # 输出到环境变量供后续步骤使用
             echo "ARCHIVE_NAME=$archiveName" >> $env:GITHUB_ENV
           } else {
             echo "Error: Source path does not exist: $sourcePath"
@@ -174,5 +212,93 @@ jobs:
       - name: 上传构建产物
         uses: actions/upload-artifact@v4
         with:
-          name: qt${{ env.QT_VERSION }}-wasm32_emscripten${{ env.EMSCRIPTEN_VERSION }}-${{ matrix.link_type }}_${{ matrix.build_type == 'release' && 'release' || matrix.build_type == 'debug' && 'debug' || 'releaseanddebug' }}
+          name: qt${{ env.QT_VERSION }}-wasm32_emscripten${{ env.EMSCRIPTEN_VERSION }}-cross_mingw_gcc${{ env.GCC_VERSION }}-${{ matrix.link_type }}_${{ matrix.build_type == 'release' && 'release' || matrix.build_type == 'debug' && 'debug' || 'releaseanddebug' }}
           path: ${{ env.ARCHIVE_NAME }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.create_release == 'true' }}
+    steps:
+      - name: 下载所有构建产物
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: 列出已下载的产物
+        run: |
+          echo "Listing artifacts directory structure:"
+          find artifacts -type f -name "*.7z" -ls
+
+      - name: 将所有.7z移动到根 artifacts 目录
+        run: |
+          echo "Moving .7z files to artifacts root..."
+          find artifacts -type f -name "*.7z" -exec mv {} artifacts/ \;
+          echo "Files in artifacts directory after move:"
+          ls -la artifacts/*.7z
+
+      - name: 生成发布标签
+        id: release_tag
+        run: |
+          TAG_NAME="qt${{ env.QT_VERSION }}-wasm32_emscripten${{ env.EMSCRIPTEN_VERSION }}-cross_mingw_gcc${{ env.GCC_VERSION }}-$(date +'%Y%m%d%H%M%S')"
+          echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
+          echo "Tag name: $TAG_NAME"
+
+      - name: 生成发布说明
+        id: release_notes
+        run: |
+          cat << 'EOF' > release_notes.md
+          # Qt ${{ env.QT_VERSION }} WebAssembly Build (Cross)
+
+          ## 构建信息
+          - Qt 版本: ${{ env.QT_VERSION }}
+          - 目标平台: WebAssembly (wasm32_emscripten)
+          - Emscripten 版本: ${{ env.EMSCRIPTEN_VERSION }}
+          - 宿主工具链: MinGW GCC ${{ env.GCC_VERSION }} (用于交叉编译)
+          - 构建时间: $(date +'%Y-%m-%d %H:%M:%S UTC')
+          - 构建环境: GitHub Actions (windows-latest)
+
+          ## 包含的配置
+          - 链接: static (WebAssembly 仅 static)
+          - 构建类型:
+            - release
+            - debug (如启用)
+            - release_and_debug (如启用)
+          - 子模块: qtbase, qtdeclarative
+          - 编译选项: C++20, 跳过 examples/tests
+
+          ## 文件命名规范
+          qt{qt_version}-wasm32_emscripten{emscripten_version}-cross_mingw_gcc{gcc_version}-{link_type}_{build_type}.7z
+
+          示例:
+          - qt6.9.1-wasm32_emscripten4.0.11-cross_mingw_gcc15.2.0-static_release.7z
+          - qt6.9.1-wasm32_emscripten4.0.11-cross_mingw_gcc15.2.0-static_debug.7z
+          - qt6.9.1-wasm32_emscripten4.0.11-cross_mingw_gcc15.2.0-static_release_and_debug.7z
+
+          ## 使用说明
+          1. 下载对应的 .7z 包
+          2. 使用 7-Zip 解压
+          3. 该包为 WebAssembly 目标的交叉编译产物，可直接用于浏览器/wasm 运行时
+          4. Debug 构建体积更大、性能更低，仅用于调试
+
+          EOF
+
+      - name: 创建 GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release_tag.outputs.tag_name }}
+          name: Qt ${{ env.QT_VERSION }} - WebAssembly (Emscripten ${{ env.EMSCRIPTEN_VERSION }}) - cross MinGW GCC ${{ env.GCC_VERSION }}
+          body_path: release_notes.md
+          draft: false
+          prerelease: false
+          files: artifacts/*.7z
+          fail_on_unmatched_files: true
+          generate_release_notes: false
+
+      - name: 清理 artifacts
+        uses: geekyeggo/delete-artifact@v5
+        with:
+          name: |
+            qt${{ env.QT_VERSION }}-wasm32_emscripten${{ env.EMSCRIPTEN_VERSION }}-cross_mingw_gcc${{ env.GCC_VERSION }}-static_release
+            qt${{ env.QT_VERSION }}-wasm32_emscripten${{ env.EMSCRIPTEN_VERSION }}-cross_mingw_gcc${{ env.GCC_VERSION }}-static_debug
+            qt${{ env.QT_VERSION }}-wasm32_emscripten${{ env.EMSCRIPTEN_VERSION }}-cross_mingw_gcc${{ env.GCC_VERSION }}-static_releaseanddebug
