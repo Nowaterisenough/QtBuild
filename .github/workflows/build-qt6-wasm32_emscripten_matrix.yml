@@ -10,11 +10,11 @@ on:
       emscripten_version:
         description: 'Emscripten版本'
         required: true
-        default: '4.0.11'
+        default: '4.0.13'
         type: choice
         options:
         - '3.1.70'
-        - '4.0.11'
+        - '4.0.13'
       gcc_version:
         description: 'Host GCC版本 (MinGW，用于交叉编译的宿主工具链)'
         required: true
@@ -31,7 +31,7 @@ on:
       host_qt_url:
         description: 'Host Qt下载地址'
         required: false
-        default: 'https://github.com/Nowaterisenough/QtBuild/releases/download/qt6.9.1-windows-mingw15.1.0-ucrt-20250808074044/qt6.9.1-windows-x86_64-mingw_gcc15.1.0_ucrt-shared_release.7z'
+        default: 'https://github.com/yuanpeirong/buildQt/releases/download/Qt6.9.1_rev0/Qt_6.9.1-static-Release_mingw1510_64_UCRT.7z'
       build_debug:
         description: '是否构建Debug版本'
         required: false
@@ -48,9 +48,9 @@ on:
 
 env:
   QT_VERSION: ${{ github.event.inputs.qt_version || '6.9.1' }}
-  EMSCRIPTEN_VERSION: ${{ github.event.inputs.emscripten_version || '4.0.11' }}
+  EMSCRIPTEN_VERSION: ${{ github.event.inputs.emscripten_version || '4.0.13' }}
   GCC_VERSION: ${{ github.event.inputs.gcc_version || '15.2.0' }}
-  HOST_QT_URL: ${{ github.event.inputs.host_qt_url || 'https://github.com/Nowaterisenough/QtBuild/releases/download/qt6.9.1-windows-mingw15.1.0-ucrt-20250808074044/qt6.9.1-windows-x86_64-mingw_gcc15.1.0_ucrt-shared_release.7z' }}
+  HOST_QT_URL: ${{ github.event.inputs.host_qt_url || 'https://github.com/yuanpeirong/buildQt/releases/download/Qt6.9.1_rev0/Qt_6.9.1-static-Release_mingw1510_64_UCRT.7z' }}
 
 jobs:
   build:
@@ -79,30 +79,25 @@ jobs:
         shell: pwsh
 
       - name: 设置MinGW工具链 (Host，用于交叉编译构建工具)
-        id: setup_mingw
         run: |
           cd ..
           $gcc = "${{ env.GCC_VERSION }}"
           $runtime = "ucrt"
-          # 简化：优先尝试API发现，否则回退常见映射
           try {
             $releases = Invoke-RestMethod -Uri "https://api.github.com/repos/niXman/mingw-builds-binaries/releases" -Headers @{ "User-Agent"="GitHub-Actions" }
             $target = $releases | Where-Object { $_.tag_name -like "$gcc-rt_v*-rev*" } | Select-Object -First 1
-            if ($target) {
-              if ($target.tag_name -match "$gcc-rt_(v\d+)-(rev\d+)") {
-                $rt=$matches[1]; $rev=$matches[2]
-                $name = "x86_64-$gcc-release-posix-seh-$runtime-rt_$rt-$rev.7z"
-                $asset = $target.assets | Where-Object { $_.name -eq $name } | Select-Object -First 1
-                if ($asset) {
-                  Write-Host "Downloading $name"
-                  curl -L -o $name $asset.browser_download_url
-                  7z x $name
-                  exit 0
-                }
+            if ($target -and ($target.tag_name -match "$gcc-rt_(v\d+)-(rev\d+)")) {
+              $rt=$matches[1]; $rev=$matches[2]
+              $name = "x86_64-$gcc-release-posix-seh-$runtime-rt_$rt-$rev.7z"
+              $asset = $target.assets | Where-Object { $_.name -eq $name } | Select-Object -First 1
+              if ($asset) {
+                Write-Host "Downloading $name"
+                curl -L -o $name $asset.browser_download_url
+                7z x $name
+                exit 0
               }
             }
           } catch { Write-Host "API lookup failed, fallback..." }
-          # fallback
           $map = @{
             "15.2.0" = @{ rt="rt_v13"; rev="rev0" }
             "15.1.0" = @{ rt="rt_v12"; rev="rev0" }
@@ -137,23 +132,26 @@ jobs:
           .\emsdk.bat activate ${{ env.EMSCRIPTEN_VERSION }}
         shell: pwsh
 
-      - name: 下载Host Qt
+      - name: 下载Host Qt（顶层即为 bin/lib 等目录）
         run: |
           cd ..
           Write-Host "Downloading Host Qt..."
-          New-Item -ItemType Directory -Force -Path "Qt/${{ env.QT_VERSION }}-host"
+          New-Item -ItemType Directory -Force -Path "Qt/${{ env.QT_VERSION }}-host" | Out-Null
           cd "Qt/${{ env.QT_VERSION }}-host"
           curl -L -o host-qt.7z "${{ env.HOST_QT_URL }}"
-          7z x host-qt.7z
-          if (Test-Path "${{ env.QT_VERSION }}-static") {
-            $subDir = Get-ChildItem "${{ env.QT_VERSION }}-static" | Select-Object -First 1
-            if ($subDir) {
-              Get-ChildItem "${{ env.QT_VERSION }}-static\$($subDir.Name)\*" | Move-Item -Destination . -Force
-              Remove-Item -Path "${{ env.QT_VERSION }}-static" -Recurse -Force
-            }
-          }
+          # 直接解压到当前目录，且不做额外子目录移动
+          7z x host-qt.7z -o. | Out-Null
           Remove-Item host-qt.7z -ErrorAction SilentlyContinue
-          Write-Host "Host Qt setup completed."
+
+          # 校验 Qt6HostInfo 是否存在
+          $cfg = Get-ChildItem -Path . -Recurse -Filter "Qt6HostInfoConfig.cmake" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $cfg) {
+            Write-Host "Directory tree (first 3 levels):"
+            Get-ChildItem -Recurse -Depth 3 | Select-Object FullName
+            throw "Qt6HostInfoConfig.cmake not found under $(Get-Location). Check HOST_QT_URL package layout."
+          } else {
+            Write-Host "Qt6HostInfo found at: $($cfg.FullName)"
+          }
         shell: pwsh
 
       - name: 准备目录和源码
@@ -195,7 +193,7 @@ jobs:
             "static" { "static" }
             default { $linkType.ToLower() }
           }
-          # 在命名中体现交叉编译与 host GCC
+          # 命名体现交叉编译与 host GCC
           $archiveName = "qt${qtVersion}-wasm32_emscripten${emscriptenVersion}-cross_mingw_gcc${gccVersion}-${linkTypeNormalized}_${buildTypeNormalized}.7z"
           $sourcePath = "D:\a\QtBuild\Qt\$qtVersion-$linkType"
           if (Test-Path $sourcePath) {
@@ -271,9 +269,9 @@ jobs:
           qt{qt_version}-wasm32_emscripten{emscripten_version}-cross_mingw_gcc{gcc_version}-{link_type}_{build_type}.7z
 
           示例:
-          - qt6.9.1-wasm32_emscripten4.0.11-cross_mingw_gcc15.2.0-static_release.7z
-          - qt6.9.1-wasm32_emscripten4.0.11-cross_mingw_gcc15.2.0-static_debug.7z
-          - qt6.9.1-wasm32_emscripten4.0.11-cross_mingw_gcc15.2.0-static_release_and_debug.7z
+          - qt6.9.1-wasm32_emscripten4.0.13-cross_mingw_gcc15.2.0-static_release.7z
+          - qt6.9.1-wasm32_emscripten4.0.13-cross_mingw_gcc15.2.0-static_debug.7z
+          - qt6.9.1-wasm32_emscripten4.0.13-cross_mingw_gcc15.2.0-static_release_and_debug.7z
 
           ## 使用说明
           1. 下载对应的 .7z 包
