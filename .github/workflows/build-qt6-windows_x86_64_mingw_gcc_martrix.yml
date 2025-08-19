@@ -10,7 +10,7 @@ on:
       gcc_version:
         description: 'GCC Version'
         required: true
-        default: '15.1.0'
+        default: '15.2.0'
       runtime:
         description: 'Runtime (ucrt/msvcrt)'
         required: true
@@ -147,6 +147,7 @@ jobs:
             $gccVersion = "${{ env.GCC_VERSION }}"
             $runtime = "${{ env.RUNTIME }}"
             $versionMap = @{
+              "15.2.0" = @{ rt = "rt_v13"; rev = "rev0" }
               "15.1.0" = @{ rt = "rt_v12"; rev = "rev0" }
               "14.2.0" = @{ rt = "rt_v12"; rev = "rev2" }
               "14.1.0" = @{ rt = "rt_v12"; rev = "rev0" }
