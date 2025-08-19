@@ -31,7 +31,7 @@ on:
       host_qt_url:
         description: 'Host Qt下载地址'
         required: false
-        default: 'https://github.com/yuanpeirong/buildQt/releases/download/Qt6.9.1_rev0/Qt_6.9.1-static-Release_mingw1510_64_UCRT.7z'
+        default: 'https://github.com/Nowaterisenough/QtBuild/releases/download/qt6.9.1-windows-mingw15.1.0-ucrt-20250808074044/qt6.9.1-windows-x86_64-mingw_gcc15.1.0_ucrt-shared_release.7z'
       build_debug:
         description: '是否构建Debug版本'
         required: false
@@ -50,7 +50,7 @@ env:
   QT_VERSION: ${{ github.event.inputs.qt_version || '6.9.1' }}
   EMSCRIPTEN_VERSION: ${{ github.event.inputs.emscripten_version || '4.0.11' }}
   GCC_VERSION: ${{ github.event.inputs.gcc_version || '15.2.0' }}
-  HOST_QT_URL: ${{ github.event.inputs.host_qt_url || 'https://github.com/yuanpeirong/buildQt/releases/download/Qt6.9.1_rev0/Qt_6.9.1-static-Release_mingw1510_64_UCRT.7z' }}
+  HOST_QT_URL: ${{ github.event.inputs.host_qt_url || 'https://github.com/Nowaterisenough/QtBuild/releases/download/qt6.9.1-windows-mingw15.1.0-ucrt-20250808074044/qt6.9.1-windows-x86_64-mingw_gcc15.1.0_ucrt-shared_release.7z' }}
 
 jobs:
   build:
