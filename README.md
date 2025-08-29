@@ -3,7 +3,7 @@
 > Fork自 yuanpeirong/buildQt 基于 GitHub Actions 的 Qt 自动构建项目
 
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Qt Version](https://img.shields.io/badge/Qt-6.9.1%20%7C%205.15.17-blue.svg)](https://qt.io)
+[![Qt Version](https://img.shields.io/badge/Qt-6.9.2%20%7C%205.15.17-blue.svg)](https://qt.io)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20WebAssembly-green.svg)](https://github.com)
 [![Build Status](https://img.shields.io/badge/Build-Automated-brightgreen.svg)](https://github.com/features/actions)
 
@@ -20,7 +20,7 @@
 
 ## 支持的构建配置
 
-### Qt 6.9.1 完整支持
+### Qt 6.9.2 完整支持
 
 #### Windows x64 平台
 
@@ -96,10 +96,10 @@ qt{版本}-{平台}_{架构}_{编译器}{版本}_{运行时}-{链接类型}_{构
 ```
 
 **命名示例**：
-- `qt6.9.1-windows_x86_64_msvc2022-static_release.7z`
-- `qt6.9.1-windows_x86_64_mingw_gcc15.1.0_ucrt-shared_relwithdebinfo.7z`
-- `qt6.9.1-windows_x86_64_llvm_clang20.1_ucrt-static_release_and_debug.7z`
-- `qt6.9.1-wasm32_emscripten4.0.13-static_debug.7z`
+- `qt6.9.2-windows_x86_64_msvc2022-static_release.7z`
+- `qt6.9.2-windows_x86_64_mingw_gcc15.1.0_ucrt-shared_relwithdebinfo.7z`
+- `qt6.9.2-windows_x86_64_llvm_clang20.1_ucrt-static_release_and_debug.7z`
+- `qt6.9.2-wasm32_emscripten4.0.13-static_debug.7z`
 - `qt5.15.17-windows_x86_64_msvc2022-shared_release.7z`
 
 ---
@@ -159,7 +159,7 @@ qt{版本}-{平台}_{架构}_{编译器}{版本}_{运行时}-{链接类型}_{构
 - 选择对应的工作流 (例如：`build-qt6-windows_x86_64_msvc_matrix`)
 - 点击 **"Run workflow"**
 - 配置构建参数：
-  - Qt 版本 (6.9.1 / 5.15.17)
+  - Qt 版本 (6.9.2 / 5.15.17)
   - 编译器版本
   - 运行时类型
   - 其他选项
@@ -191,22 +191,22 @@ cd QtBuild
 
 **Qt6 Windows MSVC**：
 ```bash
-.\Qt6Build\build-qt6-windows_x86_64_msvc.cmd 6.9.1 2022 release static false
+.\Qt6Build\build-qt6-windows_x86_64_msvc.cmd 6.9.2 2022 release static false
 ```
 
 **Qt6 Windows MinGW**：
 ```bash
-.\Qt6Build\build-qt6-windows_x86_64_mingw_gcc.cmd 6.9.1 15.1.0 release shared false ucrt
+.\Qt6Build\build-qt6-windows_x86_64_mingw_gcc.cmd 6.9.2 15.1.0 release shared false ucrt
 ```
 
 **Qt6 Windows LLVM-Clang**：
 ```bash
-.\Qt6Build\build-qt6-windows_x86_64_llvm_clang.cmd 6.9.1 20.1 release static false ucrt "D:\path\to\llvm\bin" "llvm-mingw20.1.6_64_UCRT"
+.\Qt6Build\build-qt6-windows_x86_64_llvm_clang.cmd 6.9.2 20.1 release static false ucrt "D:\path\to\llvm\bin" "llvm-mingw20.1.6_64_UCRT"
 ```
 
 **Qt6 WebAssembly**：
 ```bash
-.\Qt6Build\build-qt6-wasm32_emscripten.cmd 6.9.1 4.0.13 release static
+.\Qt6Build\build-qt6-wasm32_emscripten.cmd 6.9.2 4.0.13 release static
 ```
 
 **Qt5 Windows MSVC**：
@@ -227,7 +227,7 @@ script_name <Qt版本> <编译器版本> <构建类型> <链接类型> <分离�
 ```
 
 **参数详解**：
-- `Qt版本`: 6.9.1, 5.15.17
+- `Qt版本`: 6.9.2, 5.15.17
 - `编译器版本`: 2022 (MSVC), 15.1.0 (GCC), 20.1 (Clang), 4.0.13 (Emscripten)
 - `构建类型`: release, debug, release-and-debug
 - `链接类型`: static, shared

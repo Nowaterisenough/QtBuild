@@ -6,7 +6,7 @@ on:
       qt_version:
         description: 'Qt版本'
         required: true
-        default: '6.9.1'
+        default: '6.9.2'
       clang_version:
         description: 'Clang版本'
         required: true
@@ -41,7 +41,7 @@ on:
         - 'false'
 
 env:
-  QT_VERSION: ${{ github.event.inputs.qt_version || '6.9.1' }}
+  QT_VERSION: ${{ github.event.inputs.qt_version || '6.9.2' }}
   CLANG_VERSION: ${{ github.event.inputs.clang_version || '20.1' }}
   RUNTIME: ${{ github.event.inputs.runtime || 'ucrt' }}
   TEST_MODE: ${{ github.event.inputs.test_mode || 'false' }}
@@ -335,7 +335,7 @@ jobs:
           Files follow the pattern: \`qt{version}-windows-x86_64-llvm_clang{clang_version}_{runtime}-{link_type}_{build_type}.7z\`
           
           Where:
-          - \`{version}\`: Qt version (e.g., 6.9.1)
+          - \`{version}\`: Qt version (e.g., 6.9.2)
           - \`{clang_version}\`: Clang version (e.g., 20.1)
           - \`{runtime}\`: Runtime library (ucrt or msvcrt)
           - \`{link_type}\`: static or shared

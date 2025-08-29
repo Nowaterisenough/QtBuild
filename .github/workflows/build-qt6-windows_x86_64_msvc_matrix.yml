@@ -6,7 +6,7 @@ on:
       qt_version:
         description: 'QT Version'
         required: true
-        default: '6.9.1'
+        default: '6.9.2'
       msvc_version:
         description: 'MSVC Version'
         required: true
@@ -33,7 +33,7 @@ on:
         - 'false'
 
 env:
-  QT_VERSION: ${{ github.event.inputs.qt_version || '6.9.1' }}
+  QT_VERSION: ${{ github.event.inputs.qt_version || '6.9.2' }}
   MSVC_VERSION: ${{ github.event.inputs.msvc_version || '2022' }}
   TEST_MODE: ${{ github.event.inputs.test_mode || 'false' }}
 
@@ -260,7 +260,7 @@ jobs:
           Files follow the pattern: \`qt{version}-windows-x86_64-msvc{msvc_version}-{link_type}_{build_type}.7z\`
           
           Where:
-          - \`{version}\`: Qt version (e.g., 6.9.1)
+          - \`{version}\`: Qt version (e.g., 6.9.2)
           - \`{msvc_version}\`: MSVC version (e.g., 2022)
           - \`{link_type}\`: static or shared
           - \`{build_type}\`: release, debug, or relwithdebinfo

@@ -6,7 +6,7 @@ on:
       qt_version:
         description: 'Qt版本'
         required: true
-        default: '6.9.1'
+        default: '6.9.2'
       emscripten_version:
         description: 'Emscripten版本'
         required: true
@@ -31,7 +31,7 @@ on:
       host_qt_url:
         description: 'Host Qt下载地址'
         required: false
-        default: 'https://github.com/Nowaterisenough/QtBuild/releases/download/qt6.9.1-windows-mingw15.2.0-ucrt-20250819063525/qt6.9.1-windows-x86_64-mingw_gcc15.2.0_ucrt-shared_release.7z'
+        default: 'https://github.com/Nowaterisenough/QtBuild/releases/download/qt6.9.2-windows-mingw15.2.0-ucrt-20250819063525/qt6.9.2-windows-x86_64-mingw_gcc15.2.0_ucrt-shared_release.7z'
       build_debug:
         description: '是否构建Debug版本'
         required: false
@@ -47,10 +47,10 @@ on:
         - 'false'
 
 env:
-  QT_VERSION: ${{ github.event.inputs.qt_version || '6.9.1' }}
+  QT_VERSION: ${{ github.event.inputs.qt_version || '6.9.2' }}
   EMSCRIPTEN_VERSION: ${{ github.event.inputs.emscripten_version || '4.0.13' }}
   GCC_VERSION: ${{ github.event.inputs.gcc_version || '15.2.0' }}
-  HOST_QT_URL: ${{ github.event.inputs.host_qt_url || 'https://github.com/Nowaterisenough/QtBuild/releases/download/qt6.9.1-windows-mingw15.2.0-ucrt-20250819063525/qt6.9.1-windows-x86_64-mingw_gcc15.2.0_ucrt-shared_release.7z' }}
+  HOST_QT_URL: ${{ github.event.inputs.host_qt_url || 'https://github.com/Nowaterisenough/QtBuild/releases/download/qt6.9.2-windows-mingw15.2.0-ucrt-20250819063525/qt6.9.2-windows-x86_64-mingw_gcc15.2.0_ucrt-shared_release.7z' }}
 
 jobs:
   build:
@@ -316,9 +316,9 @@ jobs:
           qt{qt_version}-wasm32_emscripten{emscripten_version}-cross_mingw_gcc{gcc_version}-{link_type}_{build_type}.7z
 
           示例:
-          - qt6.9.1-wasm32_emscripten4.0.13-cross_mingw_gcc15.2.0-static_release.7z
-          - qt6.9.1-wasm32_emscripten4.0.13-cross_mingw_gcc15.2.0-static_debug.7z
-          - qt6.9.1-wasm32_emscripten4.0.13-cross_mingw_gcc15.2.0-static_release_and_debug.7z
+          - qt6.9.2-wasm32_emscripten4.0.13-cross_mingw_gcc15.2.0-static_release.7z
+          - qt6.9.2-wasm32_emscripten4.0.13-cross_mingw_gcc15.2.0-static_debug.7z
+          - qt6.9.2-wasm32_emscripten4.0.13-cross_mingw_gcc15.2.0-static_release_and_debug.7z
 
           ## 使用说明
           1. 下载对应的 .7z 包

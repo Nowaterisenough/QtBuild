@@ -10,7 +10,7 @@ set LINK_TYPE=%4
 set SEPARATE_DEBUG=%5
 set TEST_MODE=%6
 
-REM 例如: 6.9.1  2022  release  static  false  false
+REM 例如: 6.9.2  2022  release  static  false  false
 
 REM 处理可能为空的参数，设置默认值
 if "%TEST_MODE%"=="" set TEST_MODE=false

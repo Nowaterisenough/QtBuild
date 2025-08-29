@@ -5,7 +5,7 @@ set -e
 echo "Starting Qt Linux build script with LLVM/Clang in WSL2..."
 
 # 参数处理
-QT_VERSION=${QT_VERSION:-"6.9.1"}
+QT_VERSION=${QT_VERSION:-"6.9.2"}
 LLVM_VERSION=${LLVM_VERSION:-"18"}
 BUILD_TYPE=${BUILD_TYPE:-"release"}
 LINK_TYPE=${LINK_TYPE:-"shared"}

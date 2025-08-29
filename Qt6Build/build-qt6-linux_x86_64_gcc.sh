@@ -5,7 +5,7 @@ set -e
 echo "Starting Qt Linux build script in WSL2..."
 
 # 参数处理
-QT_VERSION=${QT_VERSION:-"6.9.1"}
+QT_VERSION=${QT_VERSION:-"6.9.2"}
 GCC_VERSION=${GCC_VERSION:-"13"}
 BUILD_TYPE=${BUILD_TYPE:-"release"}
 LINK_TYPE=${LINK_TYPE:-"shared"}

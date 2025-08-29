@@ -12,7 +12,7 @@ set RUNTIME=%6
 set WITH_DEBUG_INFO=%7
 set TEST_MODE=%8
 
-REM 例如: 6.9.1  15.1.0  release  static  false  ucrt  true  false
+REM 例如: 6.9.2  15.1.0  release  static  false  ucrt  true  false
 
 REM 处理可能为空的参数，设置默认值
 if "%WITH_DEBUG_INFO%"=="" set WITH_DEBUG_INFO=false

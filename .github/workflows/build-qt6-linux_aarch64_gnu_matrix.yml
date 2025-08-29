@@ -6,7 +6,7 @@ on:
       qt_version:
         description: 'Qt Version'
         required: true
-        default: '6.9.1'
+        default: '6.9.2'
       gcc_version:
         description: 'GCC Version'
         required: true
@@ -19,7 +19,7 @@ on:
       host_qt_url:
         description: 'Host Qt URL'
         required: false
-        default: 'https://github.com/yuanpeirong/buildQt/releases/download/Qt6.9.1_rev0/Qt_6.9.1-static-Release_mingw1510_64_UCRT.7z'
+        default: 'https://github.com/yuanpeirong/buildQt/releases/download/Qt6.9.2_rev0/Qt_6.9.2-static-Release_mingw1510_64_UCRT.7z'
       test_mode:
         description: 'Test Mode (only build qtbase)'
         required: true
@@ -38,9 +38,9 @@ on:
         - 'false'
 
 env:
-  QT_VERSION: ${{ github.event.inputs.qt_version || '6.9.1' }}
+  QT_VERSION: ${{ github.event.inputs.qt_version || '6.9.2' }}
   GCC_VERSION: ${{ github.event.inputs.gcc_version || '14.3.rel1' }}
-  HOST_QT_URL: ${{ github.event.inputs.host_qt_url || 'https://github.com/yuanpeirong/buildQt/releases/download/Qt6.9.1_rev0/Qt_6.9.1-static-Release_mingw1510_64_UCRT.7z' }}
+  HOST_QT_URL: ${{ github.event.inputs.host_qt_url || 'https://github.com/yuanpeirong/buildQt/releases/download/Qt6.9.2_rev0/Qt_6.9.2-static-Release_mingw1510_64_UCRT.7z' }}
   TEST_MODE: ${{ github.event.inputs.test_mode || 'false' }}
 
 jobs:
@@ -408,7 +408,7 @@ jobs:
           Files follow the pattern: \`qt{version}-linux-aarch64-gnu{gcc_version}-{link_type}_{build_type}.7z\`
           
           Where:
-          - \`{version}\`: Qt version (e.g., 6.9.1)
+          - \`{version}\`: Qt version (e.g., 6.9.2)
           - \`{gcc_version}\`: GCC version (e.g., 14.3.rel1)
           - \`{link_type}\`: static or shared
           - \`{build_type}\`: release, debug, or relwithdebinfo
