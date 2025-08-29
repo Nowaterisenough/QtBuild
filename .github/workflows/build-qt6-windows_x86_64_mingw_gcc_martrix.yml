@@ -27,7 +27,7 @@ on:
         type: choice
         options: [ucrt, msvcrt]
       vulkan_sdk:
-        description: 'Vulkan SDK (none or version)'
+        description: 'Vulkan SDK (none or version supported by setup-vulkan-sdk)'
         required: true
         type: choice
         options:
@@ -146,10 +146,11 @@ jobs:
         with:
           vulkan-sdk-version: ${{ env.VULKAN_SDK_VER }}
           optional-components: Vulkan-Headers, Vulkan-Loader
+          # 重要：暂时禁用该 action 的内部缓存，以避免触发 v1/v2
+          cache: false
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          cache: true
 
-      - name: Log Vulkan env
+      - name: Verify Vulkan env
         if: ${{ env.VULKAN_SDK_VER != 'none' }}
         shell: pwsh
         run: |
@@ -157,51 +158,28 @@ jobs:
           if (-not $env:VULKAN_SDK) { echo "VULKAN_SDK not set"; exit 1 }
           if (-not (Test-Path "$env:VULKAN_SDK\Include\vulkan\vulkan.h")) { echo "Missing headers"; exit 1 }
           if (-not (Test-Path "$env:VULKAN_SDK\Lib\vulkan-1.lib")) { echo "Missing import lib"; exit 1 }
-          if (-not (Get-Command "vulkaninfo.exe" -ErrorAction SilentlyContinue)) { echo "vulkaninfo not in PATH (ok if Headers/Loader-only)"; }
 
-      - name: Setup PostgreSQL
-        shell: pwsh
-        run: |
-          cd ..
-          $v="16.6"
-          $url="https://get.enterprisedb.com/postgresql/postgresql-$v-1-windows-x64-binaries.zip"
-          curl -L -o postgresql.zip $url
-          mkdir postgresql
-          7z x postgresql.zip -opostgresql
-          $pg=(Get-ChildItem -Path "postgresql" -Directory | Select-Object -First 1).FullName
-          echo "PostgreSQL_ROOT=$pg" >> $env:GITHUB_ENV
-          echo "$pg\bin" >> $env:GITHUB_PATH
-
-      - name: Setup MySQL
-        shell: pwsh
-        run: |
-          cd ..
-          $v="8.0.35"
-          $url="https://dev.mysql.com/get/Downloads/MySQL-8.0/mysql-$v-winx64.zip"
-          curl -L -o mysql.zip $url
-          7z x mysql.zip
-          $mp=(Get-ChildItem -Directory -Filter "mysql-*" | Select-Object -First 1).FullName
-          echo "MYSQL_ROOT=$mp" >> $env:GITHUB_ENV
-
-      - name: Setup Protobuf
-        shell: pwsh
-        run: |
-          cd ..
-          curl -L -o protoc-win64.zip https://github.com/protocolbuffers/protobuf/releases/download/v30.2/protoc-30.2-win64.zip
-          unzip -q protoc-win64.zip -d ./protoc
-          echo "D:\a\QtBuild\protoc\bin" >> $env:GITHUB_PATH
+      # 可选：展示如何用 v4 缓存（例如缓存 Qt 源 zip）
+      - name: Cache Qt source zip (optional)
+        uses: actions/cache@v4
+        with:
+          path: ../Qt/qt-everywhere-src.zip
+          key: qt-src-${{ env.QT_VERSION }}
+        continue-on-error: true
 
       - name: Prepare Qt source
         shell: pwsh
         run: |
           cd ..
-          mkdir Qt
+          mkdir Qt -ea 0
           cd Qt
-          mkdir "${{ env.QT_VERSION }}"
-          mkdir "${{ env.QT_VERSION }}-${{ matrix.link_type }}"
+          mkdir "${{ env.QT_VERSION }}" -ea 0
+          mkdir "${{ env.QT_VERSION }}-${{ matrix.link_type }}" -ea 0
           $mm="${{ steps.qt_version.outputs.major_minor }}"
           $ver="${{ env.QT_VERSION }}"
-          curl -L -o qt-everywhere-src.zip "https://download.qt.io/official_releases/qt/$mm/$ver/single/qt-everywhere-src-$ver.zip"
+          if (-not (Test-Path qt-everywhere-src.zip)) {
+            curl -L -o qt-everywhere-src.zip "https://download.qt.io/official_releases/qt/$mm/$ver/single/qt-everywhere-src-$ver.zip"
+          }
           unzip -q qt-everywhere-src.zip -d "./$ver"
 
       - name: Build Qt
