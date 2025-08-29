@@ -147,26 +147,21 @@ jobs:
           $ver="${{ env.VULKAN_SDK_VER }}"
           $root="D:\a\QtBuild\VulkanSDK\$ver"
           New-Item -ItemType Directory -Force -Path $root | Out-Null
-          # 仅下载必要的 Headers/Libs/Bin 压缩包（LunarG 官方独立包）
-          $base="https://sdk.lunarg.com/sdk/download/$ver/windows"
-          $pkgs=@(
-            @{n="vulkan_headers_windows.zip"; d="Include"}
-            @{n="vulkan_lib_windows.zip";     d="Lib"}
-            @{n="vulkan_bin_windows.zip";     d="Bin"}
-          )
-          foreach($p in $pkgs){
-            $url="$base/$($p.n)"
-            $dst="$root\$($p.n)"
-            Write-Host "Downloading $url"
-            curl -L -o "$dst" "$url"
-            7z x "$dst" -o"$root" -y | Out-Null
-          }
-          # 兼容 Qt/CMake 的目录结构
-          # 期望：%VULKAN_SDK%\Include, \Lib, \Bin
-          echo "VULKAN_SDK=$root" >> $env:GITHUB_ENV
-          echo "$root\Bin" >> $env:GITHUB_PATH
-          echo "INCLUDE=$root\Include;$env:INCLUDE" >> $env:GITHUB_ENV
-          echo "LIB=$root\Lib;$env:LIB" >> $env:GITHUB_ENV
+          $zip="$root\VulkanSDK-$ver-Windows.zip"
+          $url="https://sdk.lunarg.com/sdk/download/$ver/windows/VulkanSDK-$ver-Windows.zip?Human=true"
+          Write-Host "Downloading $url"
+          curl -L -o "$zip" "$url"
+          if (-not (Test-Path $zip)) { echo "Vulkan SDK zip not downloaded."; exit 1 }
+          $size=(Get-Item $zip).Length
+          if ($size -lt 1048576) { echo "Downloaded file too small: $size bytes"; type "$zip" 2>$null; exit 1 }
+          7z x "$zip" -o"$root" -y | Out-Null
+          $sdkDir=(Get-ChildItem -Path $root -Directory | Where-Object { Test-Path (Join-Path $_.FullName 'Include') } | Select-Object -First 1)
+          if (-not $sdkDir) { echo "SDK root not found after extract."; exit 1 }
+          $sdk=$sdkDir.FullName
+          echo "VULKAN_SDK=$sdk" >> $env:GITHUB_ENV
+          echo "$sdk\Bin" >> $env:GITHUB_PATH
+          echo "INCLUDE=$sdk\Include;$env:INCLUDE" >> $env:GITHUB_ENV
+          echo "LIB=$sdk\Lib;$env:LIB" >> $env:GITHUB_ENV
 
       - name: Setup PostgreSQL
         shell: pwsh
