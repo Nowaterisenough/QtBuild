@@ -149,12 +149,12 @@ jobs:
 
           switch ($choice) {
             'runtime-1.4.321.0' {
-              $rtUrl = "https://sdk.lunarg.com/sdk/download/1.4.321.0/windows/VulkanRT-X64-1.4.321.0-Components"
+              $rtUrl = "https://sdk.lunarg.com/sdk/download/1.4.321.0/windows/VulkanRT-X64-1.4.321.0-Components.zip"
               $hdrTag = "vulkan-sdk-1.4.321.0"
               $verDir = "1.4.321.0"
             }
             'runtime-1.3.290.0' {
-              $rtUrl = "https://sdk.lunarg.com/sdk/download/1.3.290.0/windows/VulkanRT-X64-1.3.290.0-Components"
+              $rtUrl = "https://sdk.lunarg.com/sdk/download/1.3.290.0/windows/VulkanRT-X64-1.3.290.0-Components.zip"
               $hdrTag = "v1.3.290"
               $verDir = "1.3.290.0"
             }
