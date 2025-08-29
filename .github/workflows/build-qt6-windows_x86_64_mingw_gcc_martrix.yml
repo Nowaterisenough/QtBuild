@@ -151,7 +151,7 @@ jobs:
           switch ($choice) {
             'runtime-1.4.321.0' {
               $rtUrl = "https://sdk.lunarg.com/sdk/download/1.4.321.0/windows/VulkanRT-X64-1.4.321.0-Components.zip"
-              $hdrTag = "v1.3.290"   # 1.4 支线兼容 1.3.290 头文件（VK_HEADER_VERSION 足够新）；如需其他 tag 可调整
+              $hdrTag = "vulkan-sdk-1.4.321.0"  # 使用你提供的 Headers tag
               $verDir = "1.4.321.0"
             }
             'runtime-1.3.290.0' {
@@ -175,7 +175,7 @@ jobs:
           if ((Get-Item $rtZip).Length -lt 1000000) { echo "Runtime zip too small"; exit 1 }
           7z x "$rtZip" -o"$work\rt" -y | Out-Null
 
-          # 下载 Vulkan-Headers 源码包（只用 include）
+          # 下载 Vulkan-Headers（使用指定 tag）
           $hdrZip = Join-Path $work "Vulkan-Headers-$hdrTag.zip"
           $hdrUrl = "https://github.com/KhronosGroup/Vulkan-Headers/archive/refs/tags/$hdrTag.zip"
           Write-Host "Downloading Headers: $hdrUrl"
@@ -196,12 +196,23 @@ jobs:
           Copy-Item -Path (Join-Path $hdrRoot "include\vulkan\*") -Destination (Join-Path $inc "vulkan") -Recurse -Force
 
           # Lib + Bin 来自 Runtime Components
-          # 常见结构：rt\Core\Lib\vulkan-1.lib 和 rt\Core\Bin\VulkanRT-*.msi 或解包后目录
-          # 该组件包中通常直接含有 vulkan-1.lib 和 vulkan-1.dll；路径可能随版本改变，做递归查找
+          # 递归查找 vulkan-1.lib（部分版本在解包的 MSI 内/不同子目录）
           $libFile = Get-ChildItem -Path "$work\rt" -Recurse -Filter "vulkan-1.lib" | Select-Object -First 1
+          if (-not $libFile) {
+            # 若在 MSI 中，先对所有 MSI 做解包，再次查找
+            $msis = Get-ChildItem -Path "$work\rt" -Recurse -Filter *.msi
+            foreach($msi in $msis){
+              $msiOut = Join-Path $msi.DirectoryName ($msi.BaseName + "_extracted")
+              New-Item -ItemType Directory -Force -Path $msiOut | Out-Null
+              # 利用 7z 解包 MSI（无需管理员）
+              7z x "$($msi.FullName)" -o"$msiOut" -y | Out-Null
+            }
+            $libFile = Get-ChildItem -Path "$work\rt" -Recurse -Filter "vulkan-1.lib" | Select-Object -First 1
+          }
           if (-not $libFile) { echo "vulkan-1.lib not found in runtime components"; exit 1 }
           Copy-Item $libFile.FullName $lib -Force
 
+          # 可选复制运行时 DLL（不是编译必需）
           $dllFile = Get-ChildItem -Path "$work\rt" -Recurse -Filter "vulkan-1.dll" | Select-Object -First 1
           if ($dllFile) { Copy-Item $dllFile.FullName $bin -Force }
 
