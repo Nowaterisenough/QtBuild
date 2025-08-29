@@ -147,15 +147,14 @@ jobs:
           $root="D:\a\QtBuild\VulkanSDK"
           New-Item -ItemType Directory -Force -Path $root | Out-Null
 
-          # 版本映射：Runtime zip + Headers tag
           switch ($choice) {
             'runtime-1.4.321.0' {
-              $rtUrl = "https://sdk.lunarg.com/sdk/download/1.4.321.0/windows/VulkanRT-X64-1.4.321.0-Components.zip"
-              $hdrTag = "vulkan-sdk-1.4.321.0"  # 使用你提供的 Headers tag
+              $rtUrl = "https://sdk.lunarg.com/sdk/download/1.4.321.0/windows/VulkanRT-X64-1.4.321.0-Components"
+              $hdrTag = "vulkan-sdk-1.4.321.0"
               $verDir = "1.4.321.0"
             }
             'runtime-1.3.290.0' {
-              $rtUrl = "https://sdk.lunarg.com/sdk/download/1.3.290.0/windows/VulkanRT-X64-1.3.290.0-Components.zip"
+              $rtUrl = "https://sdk.lunarg.com/sdk/download/1.3.290.0/windows/VulkanRT-X64-1.3.290.0-Components"
               $hdrTag = "v1.3.290"
               $verDir = "1.3.290.0"
             }
@@ -167,15 +166,27 @@ jobs:
           $work="$root\$verDir"
           New-Item -ItemType Directory -Force -Path $work | Out-Null
 
-          # 下载 Runtime Components
-          $rtZip = Join-Path $work "VulkanRT-Components.zip"
+          # 下载 Runtime Components（注意有的链接无 .zip 后缀，但依旧是可解包的容器）
+          $rtPkg = Join-Path $work "VulkanRT-Components.pkg"
           Write-Host "Downloading Runtime Components: $rtUrl"
-          curl -L -o "$rtZip" "$rtUrl"
-          if (-not (Test-Path $rtZip)) { echo "Runtime zip not downloaded"; exit 1 }
-          if ((Get-Item $rtZip).Length -lt 1000000) { echo "Runtime zip too small"; exit 1 }
-          7z x "$rtZip" -o"$work\rt" -y | Out-Null
+          curl -L -o "$rtPkg" "$rtUrl"
+          if (-not (Test-Path $rtPkg)) { echo "Runtime package not downloaded"; exit 1 }
+          if ((Get-Item $rtPkg).Length -lt 5000000) { echo "Runtime package too small"; exit 1 }
 
-          # 下载 Vulkan-Headers（使用指定 tag）
+          # 第一次解包
+          $rtExtract="$work\rt"
+          New-Item -ItemType Directory -Force -Path $rtExtract | Out-Null
+          7z x "$rtPkg" -o"$rtExtract" -y | Out-Null
+
+          # 查找并二次解包所有 MSI（其中包含 Lib/DLL 等）
+          $msis = Get-ChildItem -Path "$rtExtract" -Recurse -Filter *.msi
+          foreach($msi in $msis){
+            $msiOut = Join-Path $msi.DirectoryName ($msi.BaseName + "_extracted")
+            New-Item -ItemType Directory -Force -Path $msiOut | Out-Null
+            7z x "$($msi.FullName)" -o"$msiOut" -y | Out-Null
+          }
+
+          # 下载 Vulkan-Headers（使用你指定的 tag）
           $hdrZip = Join-Path $work "Vulkan-Headers-$hdrTag.zip"
           $hdrUrl = "https://github.com/KhronosGroup/Vulkan-Headers/archive/refs/tags/$hdrTag.zip"
           Write-Host "Downloading Headers: $hdrUrl"
@@ -184,7 +195,7 @@ jobs:
           if ((Get-Item $hdrZip).Length -lt 1000000) { echo "Headers zip too small"; exit 1 }
           7z x "$hdrZip" -o"$work\headers" -y | Out-Null
 
-          # 组装 SDK 结构：sdk\Include, sdk\Lib, sdk\Bin
+          # 组装 SDK 结构
           $sdk="$work\sdk"
           $inc="$sdk\Include"
           $lib="$sdk\Lib"
@@ -195,28 +206,19 @@ jobs:
           $hdrRoot=(Get-ChildItem -Path "$work\headers" -Directory | Select-Object -First 1).FullName
           Copy-Item -Path (Join-Path $hdrRoot "include\vulkan\*") -Destination (Join-Path $inc "vulkan") -Recurse -Force
 
-          # Lib + Bin 来自 Runtime Components
-          # 递归查找 vulkan-1.lib（部分版本在解包的 MSI 内/不同子目录）
-          $libFile = Get-ChildItem -Path "$work\rt" -Recurse -Filter "vulkan-1.lib" | Select-Object -First 1
+          # 从已解包内容中查找 vulkan-1.lib 与 vulkan-1.dll
+          $libFile = Get-ChildItem -Path "$rtExtract" -Recurse -Filter "vulkan-1.lib" | Select-Object -First 1
           if (-not $libFile) {
-            # 若在 MSI 中，先对所有 MSI 做解包，再次查找
-            $msis = Get-ChildItem -Path "$work\rt" -Recurse -Filter *.msi
-            foreach($msi in $msis){
-              $msiOut = Join-Path $msi.DirectoryName ($msi.BaseName + "_extracted")
-              New-Item -ItemType Directory -Force -Path $msiOut | Out-Null
-              # 利用 7z 解包 MSI（无需管理员）
-              7z x "$($msi.FullName)" -o"$msiOut" -y | Out-Null
-            }
-            $libFile = Get-ChildItem -Path "$work\rt" -Recurse -Filter "vulkan-1.lib" | Select-Object -First 1
+            echo "vulkan-1.lib not found after MSI extraction"
+            Get-ChildItem -Path "$rtExtract" -Recurse -Filter "vulkan-1.lib" | Write-Host
+            exit 1
           }
-          if (-not $libFile) { echo "vulkan-1.lib not found in runtime components"; exit 1 }
           Copy-Item $libFile.FullName $lib -Force
 
-          # 可选复制运行时 DLL（不是编译必需）
-          $dllFile = Get-ChildItem -Path "$work\rt" -Recurse -Filter "vulkan-1.dll" | Select-Object -First 1
+          $dllFile = Get-ChildItem -Path "$rtExtract" -Recurse -Filter "vulkan-1.dll" | Select-Object -First 1
           if ($dllFile) { Copy-Item $dllFile.FullName $bin -Force }
 
-          # 设置环境变量
+          # 环境变量
           echo "VULKAN_SDK=$sdk" >> $env:GITHUB_ENV
           echo "$bin" >> $env:GITHUB_PATH
           echo "INCLUDE=$inc;$env:INCLUDE" >> $env:GITHUB_ENV
