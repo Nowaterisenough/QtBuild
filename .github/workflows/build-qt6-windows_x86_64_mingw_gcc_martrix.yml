@@ -1,3 +1,8 @@
+# =============================================================================
+# Qt 6 Windows x86_64 MinGW-GCC Build Matrix
+# Standardized workflow for building Qt with MinGW-GCC on Windows
+# =============================================================================
+
 name: build-qt6-windows_x86_64_mingw_gcc_matrix
 
 on:
@@ -7,18 +12,18 @@ on:
         description: 'QT Version'
         required: true
         default: '6.9.2'
-      gcc_version:
+      compiler_version:
         description: 'GCC Version'
         required: true
         type: choice
         options:
-        - '15.2.0'
-        - '15.1.0'
-        - '14.2.0'
-        - '14.1.0'
-        - '13.2.0'
-        - '13.1.0'
         - '12.2.0'
+        - '13.1.0'
+        - '13.2.0'
+        - '14.1.0'
+        - '14.2.0'
+        - '15.1.0'
+        - '15.2.0'
         default: '15.2.0'
       runtime:
         description: 'Runtime (ucrt/msvcrt)'
@@ -34,7 +39,7 @@ on:
         - 'none'
         - 'runtime-1.4.321.0'
         - 'runtime-1.3.290.0'
-        default: 'runtime-1.4.321.0'
+        default: 'none'
       test_mode:
         description: 'Test Mode (only build qtbase)'
         required: true
@@ -50,9 +55,9 @@ on:
 
 env:
   QT_VERSION: ${{ github.event.inputs.qt_version || '6.9.2' }}
-  GCC_VERSION: ${{ github.event.inputs.gcc_version || '15.2.0' }}
+  COMPILER_VERSION: ${{ github.event.inputs.compiler_version || '15.2.0' }}
   RUNTIME: ${{ github.event.inputs.runtime || 'ucrt' }}
-  VULKAN_CHOICE: ${{ github.event.inputs.vulkan_sdk || 'runtime-1.4.321.0' }}
+  VULKAN_CHOICE: ${{ github.event.inputs.vulkan_sdk || 'none' }}
   TEST_MODE: ${{ github.event.inputs.test_mode || 'false' }}
   ACTIONS_STEP_DEBUG: 'true'
 
@@ -66,9 +71,7 @@ jobs:
         build_type: [release, debug, release-sepdbg]
         exclude:
           - link_type: static
-            build_type: release-sepdbg
-          - link_type: static
-            build_type: debug
+            build_type: debug  # Skip static debug builds for resource efficiency
 
     steps:
       - name: Checkout
@@ -91,7 +94,7 @@ jobs:
         id: mingw
         shell: pwsh
         run: |
-          $gcc="${{ env.GCC_VERSION }}"
+          $gcc="${{ env.COMPILER_VERSION }}"
           $rt="${{ env.RUNTIME }}"
           function Out($k,$v){echo "$k=$v" >> $env:GITHUB_OUTPUT}
           try {
@@ -306,13 +309,13 @@ jobs:
         run: |
           setlocal
           set QT_VERSION=${{ env.QT_VERSION }}
-          set GCC_VERSION=${{ env.GCC_VERSION }}
+          set COMPILER_VERSION=${{ env.COMPILER_VERSION }}
           set BUILD_TYPE=${{ matrix.build_type }}
           set LINK_TYPE=${{ matrix.link_type }}
           set RUNTIME=${{ env.RUNTIME }}
           set TEST_MODE=${{ env.TEST_MODE }}
           if "%BUILD_TYPE%"=="release-sepdbg" (set BUILD_TYPE=release& set SEPARATE_DEBUG=true) else (set SEPARATE_DEBUG=false)
-          call D:\a\QtBuild\QtBuild\Qt6Build\build-qt6-windows_x86_64_mingw_gcc.cmd %QT_VERSION% %GCC_VERSION% %BUILD_TYPE% %LINK_TYPE% %SEPARATE_DEBUG% %RUNTIME% "" %TEST_MODE%
+          call D:\a\QtBuild\QtBuild\Qt6Build\build-qt6-windows_x86_64_mingw_gcc.cmd %QT_VERSION% %COMPILER_VERSION% %BUILD_TYPE% %LINK_TYPE% %SEPARATE_DEBUG% %RUNTIME% "" %TEST_MODE%
           endlocal
 
       - name: Export Qt configure summary
@@ -335,12 +338,16 @@ jobs:
         shell: pwsh
         run: |
           $qt="${{ env.QT_VERSION }}"
-          $gcc="${{ env.GCC_VERSION }}"
+          $gcc="${{ env.COMPILER_VERSION }}"
           $rt="${{ env.RUNTIME }}".ToLower()
           $lt="${{ matrix.link_type }}"
           $bt="${{ matrix.build_type }}"
+          
+          # Normalize build type name
           $btName = switch ($bt) { "release" {"release"} "debug" {"debug"} default {"relwithdebinfo"} }
-          $name="qt$qt-windows-x86_64-mingw_gcc$gcc" + "_$rt-$lt" + "_$btName.7z"
+          
+          # Create standardized archive name
+          $name="qt$qt-windows-x86_64-mingwgcc$gcc" + "_$rt-$lt" + "_$btName.7z"
           $src="D:\a\QtBuild\Qt\$qt-$lt"
           if (-not (Test-Path $src)) { echo "Missing: $src"; exit 1 }
           $compDir=(Get-ChildItem -Path $src -Directory | Where-Object { $_.Name -like "mingw*" } | Select-Object -First 1)
@@ -350,7 +357,7 @@ jobs:
             $qtRoot=(Get-ChildItem -Path $compDir.FullName -Directory | Where-Object { Test-Path (Join-Path $_.FullName "bin\qtpaths.exe") } | Select-Object -First 1).FullName
           }
           if (-not $qtRoot) { echo "Qt installation not found."; exit 1 }
-          $finalRoot="qt$qt-windows-x86_64-mingw_gcc$gcc" + "_$rt-$lt" + "_$btName"
+          $finalRoot="qt$qt-windows-x86_64-mingwgcc$gcc" + "_$rt-$lt" + "_$btName"
           $tmp="D:\a\QtBuild\pack"
           if (Test-Path $tmp) { Remove-Item $tmp -Recurse -Force }
           New-Item -ItemType Directory -Path (Join-Path $tmp $finalRoot) | Out-Null
@@ -365,78 +372,16 @@ jobs:
       - name: Upload package
         uses: actions/upload-artifact@v4
         with:
-          name: qt${{ env.QT_VERSION }}-windows-x86_64-mingw_gcc${{ env.GCC_VERSION }}_${{ env.RUNTIME }}-${{ matrix.link_type }}_${{ matrix.build_type == 'release' && 'release' || matrix.build_type == 'debug' && 'debug' || 'relwithdebinfo' }}
+          name: qt${{ env.QT_VERSION }}-windows-x86_64-mingwgcc${{ env.COMPILER_VERSION }}_${{ env.RUNTIME }}-${{ matrix.link_type }}_${{ matrix.build_type == 'release' && 'release' || matrix.build_type == 'debug' && 'debug' || 'relwithdebinfo' }}
           path: ${{ env.ARCHIVE_NAME }}
           if-no-files-found: error
 
-      - name: Upload configure summary
+      - name: Upload build report
         uses: actions/upload-artifact@v4
         with:
           name: report-${{ matrix.link_type }}_${{ matrix.build_type }}
           path: ${{ env.REPORT_FILE }}
           if-no-files-found: error
 
-  release:
-    needs: build
-    runs-on: ubuntu-latest
-    if: ${{ github.event.inputs.create_release == 'true' }}
-    steps:
-      - name: Download artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts/
-
-      - name: Flatten artifacts
-        run: |
-          find artifacts -type f -name "*.7z" -exec mv -t artifacts {} +
-          find artifacts -type f -name "qt-build-report_*.txt" -exec mv -t artifacts {} + || true
-
-      - name: Generate release tag
-        id: tag
-        run: |
-          TAG_NAME="qt${{ env.QT_VERSION }}-windows-mingw${{ env.GCC_VERSION }}-${{ env.RUNTIME }}-$(date +'%Y%m%d%H%M%S')"
-          echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
-
-      - name: Generate release notes
-        run: |
-          cat > release_notes.md << 'EOF'
-          # Qt Windows MinGW Build
-
-          ## Summary
-          - Database: PostgreSQL, MySQL, SQLite
-          - QtGRPC: Protobuf
-          - SSL: Schannel
-          - C++20, skip QtWebEngine, skip examples/tests
-          - Vulkan: Enabled via LunarG Runtime Components (Lib/Bin) + Khronos Vulkan-Headers (Include)
-          - Files pattern: qt{version}-windows-x86_64-mingw_gcc{gcc_version}_{runtime}-{link_type}_{build_type}.7z
-
-          ## Configure Summaries (from config.summary)
-          EOF
-          echo "" >> release_notes.md
-          for f in artifacts/qt-build-report_*.txt; do
-            [ -f "$f" ] || continue
-            echo "" >> release_notes.md
-            echo "---- $(basename "$f" .txt) ----" >> release_notes.md
-            echo '```' >> release_notes.md
-            sed -e 's/\r$//' "$f" >> release_notes.md
-            echo '```' >> release_notes.md
-          done
-          echo "" >> release_notes.md
-          echo "Artifacts:" >> release_notes.md
-          ls -1 artifacts/*.7z >> release_notes.md || true
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.tag.outputs.tag_name }}
-          name: Qt ${{ env.QT_VERSION }} - MinGW ${{ env.GCC_VERSION }} (${{ env.RUNTIME }})
-          body_path: release_notes.md
-          draft: false
-          prerelease: false
-          files: artifacts/*.7z
-          fail_on_unmatched_files: true
-
-      - name: Clean artifacts
-        uses: geekyeggo/delete-artifact@v5
-        with:
-          name: qt${{ env.QT_VERSION }}-windows-x86_64-mingw_gcc${{ env.GCC_VERSION }}_${{ env.RUNTIME }}-*
+      # Note: This workflow only builds and uploads artifacts
+      # Use the 'release-qt-unified' workflow to create releases with all platforms

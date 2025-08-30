@@ -1,3 +1,8 @@
+# =============================================================================
+# Qt 6 Windows x86_64 MSVC Build Matrix
+# Standardized workflow for building Qt with MSVC on Windows
+# =============================================================================
+
 name: build-qt6-windows_x86_64_msvc_matrix
 
 on:
@@ -7,14 +12,14 @@ on:
         description: 'QT Version'
         required: true
         default: '6.9.2'
-      msvc_version:
+      compiler_version:
         description: 'MSVC Version'
         required: true
         default: '2022'
         type: choice
         options:
-        - '2022'
         - '2019'
+        - '2022'
       vulkan_sdk:
         description: 'Vulkan support (none/runtime-*)'
         required: true
@@ -43,8 +48,8 @@ on:
 
 env:
   QT_VERSION: ${{ github.event.inputs.qt_version || '6.9.2' }}
-  MSVC_VERSION: ${{ github.event.inputs.msvc_version || '2022' }}
-  VULKAN_CHOICE: ${{ github.event.inputs.vulkan_sdk || 'runtime-1.4.321.0' }}
+  COMPILER_VERSION: ${{ github.event.inputs.compiler_version || '2022' }}
+  VULKAN_CHOICE: ${{ github.event.inputs.vulkan_sdk || 'none' }}
   TEST_MODE: ${{ github.event.inputs.test_mode || 'false' }}
   ACTIONS_STEP_DEBUG: 'true'
 
@@ -56,11 +61,8 @@ jobs:
         link_type: [static, shared]
         build_type: [release, debug, release-sepdbg]
         exclude:
-          # static 构建跳过 release-sepdbg
           - link_type: static
-            build_type: release-sepdbg
-          - link_type: static
-            build_type: debug
+            build_type: debug  # Skip static debug builds for resource efficiency
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -214,7 +216,7 @@ jobs:
           setlocal enableextensions enabledelayedexpansion
 
           set QT_VERSION=${{ env.QT_VERSION }}
-          set MSVC_VERSION=${{ env.MSVC_VERSION }}
+          set COMPILER_VERSION=${{ env.COMPILER_VERSION }}
           set BUILD_TYPE=${{ matrix.build_type }}
           set LINK_TYPE=${{ matrix.link_type }}
           set TEST_MODE=${{ env.TEST_MODE }}
@@ -233,7 +235,7 @@ jobs:
             set SEPARATE_DEBUG=false
           )
 
-          call D:\a\QtBuild\QtBuild\Qt6Build\build-qt6-windows_x86_64_msvc.cmd !QT_VERSION! !MSVC_VERSION! !BUILD_TYPE! !LINK_TYPE! !SEPARATE_DEBUG! "" !TEST_MODE!
+          call D:\a\QtBuild\QtBuild\Qt6Build\build-qt6-windows_x86_64_msvc.cmd !QT_VERSION! !COMPILER_VERSION! !BUILD_TYPE! !LINK_TYPE! !SEPARATE_DEBUG! "" !TEST_MODE!
       
       - name: Export Qt configure summary
         shell: pwsh
@@ -256,9 +258,9 @@ jobs:
           $linkType = "${{ matrix.link_type }}"
           $buildType = "${{ matrix.build_type }}"
           $qtVersion = "${{ env.QT_VERSION }}"
-          $msvcVersion = "${{ env.MSVC_VERSION }}"
+          $compilerVersion = "${{ env.COMPILER_VERSION }}"
           
-          # 规范化构建类型名称 (小写)
+          # Normalize build type name
           $buildTypeNormalized = switch ($buildType) {
             "release" { "release" }
             "debug" { "debug" }
@@ -266,22 +268,15 @@ jobs:
             default { $buildType.ToLower() }
           }
           
-          # 规范化链接类型名称 (小写)
-          $linkTypeNormalized = switch ($linkType) {
-            "static" { "static" }
-            "shared" { "shared" }
-            default { $linkType.ToLower() }
-          }
-          
-          # 命名格式：qt版本-windows-x86_64-msvc版本-链接类型_构建类型
-          $archiveName = "qt${qtVersion}-windows-x86_64-msvc${msvcVersion}-${linkTypeNormalized}_${buildTypeNormalized}.7z"
+          # Create standardized archive name
+          $archiveName = "qt${qtVersion}-windows-x86_64-msvc${compilerVersion}-${linkType}_${buildTypeNormalized}.7z"
           $sourcePath = "D:\a\QtBuild\Qt\$qtVersion-$linkType"
           
           # 检查源目录是否存在
           if (Test-Path $sourcePath) {
             # 创建临时目录用于重组目录结构
             $tempDir = "D:\a\QtBuild\temp_package"
-            $finalDirName = "qt${qtVersion}-windows-x86_64-msvc${msvcVersion}-${linkTypeNormalized}_${buildTypeNormalized}"
+            $finalDirName = "qt${qtVersion}-windows-x86_64-msvc${compilerVersion}-${linkType}_${buildTypeNormalized}"
             $finalPath = Join-Path $tempDir $finalDirName
             
             # 清理并创建临时目录
@@ -336,128 +331,19 @@ jobs:
           }
         shell: pwsh
         
-      - uses: actions/upload-artifact@v4
+      - name: Upload package
+        uses: actions/upload-artifact@v4
         with:
-          name: qt${{ env.QT_VERSION }}-windows-x86_64-msvc${{ env.MSVC_VERSION }}-${{ matrix.link_type }}_${{ matrix.build_type == 'release' && 'release' || matrix.build_type == 'debug' && 'debug' || 'relwithdebinfo' }}
+          name: qt${{ env.QT_VERSION }}-windows-x86_64-msvc${{ env.COMPILER_VERSION }}-${{ matrix.link_type }}_${{ matrix.build_type == 'release' && 'release' || matrix.build_type == 'debug' && 'debug' || 'relwithdebinfo' }}
           path: ${{ env.ARCHIVE_NAME }}
           if-no-files-found: error
           
-      - name: Upload configure summary
+      - name: Upload build report
         uses: actions/upload-artifact@v4
         with:
           name: report-${{ matrix.link_type }}_${{ matrix.build_type }}
           path: ${{ env.REPORT_FILE }}
           if-no-files-found: error
 
-  release:
-    needs: build
-    runs-on: ubuntu-latest
-    if: ${{ github.event.inputs.create_release == 'true' }}
-    steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts/
-
-      - name: List downloaded artifacts
-        run: |
-          echo "Listing artifacts directory structure:"
-          find artifacts -type f -name "*.7z" -ls
-
-      - name: Flatten artifacts
-        run: |
-          find artifacts -type f -name "*.7z" -exec mv -t artifacts {} +
-          find artifacts -type f -name "qt-build-report_*.txt" -exec mv -t artifacts {} + || true
-
-      - name: Generate release tag
-        id: release_tag
-        run: |
-          TAG_NAME="qt${{ env.QT_VERSION }}-windows-msvc${{ env.MSVC_VERSION }}-$(date +'%Y%m%d%H%M%S')"
-          echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
-          echo "Tag name: $TAG_NAME"
-
-      - name: Generate release notes
-        id: release_notes
-        run: |
-          cat << EOF > release_notes.md
-          # Qt ${{ env.QT_VERSION }} Windows MSVC Build
-          
-          ## Build Information
-          - **Qt Version**: ${{ env.QT_VERSION }}
-          - **Compiler**: MSVC ${{ env.MSVC_VERSION }}
-          - **Build Date**: $(date +'%Y-%m-%d %H:%M:%S UTC')
-          - **Build Runner**: GitHub Actions (windows-latest)
-          
-          ## Included Features
-          - **Database Driver**: SQLite
-          - **SSL**: Schannel (native Windows SSL)
-          - **OpenGL**: Desktop
-          - **Vulkan**: Enabled via LunarG Runtime Components (Lib/Bin) + Khronos Vulkan-Headers (Include)
-          - **C++ Standard**: C++20
-          
-          ## Included Configurations
-          This release includes the following build configurations:
-          
-          ### Static Builds
-          - \`static_release\`: Static linking, Release mode
-          - \`static_debug\`: Static linking, Debug mode
-          
-          ### Shared Builds
-          - \`shared_release\`: Dynamic linking, Release mode
-          - \`shared_debug\`: Dynamic linking, Debug mode
-          - \`shared_relwithdebinfo\`: Dynamic linking, Release mode with separate debug info
-          
-          ## File Naming Convention
-          Files follow the pattern: \`qt{version}-windows-x86_64-msvc{msvc_version}-{link_type}_{build_type}.7z\`
-          
-          Where:
-          - \`{version}\`: Qt version (e.g., 6.9.2)
-          - \`{msvc_version}\`: MSVC version (e.g., 2022)
-          - \`{link_type}\`: static or shared
-          - \`{build_type}\`: release, debug, or relwithdebinfo
-          
-          ## Installation
-          1. Download the appropriate .7z file for your needs
-          2. Extract using 7-Zip or compatible software
-          3. The Qt installation will be in the extracted folder with bin, lib, qml, etc. directories
-          
-          ## Configure Summaries (from config.summary)
-          EOF
-          echo "" >> release_notes.md
-          for f in artifacts/qt-build-report_*.txt; do
-            [ -f "$f" ] || continue
-            echo "" >> release_notes.md
-            echo "---- $(basename "$f" .txt) ----" >> release_notes.md
-            echo '```' >> release_notes.md
-            sed -e 's/\r$//' "$f" >> release_notes.md
-            echo '```' >> release_notes.md
-          done
-          echo "" >> release_notes.md
-          echo "## Notes" >> release_notes.md
-          echo "- Static builds include release and debug configurations" >> release_notes.md
-          echo "- Shared builds include separate debug symbols for release with debug info version" >> release_notes.md
-          echo "- All builds skip QtWebEngine and examples/tests" >> release_notes.md
-          echo "- Built with C++20 standard" >> release_notes.md
-          echo "- Vulkan support enabled" >> release_notes.md
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.release_tag.outputs.tag_name }}
-          name: Qt ${{ env.QT_VERSION }} - MSVC ${{ env.MSVC_VERSION }}
-          body_path: release_notes.md
-          draft: false
-          prerelease: false
-          files: artifacts/*.7z
-          fail_on_unmatched_files: true
-          generate_release_notes: false
-
-      - name: Clean up artifacts
-        uses: geekyeggo/delete-artifact@v5
-        with:
-          name: qt${{ env.QT_VERSION }}-windows-x86_64-msvc${{ env.MSVC_VERSION }}-*
-          
-      - name: Clean up reports
-        uses: geekyeggo/delete-artifact@v5
-        with:
-          name: report-*
+      # Note: This workflow only builds and uploads artifacts
+      # Use the 'release-qt-unified' workflow to create releases with all platforms

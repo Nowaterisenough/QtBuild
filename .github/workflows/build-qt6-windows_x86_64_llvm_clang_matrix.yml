@@ -1,3 +1,8 @@
+# =============================================================================
+# Qt 6 Windows x86_64 LLVM Build Matrix
+# Standardized workflow for building Qt with LLVM/Clang on Windows
+# =============================================================================
+
 name: build-qt6-windows_x86_64_llvm_clang_matrix
 
 on:
@@ -7,8 +12,8 @@ on:
         description: 'Qt版本'
         required: true
         default: '6.9.2'
-      clang_version:
-        description: 'Clang版本'
+      compiler_version:
+        description: 'LLVM/Clang Version'
         required: true
         default: '21.1'
         type: choice
@@ -40,7 +45,7 @@ on:
         - 'none'
         - 'runtime-1.4.321.0'
         - 'runtime-1.3.290.0'
-        default: 'runtime-1.4.321.0'
+        default: 'none'
       create_release:
         description: 'Create Release'
         required: true
@@ -52,9 +57,9 @@ on:
 
 env:
   QT_VERSION: ${{ github.event.inputs.qt_version || '6.9.2' }}
-  CLANG_VERSION: ${{ github.event.inputs.clang_version || '21.1' }}
+  COMPILER_VERSION: ${{ github.event.inputs.compiler_version || '21.1' }}
   RUNTIME: ${{ github.event.inputs.runtime || 'ucrt' }}
-  VULKAN_CHOICE: ${{ github.event.inputs.vulkan_sdk || 'runtime-1.4.321.0' }}
+  VULKAN_CHOICE: ${{ github.event.inputs.vulkan_sdk || 'none' }}
   TEST_MODE: ${{ github.event.inputs.test_mode || 'false' }}
   ACTIONS_STEP_DEBUG: 'true'
 
@@ -66,22 +71,19 @@ jobs:
         link_type: [static, shared]
         build_type: [release, debug, release-sepdbg]
         exclude:
-          # static 构建跳过 release-sepdbg
           - link_type: static
-            build_type: release-sepdbg
-          - link_type: static
-            build_type: debug
+            build_type: debug  # Skip static debug builds for resource efficiency
     steps:
-      - name: 检出代码仓库
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: 设置Python环境
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.13'
           architecture: 'x64'
 
-      - name: 提取Qt主次版本号
+      - name: Extract Qt version components
         id: qt_version
         run: |
           $version = "${{ env.QT_VERSION }}"
@@ -90,10 +92,10 @@ jobs:
           echo "major_minor=$major_minor" >> $env:GITHUB_OUTPUT
         shell: pwsh
 
-      - name: 获取LLVM-MinGW信息
+      - name: Resolve LLVM-MinGW info
         id: llvm_info
         run: |
-          $clangVersion = "${{ env.CLANG_VERSION }}"
+          $clangVersion = "${{ env.COMPILER_VERSION }}"
           $runtime = "${{ env.RUNTIME }}".ToLower()
           
           if ($clangVersion -eq "17.0") {
@@ -126,7 +128,7 @@ jobs:
           echo "version_code=$versionCode" >> $env:GITHUB_OUTPUT
         shell: pwsh
 
-      - name: 设置LLVM-MinGW编译器
+      - name: Setup LLVM-MinGW compiler
         run: |
           cd ..
           $downloadUrl = "${{ steps.llvm_info.outputs.download_url }}"
@@ -151,7 +153,7 @@ jobs:
           }
         shell: pwsh
 
-      - name: 设置Ninja构建工具
+      - name: Setup Ninja
         run: |
           cd ..
           mkdir ninja
@@ -280,7 +282,7 @@ jobs:
           Write-Host "Vulkan SDK ready at $sdk"
           Write-Host "Headers: $(Get-ChildItem "$sdk\Include\vulkan" | Measure-Object).Count files"
 
-      - name: 准备目录和源码
+      - name: Prepare directories and source
         run: |
           cd ..
           mkdir Qt
@@ -290,13 +292,13 @@ jobs:
           curl -L -o qt-everywhere-src.zip "https://download.qt.io/official_releases/qt/${{ steps.qt_version.outputs.major_minor }}/${{ env.QT_VERSION }}/single/qt-everywhere-src-${{ env.QT_VERSION }}.zip"
           unzip -q qt-everywhere-src.zip -d "./${{ env.QT_VERSION }}"
 
-      - name: 执行构建脚本
+      - name: Run build script
         shell: cmd
         run: |
           setlocal enableextensions enabledelayedexpansion
 
           set QT_VERSION=${{ env.QT_VERSION }}
-          set CLANG_VERSION=${{ env.CLANG_VERSION }}
+          set COMPILER_VERSION=${{ env.COMPILER_VERSION }}
           set BUILD_TYPE=${{ matrix.build_type }}
           set LINK_TYPE=${{ matrix.link_type }}
           set RUNTIME=${{ env.RUNTIME }}
@@ -318,17 +320,17 @@ jobs:
             set SEPARATE_DEBUG=false
           )
 
-          call D:\a\QtBuild\QtBuild\Qt6Build\build-qt6-windows_x86_64_llvm_clang.cmd !QT_VERSION! !CLANG_VERSION! !BUILD_TYPE! !LINK_TYPE! !SEPARATE_DEBUG! !RUNTIME! "!BIN_PATH!" "!VERSION_CODE!" !TEST_MODE!
+          call D:\a\QtBuild\QtBuild\Qt6Build\build-qt6-windows_x86_64_llvm_clang.cmd !QT_VERSION! !COMPILER_VERSION! !BUILD_TYPE! !LINK_TYPE! !SEPARATE_DEBUG! !RUNTIME! "!BIN_PATH!" "!VERSION_CODE!" !TEST_MODE!
 
-      - name: 打包二进制文件
+      - name: Package binaries
         run: |
           $linkType = "${{ matrix.link_type }}"
           $buildType = "${{ matrix.build_type }}"
           $qtVersion = "${{ env.QT_VERSION }}"
-          $clangVersion = "${{ env.CLANG_VERSION }}"
+          $compilerVersion = "${{ env.COMPILER_VERSION }}"
           $runtime = "${{ env.RUNTIME }}".ToLower()
           
-          # 规范化构建类型名称 (小写)
+          # Normalize build type name
           $buildTypeNormalized = switch ($buildType) {
             "release" { "release" }
             "debug" { "debug" }
@@ -336,22 +338,15 @@ jobs:
             default { $buildType.ToLower() }
           }
           
-          # 规范化链接类型名称 (小写)
-          $linkTypeNormalized = switch ($linkType) {
-            "static" { "static" }
-            "shared" { "shared" }
-            default { $linkType.ToLower() }
-          }
-          
-          # 命名格式：qt版本-windows-x86_64-llvm_clang版本_运行时-链接类型_构建类型
-          $archiveName = "qt${qtVersion}-windows-x86_64-llvm_clang${clangVersion}_${runtime}-${linkTypeNormalized}_${buildTypeNormalized}.7z"
+          # Create standardized archive name
+          $archiveName = "qt${qtVersion}-windows-x86_64-llvm${compilerVersion}_${runtime}-${linkType}_${buildTypeNormalized}.7z"
           $sourcePath = "D:\a\QtBuild\Qt\$qtVersion-$linkType"
           
           # 检查源目录是否存在
           if (Test-Path $sourcePath) {
             # 创建临时目录用于重组目录结构
             $tempDir = "D:\a\QtBuild\temp_package"
-            $finalDirName = "qt${qtVersion}-windows-x86_64-llvm_clang${clangVersion}_${runtime}-${linkTypeNormalized}_${buildTypeNormalized}"
+            $finalDirName = "qt${qtVersion}-windows-x86_64-llvm${compilerVersion}_${runtime}-${linkType}_${buildTypeNormalized}"
             $finalPath = Join-Path $tempDir $finalDirName
             
             # 清理并创建临时目录
@@ -422,136 +417,19 @@ jobs:
           Copy-Item $summary $out -Force
           echo "REPORT_FILE=$out" >> $env:GITHUB_ENV
 
-      - name: 上传构建产物
+      - name: Upload package
         uses: actions/upload-artifact@v4
         with:
-          name: qt${{ env.QT_VERSION }}-windows-x86_64-llvm_clang${{ env.CLANG_VERSION }}_${{ env.RUNTIME }}-${{ matrix.link_type }}_${{ matrix.build_type == 'release' && 'release' || matrix.build_type == 'debug' && 'debug' || 'relwithdebinfo' }}
+          name: qt${{ env.QT_VERSION }}-windows-x86_64-llvm${{ env.COMPILER_VERSION }}_${{ env.RUNTIME }}-${{ matrix.link_type }}_${{ matrix.build_type == 'release' && 'release' || matrix.build_type == 'debug' && 'debug' || 'relwithdebinfo' }}
           path: ${{ env.ARCHIVE_NAME }}
           if-no-files-found: error
 
-      - name: Upload configure summary
+      - name: Upload build report
         uses: actions/upload-artifact@v4
         with:
           name: report-${{ matrix.link_type }}_${{ matrix.build_type }}
           path: ${{ env.REPORT_FILE }}
           if-no-files-found: error
 
-  release:
-    needs: build
-    runs-on: ubuntu-latest
-    if: ${{ github.event.inputs.create_release == 'true' }}
-    steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts/
-
-      - name: List downloaded artifacts
-        run: |
-          echo "Listing artifacts directory structure:"
-          find artifacts -type f -name "*.7z" -ls
-
-      - name: Move artifacts to root level
-        run: |
-          echo "Moving .7z files to artifacts root..."
-          find artifacts -type f -name "*.7z" -exec mv {} artifacts/ \;
-          echo "Moving report files to artifacts root..."
-          find artifacts -type f -name "qt-build-report_*.txt" -exec mv {} artifacts/ \; || true
-          echo "Files in artifacts directory after move:"
-          ls -la artifacts/*.7z
-          ls -la artifacts/*.txt 2>/dev/null || echo "No report files found"
-
-      - name: Generate release tag
-        id: release_tag
-        run: |
-          TAG_NAME="qt${{ env.QT_VERSION }}-windows-llvm_clang${{ env.CLANG_VERSION }}-${{ env.RUNTIME }}-$(date +'%Y%m%d%H%M%S')"
-          echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
-          echo "Tag name: $TAG_NAME"
-
-      - name: Generate release notes
-        id: release_notes
-        run: |
-          cat << EOF > release_notes.md
-          # Qt ${{ env.QT_VERSION }} Windows LLVM Clang Build
-          
-          ## Build Information
-          - **Qt Version**: ${{ env.QT_VERSION }}
-          - **Compiler**: LLVM Clang ${{ env.CLANG_VERSION }}
-          - **Runtime**: ${{ env.RUNTIME }}
-          - **Vulkan SDK**: ${{ env.VULKAN_CHOICE }}
-          - **Build Date**: $(date +'%Y-%m-%d %H:%M:%S UTC')
-          - **Build Runner**: GitHub Actions (windows-latest)
-          
-          ## Included Features
-          - **Database Driver**: SQLite
-          - **SSL**: Schannel (native Windows SSL)
-          - **OpenGL**: Desktop
-          - **Vulkan**: Enabled via LunarG Runtime Components (Lib/Bin) + Khronos Vulkan-Headers (Include)
-          - **C++ Standard**: C++20
-          
-          ## Included Configurations
-          This release includes the following build configurations:
-          
-          ### Static Builds
-          - \`static_release\`: Static linking, Release mode
-          
-          ### Shared Builds
-          - \`shared_release\`: Dynamic linking, Release mode
-          - \`shared_debug\`: Dynamic linking, Debug mode
-          - \`shared_relwithdebinfo\`: Dynamic linking, Release mode with separate debug info
-          
-          ## File Naming Convention
-          Files follow the pattern: \`qt{version}-windows-x86_64-llvm_clang{clang_version}_{runtime}-{link_type}_{build_type}.7z\`
-          
-          Where:
-          - \`{version}\`: Qt version (e.g., 6.9.2)
-          - \`{clang_version}\`: Clang version (e.g., 20.1)
-          - \`{runtime}\`: Runtime library (ucrt or msvcrt)
-          - \`{link_type}\`: static or shared
-          - \`{build_type}\`: release, debug, or relwithdebinfo
-          
-          ## Configure Summaries (from config.summary)
-          EOF
-          echo "" >> release_notes.md
-          for f in artifacts/qt-build-report_*.txt; do
-            [ -f "\$f" ] || continue
-            echo "" >> release_notes.md
-            echo "---- \$(basename "\$f" .txt) ----" >> release_notes.md
-            echo '```' >> release_notes.md
-            sed -e 's/\r\$//' "\$f" >> release_notes.md
-            echo '```' >> release_notes.md
-          done
-          cat << EOF >> release_notes.md
-          
-          ## Installation
-          1. Download the appropriate .7z file for your needs
-          2. Extract using 7-Zip or compatible software
-          3. The Qt installation will be in the extracted folder with bin, lib, qml, etc. directories
-          
-          ## Notes
-          - Static builds include release configurations only
-          - Shared builds include separate debug symbols for release with debug info version
-          - Shared builds include LLVM-MinGW runtime DLLs
-          - All builds skip QtWebEngine and examples/tests
-          - Built with C++20 standard
-          - Vulkan support enabled for graphics acceleration
-          EOF
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.release_tag.outputs.tag_name }}
-          name: Qt ${{ env.QT_VERSION }} - LLVM Clang ${{ env.CLANG_VERSION }} (${{ env.RUNTIME }})
-          body_path: release_notes.md
-          draft: false
-          prerelease: false
-          files: artifacts/*.7z
-          fail_on_unmatched_files: true
-          generate_release_notes: false
-
-      - name: Clean up artifacts
-        uses: geekyeggo/delete-artifact@v5
-        with:
-          name: |
-            qt${{ env.QT_VERSION }}-windows-x86_64-llvm_clang${{ env.CLANG_VERSION }}_${{ env.RUNTIME }}-*
-            report-*
+      # Note: This workflow only builds and uploads artifacts
+      # Use the 'release-qt-unified' workflow to create releases with all platforms

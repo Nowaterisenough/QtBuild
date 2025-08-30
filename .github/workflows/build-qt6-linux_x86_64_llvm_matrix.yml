@@ -1,14 +1,20 @@
+# =============================================================================
+# Qt 6 Linux x86_64 LLVM Build Matrix
+# Standardized workflow for building Qt with LLVM/Clang on Linux via WSL2
+# =============================================================================
+
 name: build-qt6-linux_x86_64_llvm_matrix
 
 on:
   workflow_dispatch:
     inputs:
       qt_version:
-        description: 'QT Version'
+        description: 'Qt Version'
         required: true
         default: '6.9.2'
-      llvm_version:
-        description: 'LLVM Version'
+        type: string
+      compiler_version:
+        description: 'LLVM/Clang Version'
         required: true
         default: '18'
         type: choice
@@ -20,14 +26,22 @@ on:
         - '19'
         - '20'
       vulkan_sdk:
-        description: 'Vulkan support (none/runtime-*)'
+        description: 'Vulkan SDK (none for disable, runtime-* for specific version)'
         required: true
         type: choice
         options:
         - 'none'
         - 'runtime-1.4.321.0'
         - 'runtime-1.3.290.0'
-        default: 'runtime-1.4.321.0'
+        default: 'none'
+      test_mode:
+        description: 'Test Mode (build qtbase only for faster testing)'
+        required: true
+        default: 'false'
+        type: choice
+        options:
+        - 'true'
+        - 'false'
       create_release:
         description: 'Create Release'
         required: true
@@ -39,8 +53,9 @@ on:
 
 env:
   QT_VERSION: ${{ github.event.inputs.qt_version || '6.9.2' }}
-  LLVM_VERSION: ${{ github.event.inputs.llvm_version || '18' }}
-  VULKAN_CHOICE: ${{ github.event.inputs.vulkan_sdk || 'runtime-1.4.321.0' }}
+  COMPILER_VERSION: ${{ github.event.inputs.compiler_version || '18' }}
+  VULKAN_CHOICE: ${{ github.event.inputs.vulkan_sdk || 'none' }}
+  TEST_MODE: ${{ github.event.inputs.test_mode || 'false' }}
   ACTIONS_STEP_DEBUG: 'true'
 
 jobs:
@@ -52,9 +67,7 @@ jobs:
         build_type: [release, debug, release-sepdbg]
         exclude:
           - link_type: static
-            build_type: debug
-          - link_type: static
-            build_type: release-sepdbg
+            build_type: debug  # Skip static debug builds for resource efficiency
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -78,7 +91,7 @@ jobs:
       - name: Create scripts with proper line endings
         run: |
           # WSL 设置脚本 - LLVM安装优化以降低内存使用
-          $setupScript = "#!/bin/bash`nset -e`necho `"Setting up WSL2 environment with LLVM/Clang...`"`n`nexport DEBIAN_FRONTEND=noninteractive`n`n# 限制apt内存使用`necho 'APT::Cache-Start 12582912;' | sudo tee /etc/apt/apt.conf.d/00cache`necho 'APT::Cache-Grow 1048576;' | sudo tee -a /etc/apt/apt.conf.d/00cache`n`necho `"Adding LLVM APT repository...`"`nwget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc`necho `"deb http://apt.llvm.org/noble/ llvm-toolchain-noble-${{ env.LLVM_VERSION }} main`" | sudo tee /etc/apt/sources.list.d/llvm.list`n`nsudo apt-get update`n`necho `"Installing LLVM/Clang toolchain...`"`nsudo apt-get install -y --no-install-recommends clang-${{ env.LLVM_VERSION }} clang++-${{ env.LLVM_VERSION }} lld-${{ env.LLVM_VERSION }}`n`necho `"Installing libc++ libraries...`"`nsudo apt-get install -y --no-install-recommends libc++-${{ env.LLVM_VERSION }}-dev libc++abi-${{ env.LLVM_VERSION }}-dev`n`necho `"Installing build tools...`"`nsudo apt-get install -y --no-install-recommends cmake ninja-build python3 pkg-config`n`necho `"Installing core X11/OpenGL libraries...`"`nsudo apt-get install -y --no-install-recommends libgl1-mesa-dev libglu1-mesa-dev libx11-dev libxext-dev libxrender-dev libxrandr-dev libxcursor-dev`n`necho `"Installing XCB libraries...`"`nsudo apt-get install -y --no-install-recommends libxcb1-dev libxcb-util-dev libxcb-image0-dev libxcb-keysyms1-dev libxcb-render0-dev libxcb-render-util0-dev libxcb-randr0-dev libxcb-cursor-dev`n`necho `"Installing remaining dependencies...`"`nsudo apt-get install -y --no-install-recommends libxkbcommon-dev libxkbcommon-x11-dev libfontconfig1-dev libfreetype6-dev libglib2.0-dev libegl1-mesa-dev libssl-dev wget curl xz-utils`n`necho `"Setting up alternatives...`"`nsudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-${{ env.LLVM_VERSION }} 100`nsudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-${{ env.LLVM_VERSION }} 100`nsudo update-alternatives --install /usr/bin/lld lld /usr/bin/lld-${{ env.LLVM_VERSION }} 100`n`necho `"Verifying installation...`"`nclang-${{ env.LLVM_VERSION }} --version`nclang++-${{ env.LLVM_VERSION }} --version`nlld-${{ env.LLVM_VERSION }} --version`n`nsudo apt-get clean`nsudo rm -rf /var/lib/apt/lists/*`necho `"LLVM environment setup completed`""
+          $setupScript = "#!/bin/bash`nset -e`necho `"Setting up WSL2 environment with LLVM/Clang...`"`n`nexport DEBIAN_FRONTEND=noninteractive`n`n# 限制apt内存使用`necho 'APT::Cache-Start 12582912;' | sudo tee /etc/apt/apt.conf.d/00cache`necho 'APT::Cache-Grow 1048576;' | sudo tee -a /etc/apt/apt.conf.d/00cache`n`necho `"Adding LLVM APT repository...`"`nwget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc`necho `"deb http://apt.llvm.org/noble/ llvm-toolchain-noble-${{ env.COMPILER_VERSION }} main`" | sudo tee /etc/apt/sources.list.d/llvm.list`n`nsudo apt-get update`n`necho `"Installing LLVM/Clang toolchain...`"`nsudo apt-get install -y --no-install-recommends clang-${{ env.COMPILER_VERSION }} clang++-${{ env.COMPILER_VERSION }} lld-${{ env.COMPILER_VERSION }}`n`necho `"Installing libc++ libraries...`"`nsudo apt-get install -y --no-install-recommends libc++-${{ env.COMPILER_VERSION }}-dev libc++abi-${{ env.COMPILER_VERSION }}-dev`n`necho `"Installing build tools...`"`nsudo apt-get install -y --no-install-recommends cmake ninja-build python3 pkg-config`n`necho `"Installing core X11/OpenGL libraries...`"`nsudo apt-get install -y --no-install-recommends libgl1-mesa-dev libglu1-mesa-dev libx11-dev libxext-dev libxrender-dev libxrandr-dev libxcursor-dev`n`necho `"Installing XCB libraries...`"`nsudo apt-get install -y --no-install-recommends libxcb1-dev libxcb-util-dev libxcb-image0-dev libxcb-keysyms1-dev libxcb-render0-dev libxcb-render-util0-dev libxcb-randr0-dev libxcb-cursor-dev`n`necho `"Installing remaining dependencies...`"`nsudo apt-get install -y --no-install-recommends libxkbcommon-dev libxkbcommon-x11-dev libfontconfig1-dev libfreetype6-dev libglib2.0-dev libegl1-mesa-dev libssl-dev wget curl xz-utils`n`necho `"Setting up alternatives...`"`nsudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-${{ env.COMPILER_VERSION }} 100`nsudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-${{ env.COMPILER_VERSION }} 100`nsudo update-alternatives --install /usr/bin/lld lld /usr/bin/lld-${{ env.COMPILER_VERSION }} 100`n`necho `"Verifying installation...`"`nclang-${{ env.COMPILER_VERSION }} --version`nclang++-${{ env.COMPILER_VERSION }} --version`nlld-${{ env.COMPILER_VERSION }} --version`n`nsudo apt-get clean`nsudo rm -rf /var/lib/apt/lists/*`necho `"LLVM environment setup completed`""
           [System.IO.File]::WriteAllText("wsl_setup.sh", $setupScript.Replace("`r`n", "`n"), [System.Text.UTF8Encoding]::new($false))
 
           # 下载脚本
@@ -86,11 +99,11 @@ jobs:
           [System.IO.File]::WriteAllText("download_qt.sh", $downloadScript.Replace("`r`n", "`n"), [System.Text.UTF8Encoding]::new($false))
 
           # 主构建脚本
-          $mainBuildScript = "#!/bin/bash`nset -e`n`necho `"Starting Qt Linux build script with LLVM/Clang in WSL2...`"`n`nqt_version=`"`$QT_VERSION`"`nllvm_version=`"`$LLVM_VERSION`"`nbuild_type=`"`$BUILD_TYPE`"`nlink_type=`"`$LINK_TYPE`"`nseparate_debug=`"`$SEPARATE_DEBUG`"`nvulkan_choice=`"`$VULKAN_CHOICE`"`n`necho `"=== Build Parameters ===`"`necho `"Qt Version: `$qt_version`"`necho `"LLVM Version: `$llvm_version`"`necho `"Build Type: `$build_type`"`necho `"Link Type: `$link_type`"`necho `"Separate Debug: `$separate_debug`"`necho `"Vulkan Support: `$vulkan_choice`"`necho `"========================`"`n`necho `"Extracting Qt source...`"`nif [ -f `"qt-everywhere-src-`$qt_version.tar.xz`" ]; then`n    tar -xf qt-everywhere-src-`$qt_version.tar.xz`n    rm qt-everywhere-src-`$qt_version.tar.xz`nelse`n    echo `"Error: Qt source file not found`"`n    exit 1`nfi`n`nSRC_QT=`"`$(pwd)/qt-everywhere-src-`$qt_version`"`nBUILD_DIR=`"`$(pwd)/build`"`nINSTALL_DIR=`"`$(pwd)/output`"`n`nmkdir -p `"`$BUILD_DIR`"`nmkdir -p `"`$INSTALL_DIR`"`ncd `"`$BUILD_DIR`"`n`n# 设置编译器环境变量`nexport CC=clang-`${llvm_version}`nexport CXX=clang++-`${llvm_version}`nexport LLVM_INSTALL_DIR=/usr/lib/llvm-`${llvm_version}`n`n# Vulkan已禁用，不再设置环境变量`necho `"Vulkan support disabled to avoid compatibility issues`"`n`nCFG_OPTIONS=`"-`$link_type -prefix `$INSTALL_DIR -nomake examples -nomake tests -c++std c++20 -skip qtwebengine -opensource -confirm-license -qt-libpng -qt-libjpeg -qt-zlib -qt-pcre -openssl-linked -platform linux-clang -opengl desktop`"`n`n# Vulkan已在基本配置中禁用`necho `"Vulkan disabled in base configuration`"`n`nif [ `"`$build_type`" = `"debug`" ]; then`n    CFG_OPTIONS=`"`$CFG_OPTIONS -debug`"`nelse`n    CFG_OPTIONS=`"`$CFG_OPTIONS -release`"`nfi`n`nif [ `"`$link_type`" = `"shared`" ] && [ `"`$separate_debug`" = `"true`" ]; then`n    CFG_OPTIONS=`"`$CFG_OPTIONS -force-debug-info -separate-debug-info`"`nfi`n`n# 设置额外的编译器和链接器标志`nexport CFLAGS=`"-fuse-ld=lld`"`nexport CXXFLAGS=`"-fuse-ld=lld -stdlib=libc++`"`nexport LDFLAGS=`"-fuse-ld=lld -stdlib=libc++`"`n`necho `"Configuring Qt with Clang/LLVM...`"`necho `"Using CC=`$CC, CXX=`$CXX`"`necho `"Configure options: `$CFG_OPTIONS`"`n`"`$SRC_QT/configure`" `$CFG_OPTIONS`n`necho `"Building Qt...`"`nPARALLEL_JOBS=`$(nproc)`nif [ `$PARALLEL_JOBS -gt 6 ]; then`n    PARALLEL_JOBS=6`nfi`n`ncmake --build . --parallel `$PARALLEL_JOBS`n`necho `"Installing Qt...`"`ncmake --install .`n`n# 保存配置摘要`nif [ -f config.summary ]; then`n    cp config.summary `"`$(pwd)/../qt-build-summary.txt`"`n    echo `"Configuration summary saved`"`nfi`n`ncd `"`$(pwd)/..`"`nrm -rf `"qt-everywhere-src-`$qt_version`"`n`necho `"Qt build with LLVM/Clang completed successfully!`""
+          $mainBuildScript = "#!/bin/bash`nset -e`n`necho `"Starting Qt Linux build script with LLVM/Clang in WSL2...`"`n`nqt_version=`"`$QT_VERSION`"`ncompiler_version=`"`$COMPILER_VERSION`"`nbuild_type=`"`$BUILD_TYPE`"`nlink_type=`"`$LINK_TYPE`"`nseparate_debug=`"`$SEPARATE_DEBUG`"`nvulkan_choice=`"`$VULKAN_CHOICE`"`ntest_mode=`"`$TEST_MODE`"`n`necho `"=== Build Parameters ===`"`necho `"Qt Version: `$qt_version`"`necho `"LLVM Version: `$compiler_version`"`necho `"Build Type: `$build_type`"`necho `"Link Type: `$link_type`"`necho `"Separate Debug: `$separate_debug`"`necho `"Test Mode: `$test_mode`"`necho `"Vulkan Support: `$vulkan_choice`"`necho `"========================`"`n`necho `"Extracting Qt source...`"`nif [ -f `"qt-everywhere-src-`$qt_version.tar.xz`" ]; then`n    tar -xf qt-everywhere-src-`$qt_version.tar.xz`n    rm qt-everywhere-src-`$qt_version.tar.xz`nelse`n    echo `"Error: Qt source file not found`"`n    exit 1`nfi`n`nSRC_QT=`"`$(pwd)/qt-everywhere-src-`$qt_version`"`nBUILD_DIR=`"`$(pwd)/build`"`nINSTALL_DIR=`"`$(pwd)/install`"`n`nmkdir -p `"`$BUILD_DIR`"`nmkdir -p `"`$INSTALL_DIR`"`ncd `"`$BUILD_DIR`"`n`n# 设置编译器环境变量`nexport CC=clang-`${compiler_version}`nexport CXX=clang++-`${compiler_version}`nexport LLVM_INSTALL_DIR=/usr/lib/llvm-`${compiler_version}`n`n# Configure Qt build options`nCFG_OPTIONS=`"-`$link_type -prefix `$INSTALL_DIR -c++std c++20 -opensource -confirm-license -qt-libpng -qt-libjpeg -qt-zlib -qt-pcre -openssl-linked -platform linux-clang -opengl desktop`"`n`n# Add test mode configuration`nif [ `\"`$test_mode`\" = `\"true`\" ]; then`n  CFG_OPTIONS=`\"`$CFG_OPTIONS -nomake examples -nomake tests -skip qtwebengine -skip qttools -skip qtdoc`\"`n  echo `\"Test mode enabled: building qtbase only`\"`nelse`n  CFG_OPTIONS=`\"`$CFG_OPTIONS -nomake examples -nomake tests -skip qtwebengine`\"`nfi`n`n# Disable Vulkan to avoid compatibility issues`nCFG_OPTIONS=`"`$CFG_OPTIONS -no-feature-vulkan`"`n`n# Build type configuration`nif [ `"`$build_type`" = `"debug`" ]; then`n    CFG_OPTIONS=`"`$CFG_OPTIONS -debug`"`nelse`n    CFG_OPTIONS=`"`$CFG_OPTIONS -release`"`nfi`n`n# Separate debug info for shared builds`nif [ `"`$link_type`" = `"shared`" ] && [ `"`$separate_debug`" = `"true`" ]; then`n    CFG_OPTIONS=`"`$CFG_OPTIONS -force-debug-info -separate-debug-info`"`nfi`n`n# 设置额外的编译器和链接器标志`nexport CFLAGS=`"-fuse-ld=lld`"`nexport CXXFLAGS=`"-fuse-ld=lld -stdlib=libc++`"`nexport LDFLAGS=`"-fuse-ld=lld -stdlib=libc++`"`n`necho `"=== Qt Configuration ===`"`necho `"Configure options: `$CFG_OPTIONS`"`necho `"========================`"`n`necho `"Configuring Qt with Clang/LLVM...`"`necho `"Using CC=`$CC, CXX=`$CXX`"`n`"`$SRC_QT/configure`" `$CFG_OPTIONS`n`necho `"Building Qt...`"`nPARALLEL_JOBS=`$(nproc)`nif [ `$PARALLEL_JOBS -gt 3 ]; then`n    PARALLEL_JOBS=3  # Limit for resource-constrained environments`nfi`n`n# Set memory-optimized compiler flags`nexport CXXFLAGS=`"`$CXXFLAGS -fno-lto`"`nexport LDFLAGS=`"`$LDFLAGS -Wl,--no-keep-memory`"`n`necho `"Using `$PARALLEL_JOBS parallel jobs`"`ncmake --build . --parallel `$PARALLEL_JOBS`n`necho `"Installing Qt...`"`ncmake --install .`n`n# Save build configuration summary`nif [ -f config.summary ]; then`n    cp config.summary `"`$(pwd)/../build_summary.txt`"`n    echo `"Build summary saved`"`nelse`n  echo `\"Qt `$qt_version Linux LLVM Build Summary`\" > `\"`$(pwd)/../build_summary.txt`\"`n  echo `\"=====================================`\" >> `\"`$(pwd)/../build_summary.txt`\"`n  echo `\"Build Type: `$build_type`\" >> `\"`$(pwd)/../build_summary.txt`\"`n  echo `\"Link Type: `$link_type`\" >> `\"`$(pwd)/../build_summary.txt`\"`n  echo `\"Compiler: LLVM/Clang `$compiler_version`\" >> `\"`$(pwd)/../build_summary.txt`\"`n  echo `\"Platform: Linux x86_64 (WSL2)`\" >> `\"`$(pwd)/../build_summary.txt`\"`n  echo `\"Test Mode: `$test_mode`\" >> `\"`$(pwd)/../build_summary.txt`\"`n  echo `\"Build Date: `$(date +'%Y-%m-%d %H:%M:%S UTC')`\" >> `\"`$(pwd)/../build_summary.txt`\"`nfi`n`n# Cleanup source directory`ncd `"`$(pwd)/..`"`nrm -rf `"qt-everywhere-src-`$qt_version`"`n`necho `"=== Qt build completed successfully ===`""
           [System.IO.File]::WriteAllText("build-qt6-linux_x86_64_llvm.sh", $mainBuildScript.Replace("`r`n", "`n"), [System.Text.UTF8Encoding]::new($false))
 
           # 构建脚本调用器
-          $buildScript = "#!/bin/bash`nset -e`n`nqt_version=`"${{ env.QT_VERSION }}`"`nllvm_version=`"${{ env.LLVM_VERSION }}`"`nbuild_type=`"${{ matrix.build_type }}`"`nlink_type=`"${{ matrix.link_type }}`"`nvulkan_choice=`"${{ env.VULKAN_CHOICE }}`"`n`nactual_build_type=`"`$build_type`"`nseparate_debug=`"false`"`nif [ `"`$build_type`" = `"release-sepdbg`" ]; then`n  actual_build_type=`"release`"`n  if [ `"`$link_type`" = `"shared`" ]; then`n    separate_debug=`"true`"`n  fi`nfi`n`nexport QT_VERSION=`"`$qt_version`"`nexport LLVM_VERSION=`"`$llvm_version`"`nexport BUILD_TYPE=`"`$actual_build_type`"`nexport LINK_TYPE=`"`$link_type`"`nexport SEPARATE_DEBUG=`"`$separate_debug`"`nexport VULKAN_CHOICE=`"`$vulkan_choice`"`n`nchmod +x ./build-qt6-linux_x86_64_llvm.sh`n./build-qt6-linux_x86_64_llvm.sh"
+          $buildScript = "#!/bin/bash`nset -e`n`nqt_version=`"${{ env.QT_VERSION }}`"`ncompiler_version=`"${{ env.COMPILER_VERSION }}`"`nbuild_type=`"${{ matrix.build_type }}`"`nlink_type=`"${{ matrix.link_type }}`"`nvulkan_choice=`"${{ env.VULKAN_CHOICE }}`"`ntest_mode=`"${{ env.TEST_MODE }}`"`n`nactual_build_type=`"`$build_type`"`nseparate_debug=`"false`"`nif [ `"`$build_type`" = `"release-sepdbg`" ]; then`n  actual_build_type=`"release`"`n  if [ `"`$link_type`" = `"shared`" ]; then`n    separate_debug=`"true`"`n  fi`nfi`n`nexport QT_VERSION=`"`$qt_version`"`nexport COMPILER_VERSION=`"`$compiler_version`"`nexport BUILD_TYPE=`"`$actual_build_type`"`nexport LINK_TYPE=`"`$link_type`"`nexport SEPARATE_DEBUG=`"`$separate_debug`"`nexport VULKAN_CHOICE=`"`$vulkan_choice`"`nexport TEST_MODE=`"`$test_mode`"`n`nchmod +x ./build-qt6-linux_x86_64_llvm.sh`n./build-qt6-linux_x86_64_llvm.sh"
           [System.IO.File]::WriteAllText("build_qt.sh", $buildScript.Replace("`r`n", "`n"), [System.Text.UTF8Encoding]::new($false))
         shell: pwsh
 
@@ -113,35 +126,14 @@ jobs:
         run: |
           wsl bash ./build_qt.sh
 
-      - name: Export Qt configure summary
-        run: |
-          $buildType = "${{ matrix.build_type }}"
-          $linkType = "${{ matrix.link_type }}"
-          
-          # 查找配置摘要文件
-          $summaryFile = "qt-build-summary.txt"
-          if (wsl test -f $summaryFile) {
-            $reportName = "qt-build-report_${linkType}_${buildType}.txt"
-            wsl cp $summaryFile $reportName
-            echo "REPORT_FILE=$reportName" >> $env:GITHUB_ENV
-            Write-Host "Configuration summary exported as: $reportName"
-          } else {
-            Write-Host "Warning: Configuration summary file not found"
-            # 创建基本的报告文件
-            $reportName = "qt-build-report_${linkType}_${buildType}.txt"
-            $basicReport = "Qt ${{ env.QT_VERSION }} Build Report`n=====================================`nBuild Type: $buildType`nLink Type: $linkType`nCompiler: LLVM/Clang ${{ env.LLVM_VERSION }}`nPlatform: Linux x86_64 (WSL2)`nVulkan Support: ${{ env.VULKAN_CHOICE }}`nBuild Date: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss UTC')`n`nNote: Detailed configuration summary was not available."
-            [System.IO.File]::WriteAllText($reportName, $basicReport, [System.Text.UTF8Encoding]::new($false))
-            echo "REPORT_FILE=$reportName" >> $env:GITHUB_ENV
-          }
-        shell: pwsh
-
       - name: Package binaries
         run: |
           $linkType = "${{ matrix.link_type }}"
           $buildType = "${{ matrix.build_type }}"
           $qtVersion = "${{ env.QT_VERSION }}"
-          $llvmVersion = "${{ env.LLVM_VERSION }}"
+          $compilerVersion = "${{ env.COMPILER_VERSION }}"
           
+          # Normalize build type name
           $buildTypeNormalized = switch ($buildType) {
             "release" { "release" }
             "debug" { "debug" }
@@ -149,137 +141,49 @@ jobs:
             default { $buildType.ToLower() }
           }
           
-          $linkTypeNormalized = switch ($linkType) {
-            "static" { "static" }
-            "shared" { "shared" }
-            default { $linkType.ToLower() }
-          }
-          
-          $archiveName = "qt${qtVersion}-linux-x86_64-llvm${llvmVersion}-${linkTypeNormalized}_${buildTypeNormalized}.tar.xz"
+          # Create standardized archive name
+          $archiveName = "qt${qtVersion}-linux-x86_64-llvm${compilerVersion}-${linkType}_${buildTypeNormalized}.tar.xz"
           
           Write-Host "Creating archive: $archiveName"
-          wsl tar -cJf $archiveName -C output .
+          wsl tar -cJf $archiveName -C install .
           
           if (Test-Path $archiveName) {
-            Write-Host "Archive created successfully"
+            Write-Host "Archive created successfully: $(Get-Item $archiveName | Select-Object -ExpandProperty Length) bytes"
             echo "ARCHIVE_NAME=$archiveName" >> $env:GITHUB_ENV
           } else {
             Write-Error "Failed to create archive"
             exit 1
           }
+          
+          # Prepare build report
+          $reportName = "qt-build-report_${linkType}_${buildType}.txt"
+          if (wsl test -f build_summary.txt) {
+            wsl cp build_summary.txt $reportName
+          } else {
+            $basicReport = "Qt ${{ env.QT_VERSION }} Build Report`n" + 
+                          "Build Type: $buildType`n" +
+                          "Link Type: $linkType`n" +
+                          "Compiler: LLVM/Clang ${{ env.COMPILER_VERSION }}`n" +
+                          "Platform: Linux x86_64 (WSL2)`n" +
+                          "Build Date: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss UTC')"
+            [System.IO.File]::WriteAllText($reportName, $basicReport, [System.Text.UTF8Encoding]::new($false))
+          }
+          echo "REPORT_FILE=$reportName" >> $env:GITHUB_ENV
         shell: pwsh
 
       - name: Upload package
         uses: actions/upload-artifact@v4
         with:
-          name: qt${{ env.QT_VERSION }}-linux-x86_64-llvm${{ env.LLVM_VERSION }}-${{ matrix.link_type }}_${{ matrix.build_type == 'release' && 'release' || matrix.build_type == 'debug' && 'debug' || 'relwithdebinfo' }}
+          name: qt${{ env.QT_VERSION }}-linux-x86_64-llvm${{ env.COMPILER_VERSION }}-${{ matrix.link_type }}_${{ matrix.build_type == 'release' && 'release' || matrix.build_type == 'debug' && 'debug' || 'relwithdebinfo' }}
           path: ${{ env.ARCHIVE_NAME }}
           if-no-files-found: error
 
-      - name: Upload configure summary
+      - name: Upload build report
         uses: actions/upload-artifact@v4
         with:
           name: report-${{ matrix.link_type }}_${{ matrix.build_type }}
           path: ${{ env.REPORT_FILE }}
           if-no-files-found: error
 
-  release:
-    needs: build
-    runs-on: ubuntu-latest
-    if: ${{ github.event.inputs.create_release == 'true' }}
-    steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts/
-
-      - name: Flatten artifacts
-        run: |
-          find artifacts -type f -name "*.tar.xz" -exec mv -t artifacts {} +
-          find artifacts -type f -name "qt-build-report_*.txt" -exec mv -t artifacts {} + || true
-
-      - name: Generate release tag
-        id: release_tag
-        run: |
-          TAG_NAME="qt${{ env.QT_VERSION }}-linux-llvm${{ env.LLVM_VERSION }}-$(date +'%Y%m%d%H%M%S')"
-          echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
-
-      - name: Generate release notes
-        run: |
-          cat > release_notes.md << 'EOF'
-          # Qt ${{ env.QT_VERSION }} Linux LLVM/Clang Build (WSL2)
-          
-          ## Build Information
-          - **Qt Version**: ${{ env.QT_VERSION }}
-          - **Compiler**: LLVM/Clang ${{ env.LLVM_VERSION }}
-          - **Platform**: Linux x86_64
-          - **C++ Standard Library**: libc++
-          - **Linker**: lld
-          - **Vulkan Support**: ${{ env.VULKAN_CHOICE }}
-          - **Build Environment**: WSL2 Ubuntu 24.04
-          - **Build Date**: $(date +'%Y-%m-%d %H:%M:%S UTC')
-          
-          ## Included Configurations
-          ### Static Builds
-          - \`static_release\`: Static linking, Release mode
-          - \`static_relwithdebinfo\`: Static linking, Release mode with separate debug info
-          
-          ### Shared Builds
-          - \`shared_release\`: Dynamic linking, Release mode
-          - \`shared_debug\`: Dynamic linking, Debug mode
-          - \`shared_relwithdebinfo\`: Dynamic linking, Release mode with separate debug info
-          
-          ## Vulkan Support
-          This build includes Vulkan support if enabled during configuration:
-          - **Vulkan SDK**: LunarG SDK + System packages
-          - **Headers**: From Khronos Vulkan-Headers repository
-          - **Libraries**: System libvulkan.so + SDK components
-          - **Tools**: Validation layers, spirv-tools, vulkaninfo
-          
-          ## Installation
-          1. Download the appropriate .tar.xz file
-          2. Extract using: \`tar -xJf filename.tar.xz\`
-          3. The Qt installation will be extracted with bin, lib, qml, etc. directories
-          4. For Vulkan support, ensure Vulkan runtime is installed on target system
-          
-          ## Configure Summaries (from config.summary)
-          EOF
-          echo "" >> release_notes.md
-          for f in artifacts/qt-build-report_*.txt; do
-            [ -f "$f" ] || continue
-            echo "" >> release_notes.md
-            echo "---- $(basename "$f" .txt) ----" >> release_notes.md
-            echo '```' >> release_notes.md
-            sed -e 's/\r$//' "$f" >> release_notes.md
-            echo '```' >> release_notes.md
-          done
-          echo "" >> release_notes.md
-          echo "## Notes" >> release_notes.md
-          echo "- Built with C++20 standard" >> release_notes.md
-          echo "- Uses libc++ standard library instead of libstdc++" >> release_notes.md
-          echo "- Uses lld linker for faster linking and smaller binaries" >> release_notes.md
-          echo "- Skips QtWebEngine and examples/tests" >> release_notes.md
-          echo "- Static builds do not include debug configurations" >> release_notes.md
-          echo "- Requires libc++ runtime on target systems for shared builds" >> release_notes.md
-          echo "- Built in WSL2 environment for consistent Linux ABI compatibility" >> release_notes.md
-          echo "" >> release_notes.md
-          echo "## Artifacts" >> release_notes.md
-          ls -1 artifacts/*.tar.xz >> release_notes.md || true
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.release_tag.outputs.tag_name }}
-          name: Qt ${{ env.QT_VERSION }} - Linux LLVM/Clang ${{ env.LLVM_VERSION }} (WSL2)
-          body_path: release_notes.md
-          draft: false
-          prerelease: false
-          files: artifacts/**/*.tar.xz
-          fail_on_unmatched_files: true
-
-      - name: Clean up artifacts
-        uses: geekyeggo/delete-artifact@v5
-        with:
-          name: |
-            qt${{ env.QT_VERSION }}-linux-x86_64-llvm${{ env.LLVM_VERSION }}-*
-            report-*
+      # Note: This workflow only builds and uploads artifacts
+      # Use the 'release-qt-unified' workflow to create releases with all platforms
