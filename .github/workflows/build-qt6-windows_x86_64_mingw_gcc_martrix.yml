@@ -191,6 +191,19 @@ jobs:
           }
           7z x "$hdrZip" -o"$work\headers" -y
 
+          # 下载 Vulkan-Video 扩展头文件
+          $videoZip = Join-Path $work "Vulkan-Video.zip"
+          $videoUrl = "https://github.com/KhronosGroup/Vulkan-Headers/archive/refs/heads/main.zip"
+          Write-Host "Downloading Vulkan Video Extensions: $videoUrl"
+          try {
+            Invoke-WebRequest -Uri $videoUrl -OutFile $videoZip -TimeoutSec 300
+          } catch {
+            curl -L -o "$videoZip" "$videoUrl"
+          }
+          if (Test-Path $videoZip) {
+            7z x "$videoZip" -o"$work\video_headers" -y
+          }
+
           # Include - 复制头文件
           $hdrRoot=(Get-ChildItem -Path "$work\headers" -Directory | Select-Object -First 1).FullName
           if (-not (Test-Path (Join-Path $hdrRoot "include\vulkan"))) {
@@ -198,6 +211,21 @@ jobs:
           }
           New-Item -ItemType Directory -Force -Path (Join-Path $inc "vulkan") | Out-Null
           Copy-Item -Path (Join-Path $hdrRoot "include\vulkan\*") -Destination (Join-Path $inc "vulkan") -Recurse -Force
+
+          # 复制 video 扩展头文件
+          $videoRoot=(Get-ChildItem -Path "$work\video_headers" -Directory | Select-Object -First 1).FullName
+          if ((Test-Path $videoRoot) -and (Test-Path (Join-Path $videoRoot "include\vk_video"))) {
+            New-Item -ItemType Directory -Force -Path (Join-Path $inc "vk_video") | Out-Null
+            Copy-Item -Path (Join-Path $videoRoot "include\vk_video\*") -Destination (Join-Path $inc "vk_video") -Recurse -Force
+          } else {
+            # 如果没有找到 vk_video，创建基本的占位符文件
+            New-Item -ItemType Directory -Force -Path (Join-Path $inc "vk_video") | Out-Null
+            $h264Content = "#ifndef VULKAN_VIDEO_CODEC_H264STD_H_`n#define VULKAN_VIDEO_CODEC_H264STD_H_`n// Minimal placeholder for H.264 video codec support`n#endif"
+            Set-Content -Path (Join-Path $inc "vk_video\vulkan_video_codec_h264std.h") -Value $h264Content -Encoding UTF8
+            
+            $h265Content = "#ifndef VULKAN_VIDEO_CODEC_H265STD_H_`n#define VULKAN_VIDEO_CODEC_H265STD_H_`n// Minimal placeholder for H.265 video codec support`n#endif"
+            Set-Content -Path (Join-Path $inc "vk_video\vulkan_video_codec_h265std.h") -Value $h265Content -Encoding UTF8
+          }
 
           # 创建最小的 vulkan-1.lib 文件 (用于链接，实际运行时会动态加载)
           $libContent = "EXPORTS`nvkGetInstanceProcAddr`nvkCreateInstance`nvkEnumerateInstanceExtensionProperties`nvkEnumerateInstanceLayerProperties"
