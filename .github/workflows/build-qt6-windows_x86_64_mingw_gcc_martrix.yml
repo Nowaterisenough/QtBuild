@@ -200,13 +200,13 @@ jobs:
           Copy-Item -Path (Join-Path $hdrRoot "include\vulkan\*") -Destination (Join-Path $inc "vulkan") -Recurse -Force
 
           # 创建最小的 vulkan-1.lib 文件 (用于链接，实际运行时会动态加载)
-          $libContent = @"
+          $libContent = @'
 EXPORTS
 vkGetInstanceProcAddr
 vkCreateInstance
 vkEnumerateInstanceExtensionProperties
 vkEnumerateInstanceLayerProperties
-"@
+'@
           $defFile = Join-Path $work "vulkan-1.def"
           Set-Content -Path $defFile -Value $libContent -Encoding ASCII
           
