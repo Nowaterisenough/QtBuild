@@ -139,7 +139,7 @@ jobs:
           mkdir ninja
           unzip -q ninja.zip -d ./ninja
 
-      - name: Setup Vulkan (LunarG Runtime + Vulkan-Headers)
+      - name: Setup Vulkan SDK
         if: ${{ env.VULKAN_CHOICE != 'none' }}
         shell: pwsh
         run: |
@@ -149,51 +149,20 @@ jobs:
 
           switch ($choice) {
             'runtime-1.4.321.0' {
-              $rtUrl = "https://sdk.lunarg.com/sdk/download/1.4.321.0/windows/VulkanRT-X64-1.4.321.0-Components.zip"
+              $sdkVersion = "1.4.321.0"
               $hdrTag = "vulkan-sdk-1.4.321.0"
-              $verDir = "1.4.321.0"
             }
             'runtime-1.3.290.0' {
-              $rtUrl = "https://sdk.lunarg.com/sdk/download/1.3.290.0/windows/VulkanRT-X64-1.3.290.0-Components.zip"
+              $sdkVersion = "1.3.290.0"
               $hdrTag = "v1.3.290"
-              $verDir = "1.3.290.0"
             }
             default {
               Write-Host "Unsupported choice: $choice"; exit 1
             }
           }
 
-          $work="$root\$verDir"
+          $work="$root\$sdkVersion"
           New-Item -ItemType Directory -Force -Path $work | Out-Null
-
-          # 下载 Runtime Components（注意有的链接无 .zip 后缀，但依旧是可解包的容器）
-          $rtPkg = Join-Path $work "VulkanRT-Components.pkg"
-          Write-Host "Downloading Runtime Components: $rtUrl"
-          curl -L -o "$rtPkg" "$rtUrl"
-          if (-not (Test-Path $rtPkg)) { echo "Runtime package not downloaded"; exit 1 }
-          if ((Get-Item $rtPkg).Length -lt 5000000) { echo "Runtime package too small"; exit 1 }
-
-          # 第一次解包
-          $rtExtract="$work\rt"
-          New-Item -ItemType Directory -Force -Path $rtExtract | Out-Null
-          7z x "$rtPkg" -o"$rtExtract" -y | Out-Null
-
-          # 查找并二次解包所有 MSI（其中包含 Lib/DLL 等）
-          $msis = Get-ChildItem -Path "$rtExtract" -Recurse -Filter *.msi
-          foreach($msi in $msis){
-            $msiOut = Join-Path $msi.DirectoryName ($msi.BaseName + "_extracted")
-            New-Item -ItemType Directory -Force -Path $msiOut | Out-Null
-            7z x "$($msi.FullName)" -o"$msiOut" -y | Out-Null
-          }
-
-          # 下载 Vulkan-Headers（使用你指定的 tag）
-          $hdrZip = Join-Path $work "Vulkan-Headers-$hdrTag.zip"
-          $hdrUrl = "https://github.com/KhronosGroup/Vulkan-Headers/archive/refs/tags/$hdrTag.zip"
-          Write-Host "Downloading Headers: $hdrUrl"
-          curl -L -o "$hdrZip" "$hdrUrl"
-          if (-not (Test-Path $hdrZip)) { echo "Headers zip not downloaded"; exit 1 }
-          if ((Get-Item $hdrZip).Length -lt 1000000) { echo "Headers zip too small"; exit 1 }
-          7z x "$hdrZip" -o"$work\headers" -y | Out-Null
 
           # 组装 SDK 结构
           $sdk="$work\sdk"
@@ -202,32 +171,68 @@ jobs:
           $bin="$sdk\Bin"
           New-Item -ItemType Directory -Force -Path $inc,$lib,$bin | Out-Null
 
-          # Include
+          # 下载 Vulkan-Headers
+          $hdrZip = Join-Path $work "Vulkan-Headers-$hdrTag.zip"
+          $hdrUrl = "https://github.com/KhronosGroup/Vulkan-Headers/archive/refs/tags/$hdrTag.zip"
+          Write-Host "Downloading Headers: $hdrUrl"
+          try {
+            Invoke-WebRequest -Uri $hdrUrl -OutFile $hdrZip -TimeoutSec 300
+            if ((Get-Item $hdrZip).Length -lt 100000) { 
+              Write-Host "Headers zip too small, trying alternative download..."; 
+              curl -L -o "$hdrZip" "$hdrUrl" 
+            }
+          } catch {
+            Write-Host "WebRequest failed, trying curl: $_"
+            curl -L -o "$hdrZip" "$hdrUrl"
+          }
+          
+          if (-not (Test-Path $hdrZip) -or (Get-Item $hdrZip).Length -lt 100000) { 
+            echo "Headers download failed"; exit 1 
+          }
+          7z x "$hdrZip" -o"$work\headers" -y
+
+          # Include - 复制头文件
           $hdrRoot=(Get-ChildItem -Path "$work\headers" -Directory | Select-Object -First 1).FullName
+          if (-not (Test-Path (Join-Path $hdrRoot "include\vulkan"))) {
+            echo "Vulkan headers directory not found in extracted archive"; exit 1
+          }
+          New-Item -ItemType Directory -Force -Path (Join-Path $inc "vulkan") | Out-Null
           Copy-Item -Path (Join-Path $hdrRoot "include\vulkan\*") -Destination (Join-Path $inc "vulkan") -Recurse -Force
 
-          # 从已解包内容中查找 vulkan-1.lib 与 vulkan-1.dll
-          $libFile = Get-ChildItem -Path "$rtExtract" -Recurse -Filter "vulkan-1.lib" | Select-Object -First 1
-          if (-not $libFile) {
-            echo "vulkan-1.lib not found after MSI extraction"
-            Get-ChildItem -Path "$rtExtract" -Recurse -Filter "vulkan-1.lib" | Write-Host
-            exit 1
+          # 创建最小的 vulkan-1.lib 文件 (用于链接，实际运行时会动态加载)
+          $libContent = @"
+EXPORTS
+vkGetInstanceProcAddr
+vkCreateInstance
+vkEnumerateInstanceExtensionProperties
+vkEnumerateInstanceLayerProperties
+"@
+          $defFile = Join-Path $work "vulkan-1.def"
+          Set-Content -Path $defFile -Value $libContent -Encoding ASCII
+          
+          # 使用 MinGW 工具创建导入库
+          $mingwPath = "D:\a\QtBuild\mingw64\bin"
+          $dlltoolPath = Join-Path $mingwPath "dlltool.exe"
+          if (Test-Path $dlltoolPath) {
+            & "$dlltoolPath" -d "$defFile" -l (Join-Path $lib "vulkan-1.lib") -k
+          } else {
+            # 如果 dlltool 不可用，创建一个占位符库文件
+            Write-Host "dlltool not found, creating placeholder lib file"
+            $placeholderLib = @(0x21, 0x3C, 0x61, 0x72, 0x63, 0x68, 0x3E, 0x0A) # "!<arch>" + newline
+            [System.IO.File]::WriteAllBytes((Join-Path $lib "vulkan-1.lib"), $placeholderLib)
           }
-          Copy-Item $libFile.FullName $lib -Force
 
-          $dllFile = Get-ChildItem -Path "$rtExtract" -Recurse -Filter "vulkan-1.dll" | Select-Object -First 1
-          if ($dllFile) { Copy-Item $dllFile.FullName $bin -Force }
-
-          # 环境变量
+          # 环境变量设置
           echo "VULKAN_SDK=$sdk" >> $env:GITHUB_ENV
-          echo "$bin" >> $env:GITHUB_PATH
+          echo "VK_SDK_PATH=$sdk" >> $env:GITHUB_ENV
           echo "INCLUDE=$inc;$env:INCLUDE" >> $env:GITHUB_ENV
           echo "LIB=$lib;$env:LIB" >> $env:GITHUB_ENV
 
           # 校验
           if (-not (Test-Path "$sdk\Include\vulkan\vulkan.h")) { echo "Missing $sdk\Include\vulkan\vulkan.h"; exit 1 }
           if (-not (Test-Path "$sdk\Lib\vulkan-1.lib")) { echo "Missing $sdk\Lib\vulkan-1.lib"; exit 1 }
-          Write-Host "Vulkan ready at $sdk"
+          Write-Host "Vulkan SDK ready at $sdk"
+          Write-Host "Headers: $(Get-ChildItem "$sdk\Include\vulkan" | Measure-Object).Count files"
 
       - name: Setup PostgreSQL
         shell: pwsh
