@@ -1,0 +1,199 @@
+# =============================================================================
+# Qt Build Workflow Template
+# Standardized workflow format for all Qt build configurations
+# =============================================================================
+
+name: build-qt{QT_MAJOR}-{PLATFORM}_{ARCH}_{COMPILER}_matrix
+
+on:
+  workflow_dispatch:
+    inputs:
+      qt_version:
+        description: 'Qt Version'
+        required: true
+        default: '{DEFAULT_QT_VERSION}'
+        type: string
+      compiler_version:
+        description: '{COMPILER_NAME} Version'
+        required: true
+        default: '{DEFAULT_COMPILER_VERSION}'
+        type: choice
+        options: {COMPILER_OPTIONS}
+      vulkan_sdk:
+        description: 'Vulkan SDK (none for disable, runtime-* for specific version)'
+        required: true
+        type: choice
+        options:
+        - 'none'
+        - 'runtime-1.4.321.0' 
+        - 'runtime-1.3.290.0'
+        default: 'none'
+      test_mode:
+        description: 'Test Mode (build qtbase only for faster testing)'
+        required: true
+        default: 'false'
+        type: choice
+        options:
+        - 'true'
+        - 'false'
+      create_release:
+        description: 'Create Release'
+        required: true
+        default: 'true'
+        type: choice
+        options:
+        - 'true'
+        - 'false'
+
+env:
+  QT_VERSION: ${{ github.event.inputs.qt_version || '{DEFAULT_QT_VERSION}' }}
+  COMPILER_VERSION: ${{ github.event.inputs.compiler_version || '{DEFAULT_COMPILER_VERSION}' }}
+  VULKAN_CHOICE: ${{ github.event.inputs.vulkan_sdk || 'none' }}
+  TEST_MODE: ${{ github.event.inputs.test_mode || 'false' }}
+  ACTIONS_STEP_DEBUG: 'true'
+
+jobs:
+  build:
+    runs-on: {RUNNER_OS}
+    strategy:
+      matrix:
+        link_type: [static, shared]
+        build_type: [release, debug, release-sepdbg]
+        exclude:
+          - link_type: static
+            build_type: debug  # Skip static debug builds for resource efficiency
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Platform-specific setup steps go here
+      {PLATFORM_SPECIFIC_STEPS}
+
+      - name: Extract Qt version components
+        id: qt_version
+        run: |
+          # Extract major.minor version for download URL
+          # Implementation varies by platform
+        shell: {SHELL_TYPE}
+
+      - name: Download Qt source
+        run: |
+          # Download Qt source code
+          # Implementation varies by platform
+        shell: {SHELL_TYPE}
+
+      - name: Build Qt
+        run: |
+          # Build Qt with specified configuration
+          # Implementation varies by platform
+        shell: {SHELL_TYPE}
+
+      - name: Package binaries
+        run: |
+          # Create standardized archive
+          # Format: qt{version}-{platform}-{arch}-{compiler}{version}-{linktype}_{buildtype}.{ext}
+        shell: {SHELL_TYPE}
+
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: qt${{ env.QT_VERSION }}-{PLATFORM}-{ARCH}-{COMPILER}${{ env.COMPILER_VERSION }}-${{ matrix.link_type }}_${{ matrix.build_type == 'release' && 'release' || matrix.build_type == 'debug' && 'debug' || 'relwithdebinfo' }}
+          path: ${{ env.ARCHIVE_NAME }}
+          if-no-files-found: error
+
+      - name: Upload build summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: report-${{ matrix.link_type }}_${{ matrix.build_type }}
+          path: ${{ env.REPORT_FILE }}
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.create_release == 'true' }}
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Flatten artifacts
+        run: |
+          find artifacts -type f -name "*.{ARCHIVE_EXT}" -exec mv -t artifacts {} +
+          find artifacts -type f -name "report-*.txt" -exec mv -t artifacts {} + || true
+
+      - name: Generate release tag
+        id: release_tag
+        run: |
+          TAG_NAME="qt${{ env.QT_VERSION }}-{PLATFORM}-{COMPILER}${{ env.COMPILER_VERSION }}-$(date +'%Y%m%d%H%M%S')"
+          echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
+
+      - name: Generate release notes
+        run: |
+          # Create standardized release notes
+          cat > release_notes.md << 'EOF'
+          # Qt ${{ env.QT_VERSION }} - {PLATFORM_TITLE} {COMPILER_TITLE} ${{ env.COMPILER_VERSION }}
+          
+          ## Build Information
+          - **Qt Version**: ${{ env.QT_VERSION }}
+          - **Platform**: {PLATFORM_TITLE}
+          - **Architecture**: {ARCH_TITLE}  
+          - **Compiler**: {COMPILER_TITLE} ${{ env.COMPILER_VERSION }}
+          - **Vulkan Support**: ${{ env.VULKAN_CHOICE }}
+          - **Test Mode**: ${{ env.TEST_MODE }}
+          - **Build Date**: $(date +'%Y-%m-%d %H:%M:%S UTC')
+          
+          ## Included Configurations
+          
+          ### Static Builds
+          - `static_release`: Static linking, Release mode
+          - `static_relwithdebinfo`: Static linking, Release with debug info
+          
+          ### Shared Builds  
+          - `shared_release`: Dynamic linking, Release mode
+          - `shared_debug`: Dynamic linking, Debug mode
+          - `shared_relwithdebinfo`: Dynamic linking, Release with debug info
+          
+          {PLATFORM_SPECIFIC_NOTES}
+          
+          ## Installation
+          1. Download the appropriate archive for your configuration
+          2. Extract using platform-specific tools
+          3. Set environment variables as needed
+          
+          ## Build Reports
+          EOF
+          
+          # Add build reports if available
+          for f in artifacts/report-*.txt; do
+            [ -f "$f" ] || continue
+            echo "" >> release_notes.md
+            echo "### $(basename "$f" .txt)" >> release_notes.md
+            echo '```' >> release_notes.md
+            sed -e 's/\r$//' "$f" >> release_notes.md
+            echo '```' >> release_notes.md
+          done
+          
+          echo "" >> release_notes.md
+          echo "## Artifacts" >> release_notes.md
+          ls -1 artifacts/*.{ARCHIVE_EXT} >> release_notes.md || true
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release_tag.outputs.tag_name }}
+          name: Qt ${{ env.QT_VERSION }} - {PLATFORM_TITLE} {COMPILER_TITLE} ${{ env.COMPILER_VERSION }}
+          body_path: release_notes.md
+          draft: false
+          prerelease: false
+          files: artifacts/**/*.{ARCHIVE_EXT}
+          fail_on_unmatched_files: true
+
+      - name: Clean up artifacts
+        uses: geekyeggo/delete-artifact@v5
+        with:
+          name: |
+            qt${{ env.QT_VERSION }}-{PLATFORM}-{ARCH}-{COMPILER}${{ env.COMPILER_VERSION }}-*
+            report-*
