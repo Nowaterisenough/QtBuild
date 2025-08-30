@@ -43,8 +43,8 @@ export CC=clang-${LLVM_VERSION}
 export CXX=clang++-${LLVM_VERSION}
 export LLVM_INSTALL_DIR=/usr/lib/llvm-${LLVM_VERSION}
 
-# 构建配置选项
-CFG_OPTIONS="-${LINK_TYPE} -prefix $INSTALL_DIR -nomake examples -nomake tests -c++std c++20 -skip qtwebengine -opensource -confirm-license -qt-libpng -qt-libjpeg -qt-zlib -qt-pcre -openssl-linked -platform linux-clang -opengl desktop"
+# 构建配置选项 - 禁用Vulkan避免头文件不兼容
+CFG_OPTIONS="-${LINK_TYPE} -prefix $INSTALL_DIR -nomake examples -nomake tests -c++std c++20 -skip qtwebengine -opensource -confirm-license -qt-libpng -qt-libjpeg -qt-zlib -qt-pcre -openssl-linked -platform linux-clang -opengl desktop -no-feature-vulkan"
 
 if [ "$BUILD_TYPE" = "debug" ]; then
     CFG_OPTIONS="$CFG_OPTIONS -debug"
@@ -57,22 +57,24 @@ if [ "$LINK_TYPE" = "shared" ] && [ "$SEPARATE_DEBUG" = "true" ]; then
 fi
 
 # 设置额外的编译器和链接器标志
-export CFLAGS="-fuse-ld=lld"
-export CXXFLAGS="-fuse-ld=lld -stdlib=libc++"
-export LDFLAGS="-fuse-ld=lld -stdlib=libc++"
+export CFLAGS="-fuse-ld=lld -fno-lto"
+export CXXFLAGS="-fuse-ld=lld -stdlib=libc++ -fno-lto"
+export LDFLAGS="-fuse-ld=lld -stdlib=libc++ -Wl,--no-keep-memory"
 
 # 配置
 echo "Configuring Qt with Clang/LLVM..."
 echo "Using CC=$CC, CXX=$CXX"
 "$SRC_QT/configure" $CFG_OPTIONS
 
-# 构建
+# 构建 - 限制并行度和内存使用
 echo "Building Qt..."
 PARALLEL_JOBS=$(nproc)
-if [ $PARALLEL_JOBS -gt 6 ]; then
-    PARALLEL_JOBS=6
+# LLVM在资源受限环境中特别容易内存不足
+if [ $PARALLEL_JOBS -gt 2 ]; then
+    PARALLEL_JOBS=2
 fi
 
+echo "Using $PARALLEL_JOBS parallel jobs (LLVM builds need more memory)"
 cmake --build . --parallel $PARALLEL_JOBS
 
 # 安装

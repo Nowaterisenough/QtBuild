@@ -38,8 +38,8 @@ mkdir -p "$BUILD_DIR"
 mkdir -p "$INSTALL_DIR"
 cd "$BUILD_DIR"
 
-# 构建配置选项
-CFG_OPTIONS="-${LINK_TYPE} -prefix $INSTALL_DIR -nomake examples -nomake tests -c++std c++20 -skip qtwebengine -opensource -confirm-license -qt-libpng -qt-libjpeg -qt-zlib -qt-pcre -openssl-linked -platform linux-g++ -opengl desktop"
+# 构建配置选项 - 禁用Vulkan避免头文件不兼容
+CFG_OPTIONS="-${LINK_TYPE} -prefix $INSTALL_DIR -nomake examples -nomake tests -c++std c++20 -skip qtwebengine -opensource -confirm-license -qt-libpng -qt-libjpeg -qt-zlib -qt-pcre -openssl-linked -platform linux-g++ -opengl desktop -no-feature-vulkan"
 
 if [ "$BUILD_TYPE" = "debug" ]; then
     CFG_OPTIONS="$CFG_OPTIONS -debug"
@@ -55,13 +55,19 @@ fi
 echo "Configuring Qt..."
 "$SRC_QT/configure" $CFG_OPTIONS
 
-# 构建
+# 构建 - 限制并行度和内存使用
 echo "Building Qt..."
 PARALLEL_JOBS=$(nproc)
-if [ $PARALLEL_JOBS -gt 6 ]; then
-    PARALLEL_JOBS=6
+# 在资源受限环境中进一步降低并行度
+if [ $PARALLEL_JOBS -gt 3 ]; then
+    PARALLEL_JOBS=3
 fi
 
+# 设置编译器内存限制
+export CXXFLAGS="$CXXFLAGS -fno-lto"
+export LDFLAGS="$LDFLAGS -Wl,--no-keep-memory"
+
+echo "Using $PARALLEL_JOBS parallel jobs"
 cmake --build . --parallel $PARALLEL_JOBS
 
 # 安装
