@@ -11,6 +11,12 @@ on:
         description: 'GCC Version'
         required: true
         default: '13'
+        type: choice
+        options:
+        - '11'
+        - '12'
+        - '13'
+        - '14'
       vulkan_sdk:
         description: 'Vulkan support (none/runtime-*)'
         required: true
@@ -68,7 +74,7 @@ jobs:
       - name: Create scripts with proper line endings
         run: |
           # WSL 设置脚本 - 减少依赖包数量避免内存不足
-          $setupScript = "#!/bin/bash`nset -e`necho `"Setting up WSL2 environment...`"`n`nexport DEBIAN_FRONTEND=noninteractive`n`n# 分批安装以降低内存压力`necho `"Installing core build tools...`"`nsudo apt-get update`nsudo apt-get install -y --no-install-recommends build-essential gcc-${{ env.GCC_VERSION }} g++-${{ env.GCC_VERSION }} cmake ninja-build python3 pkg-config`n`necho `"Installing X11 and OpenGL libraries...`"`nsudo apt-get install -y --no-install-recommends libgl1-mesa-dev libglu1-mesa-dev libx11-dev libxext-dev libxrender-dev libxrandr-dev libxcursor-dev`n`necho `"Installing XCB libraries...`"`nsudo apt-get install -y --no-install-recommends libxcb1-dev libxcb-util-dev libxcb-image0-dev libxcb-keysyms1-dev libxcb-render0-dev libxcb-render-util0-dev libxcb-randr0-dev libxcb-cursor-dev`n`necho `"Installing remaining dependencies...`"`nsudo apt-get install -y --no-install-recommends libxkbcommon-dev libxkbcommon-x11-dev libfontconfig1-dev libfreetype6-dev libglib2.0-dev libegl1-mesa-dev libssl-dev wget curl xz-utils`n`nsudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-${{ env.GCC_VERSION }} 100`nsudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-${{ env.GCC_VERSION }} 100`n`nsudo apt-get clean`nsudo rm -rf /var/lib/apt/lists/*`necho `"WSL2 environment setup completed`""
+          $setupScript = "#!/bin/bash`nset -e`necho `"Setting up WSL2 environment...`"`n`nexport DEBIAN_FRONTEND=noninteractive`n`n# 确保Universe仓库可用`necho `"Enabling Ubuntu Universe repository...`"`nsudo add-apt-repository universe -y`nsudo apt-get update`n`n# 分批安装以降低内存压力`necho `"Installing core build tools...`"`nsudo apt-get install -y --no-install-recommends build-essential gcc-${{ env.GCC_VERSION }} g++-${{ env.GCC_VERSION }} cmake ninja-build python3 pkg-config`n`necho `"Installing X11 and OpenGL libraries...`"`nsudo apt-get install -y --no-install-recommends libgl1-mesa-dev libglu1-mesa-dev libx11-dev libxext-dev libxrender-dev libxrandr-dev libxcursor-dev`n`necho `"Installing XCB libraries...`"`nsudo apt-get install -y --no-install-recommends libxcb1-dev libxcb-util-dev libxcb-image0-dev libxcb-keysyms1-dev libxcb-render0-dev libxcb-render-util0-dev libxcb-randr0-dev libxcb-cursor-dev`n`necho `"Installing remaining dependencies...`"`nsudo apt-get install -y --no-install-recommends libxkbcommon-dev libxkbcommon-x11-dev libfontconfig1-dev libfreetype6-dev libglib2.0-dev libegl1-mesa-dev libssl-dev wget curl xz-utils`n`necho `"Setting up GCC alternatives...`"`nsudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-${{ env.GCC_VERSION }} 100`nsudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-${{ env.GCC_VERSION }} 100`n`n# 验证GCC安装`ngcc-${{ env.GCC_VERSION }} --version`ng++-${{ env.GCC_VERSION }} --version`n`nsudo apt-get clean`nsudo rm -rf /var/lib/apt/lists/*`necho `"WSL2 environment setup completed`""
           [System.IO.File]::WriteAllText("wsl_setup.sh", $setupScript.Replace("`r`n", "`n"), [System.Text.UTF8Encoding]::new($false))
 
           # 下载脚本
