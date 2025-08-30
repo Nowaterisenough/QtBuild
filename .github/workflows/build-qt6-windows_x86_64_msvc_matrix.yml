@@ -177,7 +177,8 @@ jobs:
           $libExe = "${env:ProgramFiles}\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\*\bin\Hostx64\x64\lib.exe"
           $libPath = Get-ChildItem -Path $libExe -ErrorAction SilentlyContinue | Select-Object -First 1
           if ($libPath) {
-            & "$($libPath.FullName)" /def:"$defFile" /out:(Join-Path $lib "vulkan-1.lib") /machine:x64
+            $vulkanLibPath = Join-Path $lib "vulkan-1.lib"
+            & "$($libPath.FullName)" /def:"$defFile" /out:"$vulkanLibPath" /machine:x64
           } else {
             # 如果 lib.exe 不可用，创建一个占位符库文件
             Write-Host "lib.exe not found, creating placeholder lib file"
