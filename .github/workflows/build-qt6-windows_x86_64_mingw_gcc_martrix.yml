@@ -71,7 +71,9 @@ jobs:
         build_type: [release, debug, release-sepdbg]
         exclude:
           - link_type: static
-            build_type: debug  # Skip static debug builds for resource efficiency
+            build_type: debug
+          - link_type: static
+            build_type: release-sepdbg
 
     steps:
       - name: Checkout
