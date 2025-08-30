@@ -58,7 +58,21 @@ jobs:
             cutoffDate.setHours(cutoffDate.getHours() - 24); // Look back 24 hours
             
             for (const platform of platforms) {
-              const workflowName = `build-qt6-${platform.trim()}_matrix`;
+              // Map platform names to actual workflow file names
+              const workflowMap = {
+                'windows-msvc': 'build-qt6-windows_x86_64_msvc_matrix',
+                'windows-mingw': 'build-qt6-windows_x86_64_mingw_gcc_martrix',
+                'windows-llvm': 'build-qt6-windows_x86_64_llvm_clang_matrix',
+                'linux-gcc': 'build-qt6-linux_x86_64_gcc_matrix', 
+                'linux-llvm': 'build-qt6-linux_x86_64_llvm_matrix',
+                'wasm-emscripten': 'build-qt6-wasm32_emscripten_matrix'
+              };
+              
+              const workflowName = workflowMap[platform.trim()];
+              if (!workflowName) {
+                console.log(`Warning: Unknown platform ${platform.trim()}`);
+                continue;
+              }
               console.log(`Looking for workflow: ${workflowName}`);
               
               try {
@@ -308,6 +322,186 @@ jobs:
             fs.writeFileSync('release_notes.md', releaseNotes);
             
             console.log(`Successfully prepared ${artifactList.length} artifacts (${Math.round(totalSize / 1024 / 1024)}MB total)`);
+
+      - name: Generate build configuration summary table
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const artifacts = JSON.parse('${{ needs.collect-artifacts.outputs.artifact-list }}');
+            const fs = require('fs');
+            const path = require('path');
+            
+            // Download build reports and parse them
+            const buildConfigs = new Map();
+            
+            for (const artifact of artifacts) {
+              // Look for report artifacts from the same run
+              try {
+                console.log(`Looking for build reports from run ${artifact.run_id}`);
+                
+                const reportArtifacts = await github.rest.actions.listWorkflowRunArtifacts({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  run_id: artifact.run_id
+                });
+                
+                // Find report artifacts (they follow pattern: report-{linktype}_{buildtype})
+                const reports = reportArtifacts.data.artifacts.filter(a => 
+                  a.name.startsWith('report-') && a.name.includes('_')
+                );
+                
+                for (const report of reports) {
+                  try {
+                    const download = await github.rest.actions.downloadArtifact({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      artifact_id: report.id,
+                      archive_format: 'zip'
+                    });
+                    
+                    const AdmZip = require('adm-zip');
+                    const zip = new AdmZip(Buffer.from(download.data));
+                    const entries = zip.getEntries();
+                    
+                    if (entries.length > 0) {
+                      const content = entries[0].getData().toString('utf8');
+                      const config = parseQtConfigSummary(content);
+                      if (config) {
+                        const key = `${artifact.platform}-${report.name}`;
+                        buildConfigs.set(key, {
+                          platform: artifact.platform,
+                          config: report.name.replace('report-', ''),
+                          modules: config
+                        });
+                      }
+                    }
+                  } catch (error) {
+                    console.log(`Warning: Failed to process report ${report.name}: ${error.message}`);
+                  }
+                }
+              } catch (error) {
+                console.log(`Warning: Failed to get reports for run ${artifact.run_id}: ${error.message}`);
+              }
+            }
+            
+            // Parse Qt config.summary format
+            function parseQtConfigSummary(content) {
+              const modules = {};
+              const lines = content.split('\n');
+              
+              for (const line of lines) {
+                const trimmed = line.trim();
+                
+                // Skip empty lines and section headers
+                if (!trimmed || trimmed.endsWith(':')) continue;
+                
+                // Look for module/feature status lines with dots
+                if (trimmed.includes('...')) {
+                  const dotIndex = trimmed.lastIndexOf('...');
+                  const module = trimmed.substring(0, dotIndex).trim();
+                  const status = trimmed.substring(dotIndex + 3).trim();
+                  
+                  if (module && status) {
+                    modules[module] = normalizeStatus(status);
+                  }
+                }
+                // Also catch lines with just spaces before status (indented items)
+                else if (trimmed.match(/^[A-Z].+\s+(yes|no|enabled|disabled|found|not found|\d+\.\d+|\w+)$/i)) {
+                  const match = trimmed.match(/^(.+?)\s+(yes|no|enabled|disabled|found|not found|\d+\.\d+|\w+)$/i);
+                  if (match) {
+                    const module = match[1].trim();
+                    const status = match[2].trim();
+                    modules[module] = normalizeStatus(status);
+                  }
+                }
+              }
+              
+              return modules;
+            }
+            
+            function isImportantModule(module) {
+              // Include all modules - don't filter anything
+              return true;
+            }
+            
+            function normalizeStatus(status) {
+              const s = status.toLowerCase().trim();
+              
+              // Positive/enabled states
+              if (s === 'yes' || s === 'enabled' || s === 'found' || s === 'true') return '✅';
+              
+              // Negative/disabled states  
+              if (s === 'no' || s === 'disabled' || s === 'not found' || s === 'false') return '❌';
+              
+              // Runtime/system/external dependencies
+              if (s.includes('runtime') || s.includes('system') || s.includes('using system')) return '🔄';
+              
+              // Version numbers (show as-is)
+              if (s.match(/^\d+\.\d+/)) return s;
+              
+              // Lists/collections (like "Fusion Windows WindowsVista")
+              if (s.includes(' ') && s.length > 10) return '📋';
+              
+              // Special values
+              if (s === '<none>' || s === 'none') return '❌';
+              if (s.includes('basic') || s.includes('minimal')) return '⚠️';
+              
+              // Everything else as-is but truncated if too long
+              return s.length > 15 ? s.substring(0, 12) + '...' : s;
+            }
+            
+            // Generate markdown table
+            if (buildConfigs.size > 0) {
+              // Get all unique modules across all configs
+              const allModules = new Set();
+              buildConfigs.forEach(config => {
+                Object.keys(config.modules).forEach(module => allModules.add(module));
+              });
+              
+              const sortedModules = Array.from(allModules).sort();
+              
+              // Generate table
+              let table = '\n## Build Configuration Summary\n\n';
+              table += '| Platform/Config | ' + sortedModules.join(' | ') + ' |\n';
+              table += '|' + '-'.repeat(17) + '|' + sortedModules.map(() => ':-:').join('|') + '|\n';
+              
+              // Group by platform
+              const platformGroups = new Map();
+              buildConfigs.forEach((config, key) => {
+                if (!platformGroups.has(config.platform)) {
+                  platformGroups.set(config.platform, []);
+                }
+                platformGroups.set(config.platform, [...platformGroups.get(config.platform), config]);
+              });
+              
+              platformGroups.forEach((configs, platform) => {
+                configs.forEach(config => {
+                  const row = [`**${platform}**<br/>\`${config.config}\``];
+                  sortedModules.forEach(module => {
+                    row.push(config.modules[module] || '-');
+                  });
+                  table += '| ' + row.join(' | ') + ' |\n';
+                });
+              });
+              
+              table += '\n**Legend:** ✅ Enabled | ❌ Disabled | 🔄 Runtime/System | 📋 Multiple Options | ⚠️ Basic/Minimal | - Not Applicable\n\n';
+              
+              // Append to release notes
+              let releaseNotes = fs.readFileSync('release_notes.md', 'utf8');
+              
+              // Insert table before "Build Artifacts" section
+              const insertPoint = releaseNotes.indexOf('## Build Artifacts');
+              if (insertPoint !== -1) {
+                releaseNotes = releaseNotes.slice(0, insertPoint) + table + releaseNotes.slice(insertPoint);
+              } else {
+                releaseNotes += table;
+              }
+              
+              fs.writeFileSync('release_notes.md', releaseNotes);
+              console.log(`Generated configuration table with ${sortedModules.length} modules for ${buildConfigs.size} configurations`);
+            } else {
+              console.log('No build configuration data found, skipping table generation');
+            }
 
       - name: Create Unified Release
         uses: softprops/action-gh-release@v2

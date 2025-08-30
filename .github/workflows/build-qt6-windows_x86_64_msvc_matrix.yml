@@ -37,19 +37,11 @@ on:
         options:
         - 'true'
         - 'false'
-      create_release:
-        description: 'Create Release'
-        required: true
-        default: 'true'
-        type: choice
-        options:
-        - 'true'
-        - 'false'
 
 env:
   QT_VERSION: ${{ github.event.inputs.qt_version || '6.9.2' }}
   COMPILER_VERSION: ${{ github.event.inputs.compiler_version || '2022' }}
-  VULKAN_CHOICE: ${{ github.event.inputs.vulkan_sdk || 'none' }}
+  VULKAN_CHOICE: ${{ github.event.inputs.vulkan_sdk || 'runtime-1.4.321.0' }}
   TEST_MODE: ${{ github.event.inputs.test_mode || 'false' }}
   ACTIONS_STEP_DEBUG: 'true'
 
