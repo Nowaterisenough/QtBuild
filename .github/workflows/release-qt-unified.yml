@@ -76,6 +76,10 @@ jobs:
               console.log(`Looking for workflow: ${workflowName}`);
               
               try {
+                console.log(`Searching for workflow runs in repo: ${context.repo.owner}/${context.repo.repo}`);
+                console.log(`Workflow ID: ${workflowName}.yml`);
+                console.log(`Cutoff date: ${cutoffDate.toISOString()}`);
+                
                 const workflows = await github.rest.actions.listWorkflowRunsForRepo({
                   owner: context.repo.owner,
                   repo: context.repo.repo,
@@ -85,10 +89,21 @@ jobs:
                   per_page: 10
                 });
                 
+                console.log(`Found ${workflows.data.workflow_runs.length} completed successful runs for ${workflowName}`);
+                workflows.data.workflow_runs.forEach((run, idx) => {
+                  console.log(`  Run ${idx + 1}: ${run.head_commit?.message || 'No message'} (${run.created_at})`);
+                });
+                
                 // Find the most recent successful run
                 const recentRun = workflows.data.workflow_runs.find(run => 
                   new Date(run.created_at) > cutoffDate
                 );
+                
+                if (recentRun) {
+                  console.log(`Using recent run: ${recentRun.id} (${recentRun.created_at})`);
+                } else {
+                  console.log(`No runs found after cutoff date ${cutoffDate.toISOString()}`);
+                }
                 
                 if (recentRun) {
                   const runArtifacts = await github.rest.actions.listWorkflowRunArtifacts({

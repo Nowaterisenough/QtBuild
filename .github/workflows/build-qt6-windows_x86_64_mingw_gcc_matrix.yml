@@ -30,7 +30,9 @@ on:
         required: true
         default: 'ucrt'
         type: choice
-        options: [ucrt, msvcrt]
+        options:
+        - ucrt
+        - msvcrt
       vulkan_sdk:
         description: 'Vulkan support (none/runtime-*)'
         required: true
@@ -45,7 +47,9 @@ on:
         required: true
         default: 'false'
         type: choice
-        options: ['true','false']
+        options:
+        - 'true'
+        - 'false'
 
 env:
   QT_VERSION: ${{ github.event.inputs.qt_version || '6.9.2' }}
@@ -70,7 +74,7 @@ jobs:
             build_type: release-sepdbg
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Setup Python
@@ -79,7 +83,7 @@ jobs:
           python-version: '3.13'
           architecture: 'x64'
 
-      - name: Extract Qt major.minor
+      - name: Extract Qt version components
         id: qt_version
         shell: pwsh
         run: |
@@ -287,7 +291,7 @@ jobs:
           unzip -q protoc-win64.zip -d ./protoc
           echo "D:\a\QtBuild\protoc\bin" >> $env:GITHUB_PATH
 
-      - name: Prepare Qt source
+      - name: Prepare directories and source
         shell: pwsh
         run: |
           cd ..
@@ -300,7 +304,7 @@ jobs:
           curl -L -o qt-everywhere-src.zip "https://download.qt.io/official_releases/qt/$mm/$ver/single/qt-everywhere-src-$ver.zip"
           unzip -q qt-everywhere-src.zip -d "./$ver"
 
-      - name: Build Qt
+      - name: Run build script
         shell: cmd
         run: |
           setlocal
@@ -330,7 +334,7 @@ jobs:
           Copy-Item $summary $out -Force
           echo "REPORT_FILE=$out" >> $env:GITHUB_ENV
 
-      - name: Package
+      - name: Package binaries
         shell: pwsh
         run: |
           $qt="${{ env.QT_VERSION }}"

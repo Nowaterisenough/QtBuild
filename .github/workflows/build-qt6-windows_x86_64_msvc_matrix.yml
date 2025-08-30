@@ -194,6 +194,38 @@ jobs:
           Write-Host "Vulkan SDK ready at $sdk"
           Write-Host "Headers: $(Get-ChildItem "$sdk\Include\vulkan" | Measure-Object).Count files"
 
+      - name: Setup PostgreSQL
+        shell: pwsh
+        run: |
+          cd ..
+          $v="16.6"
+          $url="https://get.enterprisedb.com/postgresql/postgresql-$v-1-windows-x64-binaries.zip"
+          curl -L -o postgresql.zip $url
+          mkdir postgresql
+          7z x postgresql.zip -opostgresql
+          $pg=(Get-ChildItem -Path "postgresql" -Directory | Select-Object -First 1).FullName
+          echo "PostgreSQL_ROOT=$pg" >> $env:GITHUB_ENV
+          echo "$pg\bin" >> $env:GITHUB_PATH
+
+      - name: Setup MySQL
+        shell: pwsh
+        run: |
+          cd ..
+          $v="8.0.35"
+          $url="https://dev.mysql.com/get/Downloads/MySQL-8.0/mysql-$v-winx64.zip"
+          curl -L -o mysql.zip $url
+          7z x mysql.zip
+          $mp=(Get-ChildItem -Directory -Filter "mysql-*" | Select-Object -First 1).FullName
+          echo "MYSQL_ROOT=$mp" >> $env:GITHUB_ENV
+
+      - name: Setup Protobuf
+        shell: pwsh
+        run: |
+          cd ..
+          curl -L -o protoc-win64.zip https://github.com/protocolbuffers/protobuf/releases/download/v30.2/protoc-30.2-win64.zip
+          unzip -q protoc-win64.zip -d ./protoc
+          echo "D:\a\QtBuild\protoc\bin" >> $env:GITHUB_PATH
+
       - name: Prepare directories and source
         run: |
           cd ..
