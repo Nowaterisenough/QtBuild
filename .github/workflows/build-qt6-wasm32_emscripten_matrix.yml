@@ -1,22 +1,27 @@
+# =============================================================================
+# Qt 6 WASM Emscripten Build Matrix
+# Standardized workflow for building Qt with Emscripten for WebAssembly
+# =============================================================================
+
 name: build-qt6-wasm32_emscripten_matrix
 
 on:
   workflow_dispatch:
     inputs:
       qt_version:
-        description: 'Qt版本'
+        description: 'Qt Version'
         required: true
         default: '6.9.2'
-      emscripten_version:
-        description: 'Emscripten版本'
+      compiler_version:
+        description: 'Emscripten Version'
         required: true
         default: '4.0.13'
         type: choice
         options:
         - '3.1.70'
         - '4.0.13'
-      gcc_version:
-        description: 'Host GCC版本 (MinGW，用于交叉编译的宿主工具链)'
+      host_gcc_version:
+        description: 'Host GCC Version (MinGW for cross-compilation)'
         required: true
         default: '15.2.0'
         type: choice
@@ -29,28 +34,34 @@ on:
         - '13.1.0'
         - '12.2.0'
       host_qt_url:
-        description: 'Host Qt下载地址'
+        description: 'Host Qt Download URL'
         required: false
         default: 'https://github.com/Nowaterisenough/QtBuild/releases/download/qt6.9.2-windows-mingw15.2.0-ucrt-20250819063525/qt6.9.2-windows-x86_64-mingw_gcc15.2.0_ucrt-shared_release.7z'
-      build_debug:
-        description: '是否构建Debug版本'
-        required: false
-        type: boolean
-        default: false
-      create_release:
-        description: '是否创建Release'
+      vulkan_sdk:
+        description: 'Vulkan support (none/runtime-*)'
         required: true
         type: choice
-        default: 'true'
+        options:
+        - 'none'
+        - 'runtime-1.4.321.0'
+        - 'runtime-1.3.290.0'
+        default: 'runtime-1.4.321.0'
+      test_mode:
+        description: 'Test Mode (only build qtbase)'
+        required: true
+        default: 'false'
+        type: choice
         options:
         - 'true'
         - 'false'
 
 env:
   QT_VERSION: ${{ github.event.inputs.qt_version || '6.9.2' }}
-  EMSCRIPTEN_VERSION: ${{ github.event.inputs.emscripten_version || '4.0.13' }}
-  GCC_VERSION: ${{ github.event.inputs.gcc_version || '15.2.0' }}
+  COMPILER_VERSION: ${{ github.event.inputs.compiler_version || '4.0.13' }}
+  HOST_GCC_VERSION: ${{ github.event.inputs.host_gcc_version || '15.2.0' }}
   HOST_QT_URL: ${{ github.event.inputs.host_qt_url || 'https://github.com/Nowaterisenough/QtBuild/releases/download/qt6.9.2-windows-mingw15.2.0-ucrt-20250819063525/qt6.9.2-windows-x86_64-mingw_gcc15.2.0_ucrt-shared_release.7z' }}
+  VULKAN_CHOICE: ${{ github.event.inputs.vulkan_sdk || 'runtime-1.4.321.0' }}
+  TEST_MODE: ${{ github.event.inputs.test_mode || 'false' }}
   ACTIONS_STEP_DEBUG: 'true'
 
 jobs:
@@ -58,8 +69,8 @@ jobs:
     runs-on: windows-latest
     strategy:
       matrix:
-        link_type: [static]  # WebAssembly 只支持静态构建
-        build_type: ${{ github.event.inputs.build_debug == 'true' && fromJson('["release", "debug", "release-and-debug"]') || fromJson('["release"]') }}
+        link_type: [static]  # WebAssembly only supports static builds
+        build_type: [release]  # WebAssembly typically only needs release builds
     steps:
       - name: 检出代码仓库
         uses: actions/checkout@v4

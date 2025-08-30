@@ -5,9 +5,9 @@
 REM 启用扩展命令，禁用延迟扩展（避免路径中 '!' 问题）
 setlocal enableextensions disabledelayedexpansion
 
-REM 参数: Qt版本, Clang版本, BUILD_TYPE, LINK_TYPE, SEPARATE_DEBUG, RUNTIME, BIN_PATH, VERSION_CODE, TEST_MODE
+REM 统一参数格式: Qt版本, 编译器版本, BUILD_TYPE, LINK_TYPE, SEPARATE_DEBUG, RUNTIME, BIN_PATH, VERSION_CODE, TEST_MODE
 set "QT_VERSION=%~1"
-set "CLANG_VERSION=%~2"
+set "COMPILER_VERSION=%~2"
 set "BUILD_TYPE=%~3"
 set "LINK_TYPE=%~4"
 set "SEPARATE_DEBUG=%~5"
@@ -15,7 +15,14 @@ set "RUNTIME=%~6"
 set "BIN_PATH=%~7"
 set "VERSION_CODE=%~8"
 set "TEST_MODE=%~9"
+
+REM 处理默认值
 if "%TEST_MODE%"=="" set "TEST_MODE=false"
+if "%SEPARATE_DEBUG%"=="" set "SEPARATE_DEBUG=false"
+if "%RUNTIME%"=="" set "RUNTIME=ucrt"
+
+REM LLVM特定设置
+set "CLANG_VERSION=%COMPILER_VERSION%"
 
 REM 清理 PATH，避免系统工具冲突
 echo Cleaning PATH to avoid conflicts with system tools...
@@ -110,7 +117,30 @@ if /i "%TEST_MODE%"=="true" (
     set "CFG_OPTIONS=%CFG_OPTIONS% -skip qtwebengine"
 )
 
+REM 添加数据库支持
 set "CFG_OPTIONS=%CFG_OPTIONS% -sql-sqlite"
+
+REM PostgreSQL支持
+if defined PostgreSQL_ROOT if exist "%PostgreSQL_ROOT%" (
+    call :SlashPath "%PostgreSQL_ROOT%\include" PG_INC
+    call :SlashPath "%PostgreSQL_ROOT%\lib" PG_LIB
+    set "CFG_OPTIONS=%CFG_OPTIONS% -sql-psql"
+    set "PostgreSQL_INCLUDE_DIRS=%PG_INC%"
+    set "PostgreSQL_LIBRARY_DIRS=%PG_LIB%"
+    if exist "%PostgreSQL_ROOT%\lib\libpq.lib" (set "PostgreSQL_LIBRARIES=%PostgreSQL_ROOT%\lib\libpq.lib") else if exist "%PostgreSQL_ROOT%\lib\pq.lib" (set "PostgreSQL_LIBRARIES=%PostgreSQL_ROOT%\lib\pq.lib")
+    echo PostgreSQL support enabled: %PostgreSQL_ROOT%
+)
+
+REM MySQL支持  
+if defined MYSQL_ROOT if exist "%MYSQL_ROOT%" (
+    call :SlashPath "%MYSQL_ROOT%\include" MY_INC
+    call :SlashPath "%MYSQL_ROOT%\lib" MY_LIB
+    set "CFG_OPTIONS=%CFG_OPTIONS% -sql-mysql"
+    set "MySQL_INCLUDE_DIRS=%MY_INC%"
+    set "MySQL_LIBRARY_DIRS=%MY_LIB%"
+    if exist "%MYSQL_ROOT%\lib\libmysql.lib" (set "MySQL_LIBRARIES=%MYSQL_ROOT%\lib\libmysql.lib") else if exist "%MYSQL_ROOT%\lib\mysqlclient.lib" (set "MySQL_LIBRARIES=%MYSQL_ROOT%\lib\mysqlclient.lib")
+    echo MySQL support enabled: %MYSQL_ROOT%
+)
 
 if /i "%BUILD_TYPE%"=="debug" (
     set "CFG_OPTIONS=%CFG_OPTIONS% -debug"
@@ -213,15 +243,32 @@ exit /b %CPERR%
 
 :MV_OK
 
-REM shared 需要复制 LLVM-MinGW 运行时 DLL
+REM shared 需要复制运行时 DLL
 if /i "%LINK_TYPE%"=="shared" (
     echo Copying LLVM-MinGW runtime libraries...
     copy "%BIN_PATH%\libc++.dll" "%FINAL_INSTALL_DIR%\bin\" 2>nul
     copy "%BIN_PATH%\libunwind.dll" "%FINAL_INSTALL_DIR%\bin\" 2>nul
     copy "%BIN_PATH%\libwinpthread-1.dll" "%FINAL_INSTALL_DIR%\bin\" 2>nul
+    
+    REM 复制数据库DLL文件
+    if defined PostgreSQL_ROOT if exist "%PostgreSQL_ROOT%\bin\libpq.dll" (
+        copy "%PostgreSQL_ROOT%\bin\libpq.dll" "%FINAL_INSTALL_DIR%\bin\" >nul 2>nul
+        echo Copied PostgreSQL DLL
+    )
+    if defined MYSQL_ROOT if exist "%MYSQL_ROOT%\bin\libmysql.dll" (
+        copy "%MYSQL_ROOT%\bin\libmysql.dll" "%FINAL_INSTALL_DIR%\bin\" >nul 2>nul
+        echo Copied MySQL DLL
+    )
 )
 
 echo Build completed successfully!
 if /i "%TEST_MODE%"=="true" echo NOTE: Test mode was enabled - only qtbase was built
 echo Installation directory: %FINAL_INSTALL_DIR%
 exit /b 0
+
+:SlashPath
+setlocal
+set "p=%~1"
+set "p=%p:\=/%"
+endlocal & set "%~2=%p%"
+goto :eof
