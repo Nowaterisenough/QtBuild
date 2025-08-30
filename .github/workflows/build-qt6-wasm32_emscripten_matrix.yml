@@ -51,6 +51,7 @@ env:
   EMSCRIPTEN_VERSION: ${{ github.event.inputs.emscripten_version || '4.0.13' }}
   GCC_VERSION: ${{ github.event.inputs.gcc_version || '15.2.0' }}
   HOST_QT_URL: ${{ github.event.inputs.host_qt_url || 'https://github.com/Nowaterisenough/QtBuild/releases/download/qt6.9.2-windows-mingw15.2.0-ucrt-20250819063525/qt6.9.2-windows-x86_64-mingw_gcc15.2.0_ucrt-shared_release.7z' }}
+  ACTIONS_STEP_DEBUG: 'true'
 
 jobs:
   build:
@@ -223,6 +224,62 @@ jobs:
           set LINK_TYPE=${{ matrix.link_type }}
           call D:\a\QtBuild\QtBuild\Qt6Build\build-qt6-wasm32_emscripten.cmd !QT_VERSION! !EMSCRIPTEN_VERSION! !BUILD_TYPE! !LINK_TYPE!
 
+      - name: Export Qt configure summary
+        run: |
+          $linkType = "${{ matrix.link_type }}"
+          $buildType = "${{ matrix.build_type }}"
+          $qtVersion = "${{ env.QT_VERSION }}"
+          $emscriptenVersion = "${{ env.EMSCRIPTEN_VERSION }}"
+          $gccVersion = "${{ env.GCC_VERSION }}"
+          
+          $buildTypeNormalized = switch ($buildType) {
+            "release" { "release" }
+            "debug" { "debug" }
+            "release-and-debug" { "release_and_debug" }
+            default { $buildType.ToLower() }
+          }
+          
+          # Configure summary 文件路径
+          $summaryFileName = "qt${qtVersion}-wasm32_emscripten${emscriptenVersion}-cross_mingw_gcc${gccVersion}-${linkType}_${buildTypeNormalized}_configure_summary.txt"
+          $buildDir = "D:\a\QtBuild\Qt\$qtVersion-build-$linkType"
+          $configSummaryFile = Join-Path $buildDir "config.summary"
+          
+          Write-Host "Looking for config.summary at: $configSummaryFile"
+          
+          if (Test-Path $configSummaryFile) {
+            Write-Host "Found config.summary, copying to: $summaryFileName"
+            Copy-Item $configSummaryFile $summaryFileName
+            echo "SUMMARY_FILE=$summaryFileName" >> $env:GITHUB_ENV
+            Write-Host "Configure summary exported successfully"
+            
+            # 显示 summary 内容的前几行
+            Write-Host "Configure summary preview:"
+            Get-Content $summaryFileName | Select-Object -First 20
+          } else {
+            Write-Host "Warning: config.summary not found at $configSummaryFile"
+            
+            # 尝试查找可能的 config.summary 位置
+            Write-Host "Searching for config.summary files..."
+            $summaryFiles = Get-ChildItem -Path "D:\a\QtBuild\Qt" -Recurse -Name "config.summary" -ErrorAction SilentlyContinue
+            if ($summaryFiles) {
+              Write-Host "Found config.summary files at:"
+              foreach ($file in $summaryFiles) {
+                Write-Host "  - $file"
+              }
+              # 使用第一个找到的文件
+              $firstSummary = Join-Path "D:\a\QtBuild\Qt" $summaryFiles[0]
+              Copy-Item $firstSummary $summaryFileName
+              echo "SUMMARY_FILE=$summaryFileName" >> $env:GITHUB_ENV
+              Write-Host "Using summary from: $firstSummary"
+            } else {
+              Write-Host "No config.summary files found"
+              # 创建一个空的 summary 文件
+              "Configuration summary not available for this build." | Out-File -FilePath $summaryFileName -Encoding UTF8
+              echo "SUMMARY_FILE=$summaryFileName" >> $env:GITHUB_ENV
+            }
+          }
+        shell: pwsh
+
       - name: 打包二进制文件
         run: |
           $linkType = "${{ matrix.link_type }}"
@@ -258,7 +315,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: qt${{ env.QT_VERSION }}-wasm32_emscripten${{ env.EMSCRIPTEN_VERSION }}-cross_mingw_gcc${{ env.GCC_VERSION }}-${{ matrix.link_type }}_${{ matrix.build_type == 'release' && 'release' || matrix.build_type == 'debug' && 'debug' || 'releaseanddebug' }}
-          path: ${{ env.ARCHIVE_NAME }}
+          path: |
+            ${{ env.ARCHIVE_NAME }}
+            ${{ env.SUMMARY_FILE }}
 
   release:
     needs: build
@@ -273,14 +332,15 @@ jobs:
       - name: 列出已下载的产物
         run: |
           echo "Listing artifacts directory structure:"
-          find artifacts -type f -name "*.7z" -ls
+          find artifacts -type f \( -name "*.7z" -o -name "*_configure_summary.txt" \) -ls
 
-      - name: 将所有.7z移动到根 artifacts 目录
+      - name: 将所有文件移动到根 artifacts 目录
         run: |
-          echo "Moving .7z files to artifacts root..."
+          echo "Moving .7z and summary files to artifacts root..."
           find artifacts -type f -name "*.7z" -exec mv {} artifacts/ \;
+          find artifacts -type f -name "*_configure_summary.txt" -exec mv {} artifacts/ \;
           echo "Files in artifacts directory after move:"
-          ls -la artifacts/*.7z
+          ls -la artifacts/*.7z artifacts/*_configure_summary.txt 2>/dev/null || echo "Some files may not exist"
 
       - name: 生成发布标签
         id: release_tag
@@ -313,18 +373,37 @@ jobs:
           - 编译选项: C++20, 跳过 examples/tests
 
           ## 文件命名规范
+          
+          **二进制包:**
           qt{qt_version}-wasm32_emscripten{emscripten_version}-cross_mingw_gcc{gcc_version}-{link_type}_{build_type}.7z
+          
+          **配置摘要:**
+          qt{qt_version}-wasm32_emscripten{emscripten_version}-cross_mingw_gcc{gcc_version}-{link_type}_{build_type}_configure_summary.txt
 
           示例:
           - qt6.9.2-wasm32_emscripten4.0.13-cross_mingw_gcc15.2.0-static_release.7z
+          - qt6.9.2-wasm32_emscripten4.0.13-cross_mingw_gcc15.2.0-static_release_configure_summary.txt
           - qt6.9.2-wasm32_emscripten4.0.13-cross_mingw_gcc15.2.0-static_debug.7z
+          - qt6.9.2-wasm32_emscripten4.0.13-cross_mingw_gcc15.2.0-static_debug_configure_summary.txt
           - qt6.9.2-wasm32_emscripten4.0.13-cross_mingw_gcc15.2.0-static_release_and_debug.7z
+          - qt6.9.2-wasm32_emscripten4.0.13-cross_mingw_gcc15.2.0-static_release_and_debug_configure_summary.txt
+
+          ## 配置摘要
+          每个构建配置都包含了详细的 Qt 配置摘要文件 (`*_configure_summary.txt`)，其中记录了：
+          - 启用/禁用的功能模块
+          - 编译器设置和标志
+          - 链接器配置
+          - 依赖库信息
+          - 平台特定的配置选项
+          
+          这些摘要文件帮助您了解每个构建的具体配置，便于选择合适的版本。
 
           ## 使用说明
           1. 下载对应的 .7z 包
           2. 使用 7-Zip 解压
           3. 该包为 WebAssembly 目标的交叉编译产物，可直接用于浏览器/wasm 运行时
           4. Debug 构建体积更大、性能更低，仅用于调试
+          5. 查看对应的配置摘要文件以了解构建的详细配置
 
           EOF
 
@@ -336,7 +415,9 @@ jobs:
           body_path: release_notes.md
           draft: false
           prerelease: false
-          files: artifacts/*.7z
+          files: |
+            artifacts/*.7z
+            artifacts/*_configure_summary.txt
           fail_on_unmatched_files: true
           generate_release_notes: false
 

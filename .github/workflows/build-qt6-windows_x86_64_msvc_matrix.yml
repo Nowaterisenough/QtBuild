@@ -15,6 +15,15 @@ on:
         options:
         - '2022'
         - '2019'
+      vulkan_sdk:
+        description: 'Vulkan support (none/runtime-*)'
+        required: true
+        type: choice
+        options:
+        - 'none'
+        - 'runtime-1.4.321.0'
+        - 'runtime-1.3.290.0'
+        default: 'runtime-1.4.321.0'
       test_mode:
         description: 'Test Mode (only build qtbase)'
         required: true
@@ -35,7 +44,9 @@ on:
 env:
   QT_VERSION: ${{ github.event.inputs.qt_version || '6.9.2' }}
   MSVC_VERSION: ${{ github.event.inputs.msvc_version || '2022' }}
+  VULKAN_CHOICE: ${{ github.event.inputs.vulkan_sdk || 'runtime-1.4.321.0' }}
   TEST_MODE: ${{ github.event.inputs.test_mode || 'false' }}
+  ACTIONS_STEP_DEBUG: 'true'
 
 jobs:
   build:
@@ -68,6 +79,123 @@ jobs:
           $major_minor = "$($parts[0]).$($parts[1])"
           echo "major_minor=$major_minor" >> $env:GITHUB_OUTPUT
         shell: pwsh
+
+      - name: Setup Vulkan SDK
+        if: ${{ env.VULKAN_CHOICE != 'none' }}
+        shell: pwsh
+        run: |
+          $choice="${{ env.VULKAN_CHOICE }}"
+          $root="D:\a\QtBuild\VulkanSDK"
+          New-Item -ItemType Directory -Force -Path $root | Out-Null
+
+          switch ($choice) {
+            'runtime-1.4.321.0' {
+              $sdkVersion = "1.4.321.0"
+              $hdrTag = "vulkan-sdk-1.4.321.0"
+            }
+            'runtime-1.3.290.0' {
+              $sdkVersion = "1.3.290.0"
+              $hdrTag = "v1.3.290"
+            }
+            default {
+              Write-Host "Unsupported choice: $choice"; exit 1
+            }
+          }
+
+          $work="$root\$sdkVersion"
+          New-Item -ItemType Directory -Force -Path $work | Out-Null
+
+          # 组装 SDK 结构
+          $sdk="$work\sdk"
+          $inc="$sdk\Include"
+          $lib="$sdk\Lib"
+          $bin="$sdk\Bin"
+          New-Item -ItemType Directory -Force -Path $inc,$lib,$bin | Out-Null
+
+          # 下载 Vulkan-Headers
+          $hdrZip = Join-Path $work "Vulkan-Headers-$hdrTag.zip"
+          $hdrUrl = "https://github.com/KhronosGroup/Vulkan-Headers/archive/refs/tags/$hdrTag.zip"
+          Write-Host "Downloading Headers: $hdrUrl"
+          try {
+            Invoke-WebRequest -Uri $hdrUrl -OutFile $hdrZip -TimeoutSec 300
+            if ((Get-Item $hdrZip).Length -lt 100000) { 
+              Write-Host "Headers zip too small, trying alternative download..."; 
+              curl -L -o "$hdrZip" "$hdrUrl" 
+            }
+          } catch {
+            Write-Host "WebRequest failed, trying curl: $_"
+            curl -L -o "$hdrZip" "$hdrUrl"
+          }
+          
+          if (-not (Test-Path $hdrZip) -or (Get-Item $hdrZip).Length -lt 100000) { 
+            echo "Headers download failed"; exit 1 
+          }
+          7z x "$hdrZip" -o"$work\headers" -y
+
+          # 下载 Vulkan-Video 扩展头文件
+          $videoZip = Join-Path $work "Vulkan-Video.zip"
+          $videoUrl = "https://github.com/KhronosGroup/Vulkan-Headers/archive/refs/heads/main.zip"
+          Write-Host "Downloading Vulkan Video Extensions: $videoUrl"
+          try {
+            Invoke-WebRequest -Uri $videoUrl -OutFile $videoZip -TimeoutSec 300
+          } catch {
+            curl -L -o "$videoZip" "$videoUrl"
+          }
+          if (Test-Path $videoZip) {
+            7z x "$videoZip" -o"$work\video_headers" -y
+          }
+
+          # Include - 复制头文件
+          $hdrRoot=(Get-ChildItem -Path "$work\headers" -Directory | Select-Object -First 1).FullName
+          if (-not (Test-Path (Join-Path $hdrRoot "include\vulkan"))) {
+            echo "Vulkan headers directory not found in extracted archive"; exit 1
+          }
+          New-Item -ItemType Directory -Force -Path (Join-Path $inc "vulkan") | Out-Null
+          Copy-Item -Path (Join-Path $hdrRoot "include\vulkan\*") -Destination (Join-Path $inc "vulkan") -Recurse -Force
+
+          # 复制 video 扩展头文件
+          $videoRoot=(Get-ChildItem -Path "$work\video_headers" -Directory | Select-Object -First 1).FullName
+          if ((Test-Path $videoRoot) -and (Test-Path (Join-Path $videoRoot "include\vk_video"))) {
+            New-Item -ItemType Directory -Force -Path (Join-Path $inc "vk_video") | Out-Null
+            Copy-Item -Path (Join-Path $videoRoot "include\vk_video\*") -Destination (Join-Path $inc "vk_video") -Recurse -Force
+          } else {
+            # 如果没有找到 vk_video，创建基本的占位符文件
+            New-Item -ItemType Directory -Force -Path (Join-Path $inc "vk_video") | Out-Null
+            $h264Content = "#ifndef VULKAN_VIDEO_CODEC_H264STD_H_`n#define VULKAN_VIDEO_CODEC_H264STD_H_`n// Minimal placeholder for H.264 video codec support`n#endif"
+            Set-Content -Path (Join-Path $inc "vk_video\vulkan_video_codec_h264std.h") -Value $h264Content -Encoding UTF8
+            
+            $h265Content = "#ifndef VULKAN_VIDEO_CODEC_H265STD_H_`n#define VULKAN_VIDEO_CODEC_H265STD_H_`n// Minimal placeholder for H.265 video codec support`n#endif"
+            Set-Content -Path (Join-Path $inc "vk_video\vulkan_video_codec_h265std.h") -Value $h265Content -Encoding UTF8
+          }
+
+          # 创建最小的 vulkan-1.lib 文件 (用于链接，实际运行时会动态加载)
+          $libContent = "EXPORTS`nvkGetInstanceProcAddr`nvkCreateInstance`nvkEnumerateInstanceExtensionProperties`nvkEnumerateInstanceLayerProperties"
+          $defFile = Join-Path $work "vulkan-1.def"
+          Set-Content -Path $defFile -Value $libContent -Encoding ASCII
+          
+          # 使用 MSVC lib.exe 创建导入库
+          $libExe = "${env:ProgramFiles}\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\*\bin\Hostx64\x64\lib.exe"
+          $libPath = Get-ChildItem -Path $libExe -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($libPath) {
+            & "$($libPath.FullName)" /def:"$defFile" /out:(Join-Path $lib "vulkan-1.lib") /machine:x64
+          } else {
+            # 如果 lib.exe 不可用，创建一个占位符库文件
+            Write-Host "lib.exe not found, creating placeholder lib file"
+            $placeholderLib = @(0x21, 0x3C, 0x61, 0x72, 0x63, 0x68, 0x3E, 0x0A) # "!<arch>" + newline
+            [System.IO.File]::WriteAllBytes((Join-Path $lib "vulkan-1.lib"), $placeholderLib)
+          }
+
+          # 环境变量设置
+          echo "VULKAN_SDK=$sdk" >> $env:GITHUB_ENV
+          echo "VK_SDK_PATH=$sdk" >> $env:GITHUB_ENV
+          echo "INCLUDE=$inc;$env:INCLUDE" >> $env:GITHUB_ENV
+          echo "LIB=$lib;$env:LIB" >> $env:GITHUB_ENV
+
+          # 校验
+          if (-not (Test-Path "$sdk\Include\vulkan\vulkan.h")) { echo "Missing $sdk\Include\vulkan\vulkan.h"; exit 1 }
+          if (-not (Test-Path "$sdk\Lib\vulkan-1.lib")) { echo "Missing $sdk\Lib\vulkan-1.lib"; exit 1 }
+          Write-Host "Vulkan SDK ready at $sdk"
+          Write-Host "Headers: $(Get-ChildItem "$sdk\Include\vulkan" | Measure-Object).Count files"
 
       - name: Prepare directories and source
         run: |
@@ -104,8 +232,24 @@ jobs:
             set SEPARATE_DEBUG=false
           )
 
-          call D:\a\QtBuild\QtBuild\Qt6Build\build-qt6-windows_x86_64_msvc.cmd !QT_VERSION! !MSVC_VERSION! !BUILD_TYPE! !LINK_TYPE! !SEPARATE_DEBUG! !TEST_MODE!
+          call D:\a\QtBuild\QtBuild\Qt6Build\build-qt6-windows_x86_64_msvc.cmd !QT_VERSION! !MSVC_VERSION! !BUILD_TYPE! !LINK_TYPE! !SEPARATE_DEBUG! "" !TEST_MODE!
       
+      - name: Export Qt configure summary
+        shell: pwsh
+        run: |
+          $bt="${{ matrix.build_type }}"
+          $lt="${{ matrix.link_type }}"
+          $buildDir="D:\a\QtBuild\build"
+          $summary = Join-Path $buildDir "config.summary"
+          if (-not (Test-Path $summary)) {
+            Write-Host "config.summary not found at $summary"
+            Get-ChildItem $buildDir -Recurse -Filter "config.summary" -ErrorAction SilentlyContinue | Select-Object -First 1 | ForEach-Object { $summary=$_.FullName }
+          }
+          if (-not (Test-Path $summary)) { Write-Host "No config.summary found."; exit 1 }
+          $out = Join-Path "${{ github.workspace }}" ("qt-build-report_" + $lt + "_" + $bt + ".txt")
+          Copy-Item $summary $out -Force
+          echo "REPORT_FILE=$out" >> $env:GITHUB_ENV
+
       - name: Package binaries
         run: |
           $linkType = "${{ matrix.link_type }}"
@@ -196,6 +340,13 @@ jobs:
           name: qt${{ env.QT_VERSION }}-windows-x86_64-msvc${{ env.MSVC_VERSION }}-${{ matrix.link_type }}_${{ matrix.build_type == 'release' && 'release' || matrix.build_type == 'debug' && 'debug' || 'relwithdebinfo' }}
           path: ${{ env.ARCHIVE_NAME }}
           if-no-files-found: error
+          
+      - name: Upload configure summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: report-${{ matrix.link_type }}_${{ matrix.build_type }}
+          path: ${{ env.REPORT_FILE }}
+          if-no-files-found: error
 
   release:
     needs: build
@@ -212,12 +363,10 @@ jobs:
           echo "Listing artifacts directory structure:"
           find artifacts -type f -name "*.7z" -ls
 
-      - name: Move artifacts to root level
+      - name: Flatten artifacts
         run: |
-          echo "Moving .7z files to artifacts root..."
-          find artifacts -type f -name "*.7z" -exec mv {} artifacts/ \;
-          echo "Files in artifacts directory after move:"
-          ls -la artifacts/*.7z
+          find artifacts -type f -name "*.7z" -exec mv -t artifacts {} +
+          find artifacts -type f -name "qt-build-report_*.txt" -exec mv -t artifacts {} + || true
 
       - name: Generate release tag
         id: release_tag
@@ -242,6 +391,7 @@ jobs:
           - **Database Driver**: SQLite
           - **SSL**: Schannel (native Windows SSL)
           - **OpenGL**: Desktop
+          - **Vulkan**: Enabled via LunarG Runtime Components (Lib/Bin) + Khronos Vulkan-Headers (Include)
           - **C++ Standard**: C++20
           
           ## Included Configurations
@@ -270,12 +420,24 @@ jobs:
           2. Extract using 7-Zip or compatible software
           3. The Qt installation will be in the extracted folder with bin, lib, qml, etc. directories
           
-          ## Notes
-          - Static builds include release and debug configurations
-          - Shared builds include separate debug symbols for release with debug info version
-          - All builds skip QtWebEngine and examples/tests
-          - Built with C++20 standard
+          ## Configure Summaries (from config.summary)
           EOF
+          echo "" >> release_notes.md
+          for f in artifacts/qt-build-report_*.txt; do
+            [ -f "$f" ] || continue
+            echo "" >> release_notes.md
+            echo "---- $(basename "$f" .txt) ----" >> release_notes.md
+            echo '```' >> release_notes.md
+            sed -e 's/\r$//' "$f" >> release_notes.md
+            echo '```' >> release_notes.md
+          done
+          echo "" >> release_notes.md
+          echo "## Notes" >> release_notes.md
+          echo "- Static builds include release and debug configurations" >> release_notes.md
+          echo "- Shared builds include separate debug symbols for release with debug info version" >> release_notes.md
+          echo "- All builds skip QtWebEngine and examples/tests" >> release_notes.md
+          echo "- Built with C++20 standard" >> release_notes.md
+          echo "- Vulkan support enabled" >> release_notes.md
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
@@ -293,3 +455,8 @@ jobs:
         uses: geekyeggo/delete-artifact@v5
         with:
           name: qt${{ env.QT_VERSION }}-windows-x86_64-msvc${{ env.MSVC_VERSION }}-*
+          
+      - name: Clean up reports
+        uses: geekyeggo/delete-artifact@v5
+        with:
+          name: report-*

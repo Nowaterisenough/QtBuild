@@ -19,6 +19,15 @@ on:
         - '18'
         - '19'
         - '20'
+      vulkan_sdk:
+        description: 'Vulkan support (none/runtime-*)'
+        required: true
+        type: choice
+        options:
+        - 'none'
+        - 'runtime-1.4.321.0'
+        - 'runtime-1.3.290.0'
+        default: 'runtime-1.4.321.0'
       create_release:
         description: 'Create Release'
         required: true
@@ -31,6 +40,8 @@ on:
 env:
   QT_VERSION: ${{ github.event.inputs.qt_version || '6.9.2' }}
   LLVM_VERSION: ${{ github.event.inputs.llvm_version || '18' }}
+  VULKAN_CHOICE: ${{ github.event.inputs.vulkan_sdk || 'runtime-1.4.321.0' }}
+  ACTIONS_STEP_DEBUG: 'true'
 
 jobs:
   build:
@@ -176,6 +187,7 @@ jobs:
           build_type="`$BUILD_TYPE"
           link_type="`$LINK_TYPE"
           separate_debug="`$SEPARATE_DEBUG"
+          vulkan_choice="`$VULKAN_CHOICE"
 
           echo "=== Build Parameters ==="
           echo "Qt Version: `$qt_version"
@@ -183,6 +195,7 @@ jobs:
           echo "Build Type: `$build_type"
           echo "Link Type: `$link_type"
           echo "Separate Debug: `$separate_debug"
+          echo "Vulkan Support: `$vulkan_choice"
           echo "========================"
 
           echo "Extracting Qt source..."
@@ -207,7 +220,24 @@ jobs:
           export CXX=clang++-`${llvm_version}
           export LLVM_INSTALL_DIR=/usr/lib/llvm-`${llvm_version}
 
+          # 设置 Vulkan 环境变量（如果启用）
+          if [ "`$vulkan_choice" != "none" ]; then
+              export VULKAN_SDK="/opt/vulkan_sdk"
+              export VK_SDK_PATH="/opt/vulkan_sdk"
+              export PATH="/opt/vulkan_sdk/bin:`$PATH"
+              export LD_LIBRARY_PATH="/opt/vulkan_sdk/lib:`$LD_LIBRARY_PATH"
+              export VK_LAYER_PATH="/opt/vulkan_sdk/etc/vulkan/explicit_layer.d"
+              echo "Vulkan SDK enabled: `$VULKAN_SDK"
+          fi
+
           CFG_OPTIONS="-`$link_type -prefix `$INSTALL_DIR -nomake examples -nomake tests -c++std c++20 -skip qtwebengine -opensource -confirm-license -qt-libpng -qt-libjpeg -qt-zlib -qt-pcre -openssl-linked -platform linux-clang -opengl desktop"
+
+          # 添加 Vulkan 支持（如果启用）
+          if [ "`$vulkan_choice" != "none" ]; then
+              CFG_OPTIONS="`$CFG_OPTIONS -feature-vulkan"
+          else
+              CFG_OPTIONS="`$CFG_OPTIONS -no-feature-vulkan"
+          fi
 
           if [ "`$build_type" = "debug" ]; then
               CFG_OPTIONS="`$CFG_OPTIONS -debug"
@@ -226,6 +256,7 @@ jobs:
 
           echo "Configuring Qt with Clang/LLVM..."
           echo "Using CC=`$CC, CXX=`$CXX"
+          echo "Configure options: `$CFG_OPTIONS"
           "`$SRC_QT/configure" `$CFG_OPTIONS
 
           echo "Building Qt..."
@@ -239,8 +270,13 @@ jobs:
           echo "Installing Qt..."
           cmake --install .
 
+          # 保存配置摘要
+          if [ -f config.summary ]; then
+              cp config.summary "`$(pwd)/../qt-build-summary.txt"
+              echo "Configuration summary saved"
+          fi
+
           cd "`$(pwd)/.."
-          rm -rf "`$BUILD_DIR"
           rm -rf "qt-everywhere-src-`$qt_version"
 
           echo "Qt build with LLVM/Clang completed successfully!"
@@ -256,6 +292,7 @@ jobs:
           llvm_version="${{ env.LLVM_VERSION }}"
           build_type="${{ matrix.build_type }}"
           link_type="${{ matrix.link_type }}"
+          vulkan_choice="${{ env.VULKAN_CHOICE }}"
 
           actual_build_type="`$build_type"
           separate_debug="false"
@@ -271,6 +308,7 @@ jobs:
           export BUILD_TYPE="`$actual_build_type"
           export LINK_TYPE="`$link_type"
           export SEPARATE_DEBUG="`$separate_debug"
+          export VULKAN_CHOICE="`$vulkan_choice"
 
           chmod +x ./build-qt6-linux_x86_64_llvm.sh
           ./build-qt6-linux_x86_64_llvm.sh
@@ -282,6 +320,110 @@ jobs:
         run: |
           wsl bash ./wsl_setup.sh
 
+      - name: Setup Vulkan SDK
+        if: ${{ env.VULKAN_CHOICE != 'none' }}
+        run: |
+          $vulkanScript = @"
+          #!/bin/bash
+          set -e
+          echo "Setting up Vulkan SDK for Linux..."
+          
+          choice="${{ env.VULKAN_CHOICE }}"
+          vulkan_root="/opt/vulkan_sdk"
+          sudo mkdir -p "`$vulkan_root"
+          
+          case "`$choice" in
+            'runtime-1.4.321.0')
+              sdk_version="1.4.321.0"
+              hdr_tag="vulkan-sdk-1.4.321.0"
+              ;;
+            'runtime-1.3.290.0')
+              sdk_version="1.3.290.0" 
+              hdr_tag="v1.3.290"
+              ;;
+            *)
+              echo "Unsupported Vulkan SDK choice: `$choice"
+              exit 1
+              ;;
+          esac
+          
+          work_dir="/tmp/vulkan_build"
+          rm -rf "`$work_dir"
+          mkdir -p "`$work_dir"
+          cd "`$work_dir"
+          
+          # 安装系统 Vulkan 开发包
+          export DEBIAN_FRONTEND=noninteractive
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libvulkan-dev \
+            vulkan-tools \
+            vulkan-validationlayers-dev \
+            spirv-tools \
+            wget \
+            unzip
+          
+          # 下载并安装官方 Vulkan SDK (包含额外的工具和头文件)
+          sdk_url="https://sdk.lunarg.com/sdk/download/`$sdk_version/linux/vulkansdk-linux-x86_64-`$sdk_version.tar.gz"
+          echo "Downloading Vulkan SDK from: `$sdk_url"
+          wget -q "`$sdk_url" -O vulkan_sdk.tar.gz
+          
+          if [ -f vulkan_sdk.tar.gz ] && [ `$(stat -c%s vulkan_sdk.tar.gz) -gt 1000000 ]; then
+            echo "Extracting Vulkan SDK..."
+            sudo tar -xzf vulkan_sdk.tar.gz -C "`$vulkan_root" --strip-components=1
+            sudo chown -R root:root "`$vulkan_root"
+          else
+            echo "SDK download failed, using system packages only"
+            # 创建基本的 SDK 结构
+            sudo mkdir -p "`$vulkan_root"/{include,lib,bin}
+            
+            # 链接系统库
+            sudo ln -sf /usr/include/vulkan "`$vulkan_root/include/"
+            sudo ln -sf /usr/lib/x86_64-linux-gnu/libvulkan.so* "`$vulkan_root/lib/"
+            sudo ln -sf /usr/bin/vulkaninfo "`$vulkan_root/bin/" 2>/dev/null || true
+          fi
+          
+          # 下载最新的 Vulkan-Headers (为了确保兼容性)
+          hdr_url="https://github.com/KhronosGroup/Vulkan-Headers/archive/refs/tags/`$hdr_tag.zip"
+          echo "Downloading Vulkan headers: `$hdr_url"
+          wget -q "`$hdr_url" -O vulkan_headers.zip
+          
+          if [ -f vulkan_headers.zip ] && [ `$(stat -c%s vulkan_headers.zip) -gt 100000 ]; then
+            unzip -q vulkan_headers.zip
+            hdr_dir=`$(find . -maxdepth 1 -type d -name "Vulkan-Headers-*" | head -1)
+            if [ -n "`$hdr_dir" ] && [ -d "`$hdr_dir/include/vulkan" ]; then
+              sudo rm -rf "`$vulkan_root/include/vulkan"
+              sudo cp -r "`$hdr_dir/include/vulkan" "`$vulkan_root/include/"
+              sudo chown -R root:root "`$vulkan_root/include/vulkan"
+            fi
+          fi
+          
+          # 设置环境变量文件
+          echo "export VULKAN_SDK=`$vulkan_root" | sudo tee /etc/environment.d/vulkan.conf
+          echo "export VK_SDK_PATH=`$vulkan_root" | sudo tee -a /etc/environment.d/vulkan.conf
+          echo "export PATH=`$vulkan_root/bin:`\`$PATH" | sudo tee -a /etc/environment.d/vulkan.conf
+          echo "export LD_LIBRARY_PATH=`$vulkan_root/lib:`\`$LD_LIBRARY_PATH" | sudo tee -a /etc/environment.d/vulkan.conf
+          echo "export VK_LAYER_PATH=`$vulkan_root/etc/vulkan/explicit_layer.d" | sudo tee -a /etc/environment.d/vulkan.conf
+          
+          # 验证安装
+          if [ -f "`$vulkan_root/include/vulkan/vulkan.h" ]; then
+            echo "Vulkan headers installed successfully"
+          else
+            echo "Warning: Vulkan headers not found"
+          fi
+          
+          if [ -f "`$vulkan_root/lib/libvulkan.so" ] || [ -f "/usr/lib/x86_64-linux-gnu/libvulkan.so.1" ]; then
+            echo "Vulkan library found"
+          else
+            echo "Warning: Vulkan library not found"
+          fi
+          
+          echo "Vulkan SDK setup completed"
+          echo "SDK Path: `$vulkan_root"
+          "@
+          [System.IO.File]::WriteAllText("vulkan_setup.sh", $vulkanScript.Replace("`r`n", "`n"), [System.Text.UTF8Encoding]::new($false))
+          wsl bash ./vulkan_setup.sh
+
       - name: Download Qt source in WSL2
         run: |
           wsl bash ./download_qt.sh
@@ -289,6 +431,39 @@ jobs:
       - name: Build Qt in WSL2
         run: |
           wsl bash ./build_qt.sh
+
+      - name: Export Qt configure summary
+        run: |
+          $buildType = "${{ matrix.build_type }}"
+          $linkType = "${{ matrix.link_type }}"
+          
+          # 查找配置摘要文件
+          $summaryFile = "qt-build-summary.txt"
+          if (wsl test -f $summaryFile) {
+            $reportName = "qt-build-report_${linkType}_${buildType}.txt"
+            wsl cp $summaryFile $reportName
+            echo "REPORT_FILE=$reportName" >> $env:GITHUB_ENV
+            Write-Host "Configuration summary exported as: $reportName"
+          } else {
+            Write-Host "Warning: Configuration summary file not found"
+            # 创建基本的报告文件
+            $reportName = "qt-build-report_${linkType}_${buildType}.txt"
+            $basicReport = @"
+Qt ${{ env.QT_VERSION }} Build Report
+=====================================
+Build Type: $buildType
+Link Type: $linkType
+Compiler: LLVM/Clang ${{ env.LLVM_VERSION }}
+Platform: Linux x86_64 (WSL2)
+Vulkan Support: ${{ env.VULKAN_CHOICE }}
+Build Date: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss UTC')
+
+Note: Detailed configuration summary was not available.
+"@
+            [System.IO.File]::WriteAllText($reportName, $basicReport, [System.Text.UTF8Encoding]::new($false))
+            echo "REPORT_FILE=$reportName" >> $env:GITHUB_ENV
+          }
+        shell: pwsh
 
       - name: Package binaries
         run: |
@@ -324,10 +499,19 @@ jobs:
           }
         shell: pwsh
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload package
+        uses: actions/upload-artifact@v4
         with:
           name: qt${{ env.QT_VERSION }}-linux-x86_64-llvm${{ env.LLVM_VERSION }}-${{ matrix.link_type }}_${{ matrix.build_type == 'release' && 'release' || matrix.build_type == 'debug' && 'debug' || 'relwithdebinfo' }}
           path: ${{ env.ARCHIVE_NAME }}
+          if-no-files-found: error
+
+      - name: Upload configure summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: report-${{ matrix.link_type }}_${{ matrix.build_type }}
+          path: ${{ env.REPORT_FILE }}
+          if-no-files-found: error
 
   release:
     needs: build
@@ -339,6 +523,11 @@ jobs:
         with:
           path: artifacts/
 
+      - name: Flatten artifacts
+        run: |
+          find artifacts -type f -name "*.tar.xz" -exec mv -t artifacts {} +
+          find artifacts -type f -name "qt-build-report_*.txt" -exec mv -t artifacts {} + || true
+
       - name: Generate release tag
         id: release_tag
         run: |
@@ -346,9 +535,8 @@ jobs:
           echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
 
       - name: Generate release notes
-        id: release_notes
         run: |
-          cat << EOF > release_notes.md
+          cat > release_notes.md << 'EOF'
           # Qt ${{ env.QT_VERSION }} Linux LLVM/Clang Build (WSL2)
           
           ## Build Information
@@ -357,6 +545,7 @@ jobs:
           - **Platform**: Linux x86_64
           - **C++ Standard Library**: libc++
           - **Linker**: lld
+          - **Vulkan Support**: ${{ env.VULKAN_CHOICE }}
           - **Build Environment**: WSL2 Ubuntu 24.04
           - **Build Date**: $(date +'%Y-%m-%d %H:%M:%S UTC')
           
@@ -370,20 +559,42 @@ jobs:
           - \`shared_debug\`: Dynamic linking, Debug mode
           - \`shared_relwithdebinfo\`: Dynamic linking, Release mode with separate debug info
           
+          ## Vulkan Support
+          This build includes Vulkan support if enabled during configuration:
+          - **Vulkan SDK**: LunarG SDK + System packages
+          - **Headers**: From Khronos Vulkan-Headers repository
+          - **Libraries**: System libvulkan.so + SDK components
+          - **Tools**: Validation layers, spirv-tools, vulkaninfo
+          
           ## Installation
           1. Download the appropriate .tar.xz file
           2. Extract using: \`tar -xJf filename.tar.xz\`
           3. The Qt installation will be extracted with bin, lib, qml, etc. directories
+          4. For Vulkan support, ensure Vulkan runtime is installed on target system
           
-          ## Notes
-          - Built with C++20 standard
-          - Uses libc++ standard library instead of libstdc++
-          - Uses lld linker for faster linking and smaller binaries
-          - Skips QtWebEngine and examples/tests
-          - Static builds do not include debug configurations
-          - Requires libc++ runtime on target systems for shared builds
-          - Built in WSL2 environment for consistent Linux ABI compatibility
+          ## Configure Summaries (from config.summary)
           EOF
+          echo "" >> release_notes.md
+          for f in artifacts/qt-build-report_*.txt; do
+            [ -f "$f" ] || continue
+            echo "" >> release_notes.md
+            echo "---- $(basename "$f" .txt) ----" >> release_notes.md
+            echo '```' >> release_notes.md
+            sed -e 's/\r$//' "$f" >> release_notes.md
+            echo '```' >> release_notes.md
+          done
+          echo "" >> release_notes.md
+          echo "## Notes" >> release_notes.md
+          echo "- Built with C++20 standard" >> release_notes.md
+          echo "- Uses libc++ standard library instead of libstdc++" >> release_notes.md
+          echo "- Uses lld linker for faster linking and smaller binaries" >> release_notes.md
+          echo "- Skips QtWebEngine and examples/tests" >> release_notes.md
+          echo "- Static builds do not include debug configurations" >> release_notes.md
+          echo "- Requires libc++ runtime on target systems for shared builds" >> release_notes.md
+          echo "- Built in WSL2 environment for consistent Linux ABI compatibility" >> release_notes.md
+          echo "" >> release_notes.md
+          echo "## Artifacts" >> release_notes.md
+          ls -1 artifacts/*.tar.xz >> release_notes.md || true
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
@@ -399,4 +610,6 @@ jobs:
       - name: Clean up artifacts
         uses: geekyeggo/delete-artifact@v5
         with:
-          name: qt${{ env.QT_VERSION }}-linux-x86_64-llvm${{ env.LLVM_VERSION }}-*
+          name: |
+            qt${{ env.QT_VERSION }}-linux-x86_64-llvm${{ env.LLVM_VERSION }}-*
+            report-*
