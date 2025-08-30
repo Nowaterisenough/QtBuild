@@ -310,7 +310,7 @@ jobs:
             set SEPARATE_DEBUG=false
           )
 
-          call D:\a\QtBuild\QtBuild\Qt6Build\build-qt6-windows_x86_64_llvm_clang.cmd !QT_VERSION! !CLANG_VERSION! !BUILD_TYPE! !LINK_TYPE! !SEPARATE_DEBUG! !RUNTIME! "" "!BIN_PATH!" "!VERSION_CODE!" !TEST_MODE!
+          call D:\a\QtBuild\QtBuild\Qt6Build\build-qt6-windows_x86_64_llvm_clang.cmd !QT_VERSION! !CLANG_VERSION! !BUILD_TYPE! !LINK_TYPE! !SEPARATE_DEBUG! !RUNTIME! "" "!VERSION_CODE!" "!BIN_PATH!" !TEST_MODE!
 
       - name: 打包二进制文件
         run: |
