@@ -333,7 +333,7 @@ jobs:
           }
           
           # Create standardized archive name
-          $archiveName = "qt${qtVersion}-windows-x86_64-llvm${compilerVersion}_${runtime}-${linkType}_${buildTypeNormalized}.7z"
+          $archiveName = "qt${qtVersion}-windows-x86_64-llvm_clang${compilerVersion}_${runtime}-${linkType}_${buildTypeNormalized}.7z"
           $sourcePath = "D:\a\QtBuild\Qt\$qtVersion-$linkType"
           
           # 检查源目录是否存在
@@ -414,7 +414,7 @@ jobs:
       - name: Upload package
         uses: actions/upload-artifact@v4
         with:
-          name: qt${{ env.QT_VERSION }}-windows-x86_64-llvm${{ env.COMPILER_VERSION }}_${{ env.RUNTIME }}-${{ matrix.link_type }}_${{ matrix.build_type == 'release' && 'release' || matrix.build_type == 'debug' && 'debug' || 'relwithdebinfo' }}
+          name: qt${{ env.QT_VERSION }}-windows-x86_64-llvm_clang${{ env.COMPILER_VERSION }}_${{ env.RUNTIME }}-${{ matrix.link_type }}_${{ matrix.build_type == 'release' && 'release' || matrix.build_type == 'debug' && 'debug' || 'relwithdebinfo' }}
           path: ${{ env.ARCHIVE_NAME }}
           if-no-files-found: error
 

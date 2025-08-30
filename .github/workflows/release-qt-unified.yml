@@ -55,13 +55,13 @@ jobs:
             // Get recent workflow runs for each platform
             const artifacts = [];
             const cutoffDate = new Date();
-            cutoffDate.setHours(cutoffDate.getHours() - 24); // Look back 24 hours
+            cutoffDate.setHours(cutoffDate.getHours() - 168); // Look back 7 days (168 hours)
             
             for (const platform of platforms) {
               // Map platform names to actual workflow file names
               const workflowMap = {
                 'windows-msvc': 'build-qt6-windows_x86_64_msvc_matrix',
-                'windows-mingw': 'build-qt6-windows_x86_64_mingw_gcc_martrix',
+                'windows-mingw': 'build-qt6-windows_x86_64_mingw_gcc_matrix',
                 'windows-llvm': 'build-qt6-windows_x86_64_llvm_clang_matrix',
                 'linux-gcc': 'build-qt6-linux_x86_64_gcc_matrix', 
                 'linux-llvm': 'build-qt6-linux_x86_64_llvm_matrix',
