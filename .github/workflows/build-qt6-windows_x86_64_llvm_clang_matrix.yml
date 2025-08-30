@@ -112,10 +112,10 @@ jobs:
             $versionCode = "llvm-mingw20.1.6_64_UCRT"
           } else {
             # 使用GitHub源 - LLVM 21.1 (最新)
-            $downloadUrl = "https://github.com/mstorsjo/llvm-mingw/releases/download/20250131/llvm-mingw-20250131-ucrt-x86_64.zip"
+            $downloadUrl = "https://github.com/mstorsjo/llvm-mingw/releases/download/20250826/llvm-mingw-20250826-ucrt-x86_64.zip"
             $fileName = "llvm-mingw-21.1.zip"
             $extractPath = ""
-            $binPath = "D:\a\QtBuild\llvm-mingw-20250131-ucrt-x86_64\bin"
+            $binPath = "D:\a\QtBuild\llvm-mingw-20250826-ucrt-x86_64\bin"
             $versionCode = "llvm-mingw21.1.0_64_UCRT"
           }
           

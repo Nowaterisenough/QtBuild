@@ -4,7 +4,9 @@
       "Bash(git add:*)",
       "Bash(git commit:*)",
       "Bash(git push:*)",
-      "Bash(gh workflow run:*)"
+      "Bash(gh workflow run:*)",
+      "WebSearch",
+      "WebFetch(domain:github.com)"
     ],
     "deny": [],
     "ask": []
