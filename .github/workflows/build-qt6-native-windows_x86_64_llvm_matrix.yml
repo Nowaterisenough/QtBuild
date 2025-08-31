@@ -1,0 +1,185 @@
+# =============================================================================
+# Qt 6 Windows x86_64 LLVM Build Matrix - Clean Version
+# =============================================================================
+
+name: build-qt6-native-windows_x86_64_llvm_matrix
+
+on:
+  workflow_dispatch:
+    inputs:
+      qt_version:
+        description: 'Qt Version'
+        required: true
+        default: '6.9.2'
+      compiler_version:
+        description: 'LLVM Version'
+        required: true
+        default: '21.1'
+        type: choice
+        options:
+        - '17.0'
+        - '20.1'
+        - '21.1'
+      vulkan_sdk:
+        description: 'Vulkan SDK'
+        required: true
+        type: choice
+        options:
+        - 'none'
+        - 'runtime-1.4.321.0'
+        - 'runtime-1.3.290.0'
+        default: 'runtime-1.4.321.0'
+      test_mode:
+        description: 'Test Mode (qtbase only)'
+        required: true
+        default: 'false'
+        type: choice
+        options:
+        - 'true'
+        - 'false'
+
+env:
+  QT_VERSION: ${{ github.event.inputs.qt_version }}
+  COMPILER_VERSION: ${{ github.event.inputs.compiler_version }}
+  VULKAN_CHOICE: ${{ github.event.inputs.vulkan_sdk }}
+  TEST_MODE: ${{ github.event.inputs.test_mode }}
+
+jobs:
+  build:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        link_type: [static, shared]
+        build_type: [release, debug, release-sepdbg]
+        exclude:
+          - link_type: static
+            build_type: debug
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download Qt source
+        run: |
+          $version = "${{ env.QT_VERSION }}"
+          $parts = $version.Split('.')
+          $majorMinor = "$($parts[0]).$($parts[1])"
+          $url = "https://download.qt.io/official_releases/qt/$majorMinor/$version/single/qt-everywhere-src-$version.tar.xz"
+          
+          Write-Host "Downloading Qt $version from $url"
+          Invoke-WebRequest -Uri $url -OutFile "qt-everywhere-src-$version.tar.xz"
+        shell: pwsh
+
+      - name: Setup LLVM/Clang
+        run: |
+          $llvmVersion = "${{ env.COMPILER_VERSION }}"
+          $runtime = "ucrt"
+          
+          Write-Host "Setting up LLVM/Clang $llvmVersion with $runtime runtime"
+          $llvmUrl = "https://github.com/llvm/llvm-project/releases/download/llvmorg-$llvmVersion/LLVM-$llvmVersion-win64.exe"
+          
+          # Download and install LLVM
+          Invoke-WebRequest -Uri $llvmUrl -OutFile "llvm-installer.exe"
+          Start-Process -Wait -FilePath "llvm-installer.exe" -ArgumentList "/S"
+          
+          # Setup paths
+          $llvmPath = "C:\Program Files\LLVM\bin"
+          echo "BIN_PATH=$llvmPath" >> $env:GITHUB_ENV
+          echo "VERSION_CODE=llvm_clang$llvmVersion" >> $env:GITHUB_ENV
+        shell: pwsh
+
+      - name: Extract Qt source
+        run: |
+          Write-Host "Extracting Qt source..."
+          7z x "qt-everywhere-src-${{ env.QT_VERSION }}.tar.xz" -so | 7z x -si -ttar
+          Remove-Item "qt-everywhere-src-${{ env.QT_VERSION }}.tar.xz"
+        shell: pwsh
+
+      - name: Setup databases and Vulkan
+        run: |
+          # PostgreSQL 16.6
+          Write-Host "Installing PostgreSQL..."
+          $pgUrl = "https://get.enterprisedb.com/postgresql/postgresql-16.6-1-windows-x64-binaries.zip"
+          Invoke-WebRequest -Uri $pgUrl -OutFile "postgresql.zip"
+          7z x postgresql.zip -o"D:\a\QtBuild"
+          echo "PostgreSQL_ROOT=D:\a\QtBuild\pgsql" >> $env:GITHUB_ENV
+          
+          # MySQL 8.0.35
+          Write-Host "Installing MySQL..."
+          $mysqlUrl = "https://dev.mysql.com/get/Downloads/MySQL-8.0/mysql-8.0.35-winx64.zip"
+          Invoke-WebRequest -Uri $mysqlUrl -OutFile "mysql.zip"
+          7z x mysql.zip -o"D:\a\QtBuild"
+          Move-Item "D:\a\QtBuild\mysql-8.0.35-winx64" "D:\a\QtBuild\mysql"
+          echo "MYSQL_ROOT=D:\a\QtBuild\mysql" >> $env:GITHUB_ENV
+          
+          # Vulkan SDK (if not 'none')
+          if ("${{ env.VULKAN_CHOICE }}" -ne "none") {
+            $vulkanVer = "${{ env.VULKAN_CHOICE }}".Replace("runtime-", "")
+            Write-Host "Installing Vulkan SDK $vulkanVer..."
+            $vulkanUrl = "https://sdk.lunarg.com/sdk/download/$vulkanVer/windows/VulkanSDK-$vulkanVer-Installer.exe"
+            Invoke-WebRequest -Uri $vulkanUrl -OutFile "vulkan-installer.exe"
+            Start-Process -Wait -FilePath "vulkan-installer.exe" -ArgumentList "--accept-licenses --default-answer --confirm-command install"
+            echo "VULKAN_SDK=C:\VulkanSDK\$vulkanVer" >> $env:GITHUB_ENV
+          }
+        shell: pwsh
+
+      - name: Build Qt
+        run: |
+          $qtVersion = "${{ env.QT_VERSION }}"
+          $compilerVersion = "${{ env.COMPILER_VERSION }}"
+          $buildType = "${{ matrix.build_type }}"
+          $linkType = "${{ matrix.link_type }}"
+          $testMode = "${{ env.TEST_MODE }}"
+          $binPath = "$env:BIN_PATH"
+          $versionCode = "$env:VERSION_CODE"
+          
+          # Handle release-sepdbg
+          $separateDebug = "false"
+          if ($buildType -eq "release-sepdbg") {
+            $buildType = "release"
+            if ($linkType -eq "shared") {
+              $separateDebug = "true"
+            }
+          }
+          
+          Write-Host "Building Qt with LLVM/Clang..."
+          & "D:\a\QtBuild\QtBuild\Qt6Build\build-qt6-native-windows_x86_64_llvm.cmd" $qtVersion $compilerVersion $buildType $linkType $separateDebug "ucrt" $binPath $versionCode $testMode
+        shell: cmd
+
+      - name: Package binaries
+        run: |
+          $linkType = "${{ matrix.link_type }}"
+          $buildType = "${{ matrix.build_type }}"
+          $qtVersion = "${{ env.QT_VERSION }}"
+          $compilerVersion = "${{ env.COMPILER_VERSION }}"
+          
+          # Normalize build type name
+          $buildTypeNorm = switch ($buildType) {
+            "release" { "release" }
+            "debug" { "debug" }
+            "release-sepdbg" { "relwithdebinfo" }
+            default { $buildType.ToLower() }
+          }
+          
+          $archiveName = "qt${qtVersion}-windows-x86_64-llvm_clang${compilerVersion}-${linkType}_${buildTypeNorm}.7z"
+          $installDir = "D:\a\QtBuild\Qt\$qtVersion-$linkType\llvm_clang$compilerVersion"
+          
+          Write-Host "Creating archive: $archiveName"
+          7z a -t7z -mx=9 $archiveName "$installDir\*"
+          
+          if (Test-Path $archiveName) {
+            $size = (Get-Item $archiveName).Length
+            Write-Host "Archive created: $size bytes"
+            echo "ARCHIVE_NAME=$archiveName" >> $env:GITHUB_ENV
+          } else {
+            Write-Error "Failed to create archive"
+            exit 1
+          }
+        shell: pwsh
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: qt${{ env.QT_VERSION }}-windows-x86_64-llvm_clang${{ env.COMPILER_VERSION }}-${{ matrix.link_type }}_${{ matrix.build_type == 'release' && 'release' || matrix.build_type == 'debug' && 'debug' || 'relwithdebinfo' }}
+          path: ${{ env.ARCHIVE_NAME }}
+          if-no-files-found: error

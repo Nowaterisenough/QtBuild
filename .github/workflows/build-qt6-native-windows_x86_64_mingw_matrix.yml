@@ -1,9 +1,9 @@
 # =============================================================================
-# Qt 6 Windows x86_64 MSVC Build Matrix
-# Standardized workflow for building Qt with MSVC on Windows
+# Qt 6 Windows x86_64 MinGW-GCC Build Matrix
+# Standardized workflow for building Qt with MinGW-GCC on Windows
 # =============================================================================
 
-name: build-qt6-windows_x86_64_msvc_matrix
+name: build-qt6-native-windows_x86_64_mingw_matrix
 
 on:
   workflow_dispatch:
@@ -13,13 +13,26 @@ on:
         required: true
         default: '6.9.2'
       compiler_version:
-        description: 'MSVC Version'
+        description: 'GCC Version'
         required: true
-        default: '2022'
         type: choice
         options:
-        - '2019'
-        - '2022'
+        - '12.2.0'
+        - '13.1.0'
+        - '13.2.0'
+        - '14.1.0'
+        - '14.2.0'
+        - '15.1.0'
+        - '15.2.0'
+        default: '15.2.0'
+      runtime:
+        description: 'Runtime (ucrt/msvcrt)'
+        required: true
+        default: 'ucrt'
+        type: choice
+        options:
+        - ucrt
+        - msvcrt
       vulkan_sdk:
         description: 'Vulkan support (none/runtime-*)'
         required: true
@@ -40,7 +53,8 @@ on:
 
 env:
   QT_VERSION: ${{ github.event.inputs.qt_version || '6.9.2' }}
-  COMPILER_VERSION: ${{ github.event.inputs.compiler_version || '2022' }}
+  COMPILER_VERSION: ${{ github.event.inputs.compiler_version || '15.2.0' }}
+  RUNTIME: ${{ github.event.inputs.runtime || 'ucrt' }}
   VULKAN_CHOICE: ${{ github.event.inputs.vulkan_sdk || 'runtime-1.4.321.0' }}
   TEST_MODE: ${{ github.event.inputs.test_mode || 'false' }}
   ACTIONS_STEP_DEBUG: 'true'
@@ -49,6 +63,7 @@ jobs:
   build:
     runs-on: windows-latest
     strategy:
+      fail-fast: false
       matrix:
         link_type: [static, shared]
         build_type: [release, debug, release-sepdbg]
@@ -57,6 +72,7 @@ jobs:
             build_type: debug
           - link_type: static
             build_type: release-sepdbg
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -67,14 +83,64 @@ jobs:
           python-version: '3.13'
           architecture: 'x64'
 
-      - name: Extract Qt major.minor version
+      - name: Extract Qt version components
         id: qt_version
-        run: |
-          $version = "${{ env.QT_VERSION }}"
-          $parts = $version.Split('.')
-          $major_minor = "$($parts[0]).$($parts[1])"
-          echo "major_minor=$major_minor" >> $env:GITHUB_OUTPUT
         shell: pwsh
+        run: |
+          $v="${{ env.QT_VERSION }}".Split('.')
+          echo "major_minor=$($v[0]).$($v[1])" >> $env:GITHUB_OUTPUT
+
+      - name: Resolve MinGW
+        id: mingw
+        shell: pwsh
+        run: |
+          $gcc="${{ env.COMPILER_VERSION }}"
+          $rt="${{ env.RUNTIME }}"
+          function Out($k,$v){echo "$k=$v" >> $env:GITHUB_OUTPUT}
+          try {
+            $rels = Invoke-RestMethod -Uri "https://api.github.com/repos/niXman/mingw-builds-binaries/releases" -Headers @{ "User-Agent"="GitHub-Actions" }
+            $rel = $rels | Where-Object { $_.tag_name -like "$gcc-rt_v*-rev*" } | Select-Object -First 1
+            if ($rel) {
+              $asset = $rel.assets | Where-Object { $_.name -like "x86_64-$gcc-release-posix-seh-$rt-rt_v*-rev*.7z" } | Select-Object -First 1
+              if ($asset) {
+                Out "download_url" $asset.browser_download_url
+                Out "file_name" $asset.name
+                Out "found" "true"
+                exit 0
+              }
+            }
+          } catch { }
+          $map = @{
+            "15.2.0" = @{ rt="rt_v13"; rev="rev0" }
+            "15.1.0" = @{ rt="rt_v12"; rev="rev0" }
+            "14.2.0" = @{ rt="rt_v12"; rev="rev2" }
+            "14.1.0" = @{ rt="rt_v12"; rev="rev0" }
+            "13.2.0" = @{ rt="rt_v11"; rev="rev1" }
+            "13.1.0" = @{ rt="rt_v11"; rev="rev1" }
+            "12.2.0" = @{ rt="rt_v10"; rev="rev2" }
+          }
+          if (-not $map.ContainsKey($gcc)) { echo "Unsupported GCC: $gcc"; exit 1 }
+          $rtv=$map[$gcc].rt; $rev=$map[$gcc].rev
+          $name="x86_64-$gcc-release-posix-seh-$rt-$rtv-$rev.7z"
+          $url="https://github.com/niXman/mingw-builds-binaries/releases/download/$gcc-$rtv-$rev/$name"
+          Out "download_url" $url
+          Out "file_name" $name
+          Out "found" "fallback"
+
+      - name: Setup MinGW64
+        shell: pwsh
+        run: |
+          cd ..
+          curl -L -o "${{ steps.mingw.outputs.file_name }}" "${{ steps.mingw.outputs.download_url }}"
+          7z x "${{ steps.mingw.outputs.file_name }}"
+
+      - name: Setup Ninja
+        shell: pwsh
+        run: |
+          cd ..
+          curl -L -o ninja.zip https://github.com/ninja-build/ninja/releases/download/v1.12.1/ninja-win.zip
+          mkdir ninja
+          unzip -q ninja.zip -d ./ninja
 
       - name: Setup Vulkan SDK
         if: ${{ env.VULKAN_CHOICE != 'none' }}
@@ -169,15 +235,14 @@ jobs:
           $defFile = Join-Path $work "vulkan-1.def"
           Set-Content -Path $defFile -Value $libContent -Encoding ASCII
           
-          # 使用 MSVC lib.exe 创建导入库
-          $libExe = "${env:ProgramFiles}\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\*\bin\Hostx64\x64\lib.exe"
-          $libPath = Get-ChildItem -Path $libExe -ErrorAction SilentlyContinue | Select-Object -First 1
-          if ($libPath) {
-            $vulkanLibPath = Join-Path $lib "vulkan-1.lib"
-            & "$($libPath.FullName)" /def:"$defFile" /out:"$vulkanLibPath" /machine:x64
+          # 使用 MinGW 工具创建导入库
+          $mingwPath = "D:\a\QtBuild\mingw64\bin"
+          $dlltoolPath = Join-Path $mingwPath "dlltool.exe"
+          if (Test-Path $dlltoolPath) {
+            & "$dlltoolPath" -d "$defFile" -l (Join-Path $lib "vulkan-1.lib") -k
           } else {
-            # 如果 lib.exe 不可用，创建一个占位符库文件
-            Write-Host "lib.exe not found, creating placeholder lib file"
+            # 如果 dlltool 不可用，创建一个占位符库文件
+            Write-Host "dlltool not found, creating placeholder lib file"
             $placeholderLib = @(0x21, 0x3C, 0x61, 0x72, 0x63, 0x68, 0x3E, 0x0A) # "!<arch>" + newline
             [System.IO.File]::WriteAllBytes((Join-Path $lib "vulkan-1.lib"), $placeholderLib)
           }
@@ -227,42 +292,32 @@ jobs:
           echo "D:\a\QtBuild\protoc\bin" >> $env:GITHUB_PATH
 
       - name: Prepare directories and source
+        shell: pwsh
         run: |
           cd ..
           mkdir Qt
           cd Qt
           mkdir "${{ env.QT_VERSION }}"
           mkdir "${{ env.QT_VERSION }}-${{ matrix.link_type }}"
-          curl -L -o qt-everywhere-src.zip "https://download.qt.io/official_releases/qt/${{ steps.qt_version.outputs.major_minor }}/${{ env.QT_VERSION }}/single/qt-everywhere-src-${{ env.QT_VERSION }}.zip"
-          unzip -q qt-everywhere-src.zip -d "./${{ env.QT_VERSION }}"
+          $mm="${{ steps.qt_version.outputs.major_minor }}"
+          $ver="${{ env.QT_VERSION }}"
+          curl -L -o qt-everywhere-src.zip "https://download.qt.io/official_releases/qt/$mm/$ver/single/qt-everywhere-src-$ver.zip"
+          unzip -q qt-everywhere-src.zip -d "./$ver"
 
       - name: Run build script
         shell: cmd
         run: |
-          setlocal enableextensions enabledelayedexpansion
-
+          setlocal
           set QT_VERSION=${{ env.QT_VERSION }}
           set COMPILER_VERSION=${{ env.COMPILER_VERSION }}
           set BUILD_TYPE=${{ matrix.build_type }}
           set LINK_TYPE=${{ matrix.link_type }}
+          set RUNTIME=${{ env.RUNTIME }}
           set TEST_MODE=${{ env.TEST_MODE }}
+          if "%BUILD_TYPE%"=="release-sepdbg" (set BUILD_TYPE=release& set SEPARATE_DEBUG=true) else (set SEPARATE_DEBUG=false)
+          call D:\a\QtBuild\QtBuild\Qt6Build\build-qt6-native-windows_x86_64_mingw.cmd %QT_VERSION% %COMPILER_VERSION% %BUILD_TYPE% %LINK_TYPE% %SEPARATE_DEBUG% %RUNTIME% "" %TEST_MODE%
+          endlocal
 
-          if "%BUILD_TYPE%"=="release-sepdbg" (
-            set BUILD_TYPE=release
-            if "%LINK_TYPE%"=="shared" (
-              REM shared 构建使用分离的调试信息
-              set SEPARATE_DEBUG=true
-            ) else (
-              REM 这个分支不应该执行，因为已经在 exclude 中排除了
-              echo "Error: static release-sepdbg should be excluded"
-              exit /b 1
-            )
-          ) else (
-            set SEPARATE_DEBUG=false
-          )
-
-          call D:\a\QtBuild\QtBuild\Qt6Build\build-qt6-windows_x86_64_msvc.cmd !QT_VERSION! !COMPILER_VERSION! !BUILD_TYPE! !LINK_TYPE! !SEPARATE_DEBUG! "" !TEST_MODE!
-      
       - name: Export Qt configure summary
         shell: pwsh
         run: |
@@ -280,90 +335,47 @@ jobs:
           echo "REPORT_FILE=$out" >> $env:GITHUB_ENV
 
       - name: Package binaries
+        shell: pwsh
         run: |
-          $linkType = "${{ matrix.link_type }}"
-          $buildType = "${{ matrix.build_type }}"
-          $qtVersion = "${{ env.QT_VERSION }}"
-          $compilerVersion = "${{ env.COMPILER_VERSION }}"
+          $qt="${{ env.QT_VERSION }}"
+          $gcc="${{ env.COMPILER_VERSION }}"
+          $rt="${{ env.RUNTIME }}".ToLower()
+          $lt="${{ matrix.link_type }}"
+          $bt="${{ matrix.build_type }}"
           
           # Normalize build type name
-          $buildTypeNormalized = switch ($buildType) {
-            "release" { "release" }
-            "debug" { "debug" }
-            "release-sepdbg" { "relwithdebinfo" }
-            default { $buildType.ToLower() }
-          }
+          $btName = switch ($bt) { "release" {"release"} "debug" {"debug"} default {"relwithdebinfo"} }
           
           # Create standardized archive name
-          $archiveName = "qt${qtVersion}-windows-x86_64-msvc${compilerVersion}-${linkType}_${buildTypeNormalized}.7z"
-          $sourcePath = "D:\a\QtBuild\Qt\$qtVersion-$linkType"
-          
-          # 检查源目录是否存在
-          if (Test-Path $sourcePath) {
-            # 创建临时目录用于重组目录结构
-            $tempDir = "D:\a\QtBuild\temp_package"
-            $finalDirName = "qt${qtVersion}-windows-x86_64-msvc${compilerVersion}-${linkType}_${buildTypeNormalized}"
-            $finalPath = Join-Path $tempDir $finalDirName
-            
-            # 清理并创建临时目录
-            if (Test-Path $tempDir) {
-              Remove-Item $tempDir -Recurse -Force
-            }
-            New-Item -ItemType Directory -Path $finalPath -Force | Out-Null
-            
-            # 获取编译器目录（msvc2022_64格式）
-            $compilerDirs = Get-ChildItem -Path $sourcePath -Directory | Where-Object { $_.Name -like "msvc*" }
-            if ($compilerDirs.Count -eq 0) {
-              Write-Host "Error: No msvc compiler directory found in $sourcePath"
-              Get-ChildItem -Path $sourcePath
-              exit 1
-            }
-            
-            $compilerDir = $compilerDirs[0].FullName
-            Write-Host "Found compiler directory: ${compilerDir}"
-            
-            # 复制Qt安装内容
-            Copy-Item -Path "$compilerDir\*" -Destination $finalPath -Recurse -Force
-            
-            # 创建压缩包
-            Set-Location $tempDir
-            $workspaceDir = "${{ github.workspace }}"
-            $archiveFullPath = Join-Path $workspaceDir $archiveName
-            
-            7z a "$archiveFullPath" $finalDirName -mx=9
-            
-            echo "Archive created: $archiveFullPath"
-            
-            # 验证压缩包
-            if (Test-Path $archiveFullPath) {
-              echo "Archive verified at: $archiveFullPath"
-              $fileInfo = Get-Item $archiveFullPath
-              echo "File size: $($fileInfo.Length) bytes"
-            } else {
-              echo "Error: Archive file not found at $archiveFullPath"
-              exit 1
-            }
-            
-            # 输出到环境变量供后续步骤使用
-            echo "ARCHIVE_NAME=$archiveName" >> $env:GITHUB_ENV
-            echo "ARCHIVE_PATH=$archiveFullPath" >> $env:GITHUB_ENV
-            
-            # 清理临时目录
-            Set-Location "${{ github.workspace }}"
-            Remove-Item $tempDir -Recurse -Force
-          } else {
-            echo "Error: Source path does not exist: $sourcePath"
-            exit 1
+          $name="qt$qt-windows-x86_64-mingwgcc$gcc" + "_$rt-$lt" + "_$btName.7z"
+          $src="D:\a\QtBuild\Qt\$qt-$lt"
+          if (-not (Test-Path $src)) { echo "Missing: $src"; exit 1 }
+          $compDir=(Get-ChildItem -Path $src -Directory | Where-Object { $_.Name -like "mingw*" } | Select-Object -First 1)
+          if (-not $compDir) { echo "No mingw* dir under $src"; exit 1 }
+          $qtRoot=$compDir.FullName
+          if (-not (Test-Path (Join-Path $qtRoot "bin"))) {
+            $qtRoot=(Get-ChildItem -Path $compDir.FullName -Directory | Where-Object { Test-Path (Join-Path $_.FullName "bin\qtpaths.exe") } | Select-Object -First 1).FullName
           }
-        shell: pwsh
-        
+          if (-not $qtRoot) { echo "Qt installation not found."; exit 1 }
+          $finalRoot="qt$qt-windows-x86_64-mingwgcc$gcc" + "_$rt-$lt" + "_$btName"
+          $tmp="D:\a\QtBuild\pack"
+          if (Test-Path $tmp) { Remove-Item $tmp -Recurse -Force }
+          New-Item -ItemType Directory -Path (Join-Path $tmp $finalRoot) | Out-Null
+          Copy-Item -Path "$qtRoot\*" -Destination (Join-Path $tmp $finalRoot) -Recurse -Force
+          $archive=Join-Path "${{ github.workspace }}" $name
+          Push-Location $tmp
+          7z a "$archive" $finalRoot -mx=9 | Out-Null
+          Pop-Location
+          if (-not (Test-Path $archive)) { echo "Archive not found: $archive"; exit 1 }
+          echo "ARCHIVE_NAME=$name" >> $env:GITHUB_ENV
+
       - name: Upload package
         uses: actions/upload-artifact@v4
         with:
-          name: qt${{ env.QT_VERSION }}-windows-x86_64-msvc${{ env.COMPILER_VERSION }}-${{ matrix.link_type }}_${{ matrix.build_type == 'release' && 'release' || matrix.build_type == 'debug' && 'debug' || 'relwithdebinfo' }}
+          name: qt${{ env.QT_VERSION }}-windows-x86_64-mingwgcc${{ env.COMPILER_VERSION }}_${{ env.RUNTIME }}-${{ matrix.link_type }}_${{ matrix.build_type == 'release' && 'release' || matrix.build_type == 'debug' && 'debug' || 'relwithdebinfo' }}
           path: ${{ env.ARCHIVE_NAME }}
           if-no-files-found: error
-          
+
       - name: Upload build report
         uses: actions/upload-artifact@v4
         with:

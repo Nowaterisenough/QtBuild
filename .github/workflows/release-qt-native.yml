@@ -1,0 +1,212 @@
+# =============================================================================
+# Qt 6 Native Build Unified Release
+# Creates unified releases for Windows and Linux native builds only
+# =============================================================================
+
+name: release-qt-native
+
+on:
+  workflow_dispatch:
+    inputs:
+      qt_version:
+        description: 'Qt Version to release (e.g., 6.9.2)'
+        required: true
+        default: '6.9.2'
+        type: string
+      search_days:
+        description: 'Search for artifacts from the last N days'
+        required: true
+        default: '7'
+        type: string
+
+env:
+  QT_VERSION: ${{ github.event.inputs.qt_version }}
+  SEARCH_DAYS: ${{ github.event.inputs.search_days || '7' }}
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download native build artifacts
+        id: download
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            
+            // Native workflows only (no cross-compilation)
+            const nativeWorkflows = {
+              'windows-msvc': 'build-qt6-native-windows_x86_64_msvc_matrix',
+              'windows-mingw': 'build-qt6-native-windows_x86_64_mingw_matrix', 
+              'windows-llvm': 'build-qt6-native-windows_x86_64_llvm_matrix',
+              'linux-gcc': 'build-qt6-native-linux_x86_64_gcc_matrix',
+              'linux-llvm': 'build-qt6-native-linux_x86_64_llvm_matrix'
+            };
+            
+            const qtVersion = process.env.QT_VERSION;
+            const searchDays = parseInt(process.env.SEARCH_DAYS);
+            const since = new Date(Date.now() - searchDays * 24 * 60 * 60 * 1000).toISOString();
+            
+            console.log(`Searching for Qt ${qtVersion} native build artifacts from the last ${searchDays} days`);
+            
+            let allArtifacts = [];
+            let foundWorkflows = new Set();
+            
+            // Get workflow runs for each native workflow
+            for (const [platform, workflowName] of Object.entries(nativeWorkflows)) {
+              try {
+                console.log(`Searching for workflow: ${workflowName}`);
+                
+                const runs = await github.rest.actions.listWorkflowRuns({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  workflow_id: `${workflowName}.yml`,
+                  status: 'success',
+                  created: `>${since}`,
+                  per_page: 20
+                });
+                
+                console.log(`Found ${runs.data.workflow_runs.length} successful runs for ${workflowName}`);
+                
+                for (const run of runs.data.workflow_runs) {
+                  const artifacts = await github.rest.actions.listWorkflowRunArtifacts({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    run_id: run.id
+                  });
+                  
+                  console.log(`Run ${run.id}: ${artifacts.data.artifacts.length} artifacts`);
+                  
+                  const qtArtifacts = artifacts.data.artifacts.filter(artifact => 
+                    artifact.name.includes(qtVersion) && artifact.name.startsWith('qt')
+                  );
+                  
+                  for (const artifact of qtArtifacts) {
+                    console.log(`Found artifact: ${artifact.name} (${artifact.size_in_bytes} bytes)`);
+                    
+                    // Download artifact
+                    const download = await github.rest.actions.downloadArtifact({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      artifact_id: artifact.id,
+                      archive_format: 'zip'
+                    });
+                    
+                    // Save to file
+                    const artifactPath = `${artifact.name}.zip`;
+                    fs.writeFileSync(artifactPath, Buffer.from(download.data));
+                    console.log(`Downloaded: ${artifactPath}`);
+                    
+                    allArtifacts.push(artifact.name);
+                    foundWorkflows.add(platform);
+                  }
+                }
+              } catch (error) {
+                console.log(`Warning: Could not find workflow ${workflowName}: ${error.message}`);
+              }
+            }
+            
+            if (allArtifacts.length === 0) {
+              core.setFailed(`No artifacts found for Qt ${qtVersion} in the last ${searchDays} days`);
+              return;
+            }
+            
+            console.log(`\nSUMMARY:`);
+            console.log(`- Found artifacts: ${allArtifacts.length}`);
+            console.log(`- Platforms covered: ${Array.from(foundWorkflows).join(', ')}`);
+            console.log(`- Artifacts: ${allArtifacts.join(', ')}`);
+            
+            // Set outputs
+            core.setOutput('artifacts_found', allArtifacts.length.toString());
+            core.setOutput('platforms', Array.from(foundWorkflows).join(','));
+            core.setOutput('artifact_list', allArtifacts.join('\n'));
+
+      - name: Extract downloaded artifacts
+        run: |
+          echo "Extracting all downloaded artifact archives..."
+          for zip_file in *.zip; do
+            if [ -f "$zip_file" ]; then
+              echo "Extracting: $zip_file"
+              unzip -q "$zip_file" 
+              rm "$zip_file"
+            fi
+          done
+          
+          echo "Available files after extraction:"
+          find . -name "qt${{ env.QT_VERSION }}*" -type f | head -20
+
+      - name: Generate release notes
+        id: release_notes
+        run: |
+          QT_VERSION="${{ env.QT_VERSION }}"
+          PLATFORMS="${{ steps.download.outputs.platforms }}"
+          ARTIFACT_COUNT="${{ steps.download.outputs.artifacts_found }}"
+          
+          cat > release_notes.md << 'EOF'
+          # Qt ${{ env.QT_VERSION }} - Native Builds
+          
+          ## 📦 Release Information
+          - **Qt Version**: ${{ env.QT_VERSION }}
+          - **Release Type**: Native builds only (Windows + Linux)
+          - **Build Date**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')
+          - **Total Packages**: ${ARTIFACT_COUNT}
+          
+          ## 🏗️ Supported Platforms
+          ${PLATFORMS}
+          
+          ## 📋 Available Configurations
+          
+          ### Windows Builds
+          - **MSVC 2022**: Static/Shared × Release/Debug/RelWithDebInfo
+          - **MinGW-GCC**: Static/Shared × Release/Debug/RelWithDebInfo  
+          - **LLVM-Clang**: Static/Shared × Release/Debug/RelWithDebInfo
+          
+          ### Linux Builds (via WSL2)
+          - **GCC**: Static/Shared × Release/Debug/RelWithDebInfo
+          - **LLVM-Clang**: Static/Shared × Release/Debug/RelWithDebInfo
+          
+          ## 🚀 Installation
+          1. Download the appropriate package for your platform and compiler
+          2. Extract to your desired Qt installation directory
+          3. Configure your IDE/build system to use the extracted Qt
+          
+          ## ⚠️ Important Notes
+          - **Cross-compilation builds** (WASM, ARM64) are released separately
+          - All builds include database support (SQLite, PostgreSQL, MySQL)
+          - Static builds include debug info, shared builds may have separate .pdb/.debug files
+          - Windows builds include necessary runtime DLLs
+          
+          ## 🛠️ Build Configuration
+          - **C++ Standard**: C++20
+          - **OpenGL**: Desktop OpenGL
+          - **SSL**: OpenSSL (linked)
+          - **Databases**: SQLite (built-in), PostgreSQL, MySQL (optional)
+          EOF
+          
+          echo "Release notes generated:"
+          cat release_notes.md
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: qt${{ env.QT_VERSION }}-native-$(date +%Y%m%d-%H%M)
+          name: Qt ${{ env.QT_VERSION }} Native Builds
+          body_path: release_notes.md
+          files: qt${{ env.QT_VERSION }}*
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Release Summary
+        run: |
+          echo "## ✅ Native Release Created Successfully"
+          echo "- **Qt Version**: ${{ env.QT_VERSION }}"
+          echo "- **Platforms**: ${{ steps.download.outputs.platforms }}" 
+          echo "- **Artifacts**: ${{ steps.download.outputs.artifacts_found }}"
+          echo ""
+          echo "Cross-compilation builds should be released separately using 'release-qt-cross' workflow."

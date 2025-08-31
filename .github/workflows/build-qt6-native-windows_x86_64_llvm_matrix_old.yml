@@ -3,7 +3,7 @@
 # Standardized workflow for building Qt with LLVM/Clang on Windows
 # =============================================================================
 
-name: build-qt6-windows_x86_64_llvm_clang_matrix
+name: build-qt6-native-windows_x86_64_llvm_matrix
 
 on:
   workflow_dispatch:
@@ -346,7 +346,7 @@ jobs:
             set SEPARATE_DEBUG=false
           )
 
-          call D:\a\QtBuild\QtBuild\Qt6Build\build-qt6-windows_x86_64_llvm_clang.cmd !QT_VERSION! !COMPILER_VERSION! !BUILD_TYPE! !LINK_TYPE! !SEPARATE_DEBUG! !RUNTIME! "!BIN_PATH!" "!VERSION_CODE!" !TEST_MODE!
+          call D:\a\QtBuild\QtBuild\Qt6Build\build-qt6-native-windows_x86_64_llvm.cmd !QT_VERSION! !COMPILER_VERSION! !BUILD_TYPE! !LINK_TYPE! !SEPARATE_DEBUG! !RUNTIME! "!BIN_PATH!" "!VERSION_CODE!" !TEST_MODE!
 
       - name: Package binaries
         run: |

@@ -1,4 +1,4 @@
-name: build-qt6-linux_aarch64_gnu_matrix
+name: build-qt6-cross-aarch64_linux_gnu_matrix
 
 on:
   workflow_dispatch:
@@ -252,7 +252,7 @@ jobs:
             set SEPARATE_DEBUG=false
           )
 
-          call D:\a\QtBuild\QtBuild\Qt6Build\build-qt6-linux_aarch64_gnu.cmd !QT_VERSION! !GCC_VERSION! !BUILD_TYPE! !LINK_TYPE! !SEPARATE_DEBUG! !TEST_MODE!
+          call D:\a\QtBuild\QtBuild\Qt6Build\build-qt6-cross-aarch64_linux_gnu.sh !QT_VERSION! !GCC_VERSION! !BUILD_TYPE! !LINK_TYPE! !SEPARATE_DEBUG! !TEST_MODE!
 
       - name: Package ARM64 cross-compile artifacts
         run: |

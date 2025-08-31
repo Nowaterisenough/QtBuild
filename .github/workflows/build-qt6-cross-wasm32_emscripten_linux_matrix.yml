@@ -3,7 +3,7 @@
 # Standardized workflow for building Qt with Emscripten for WebAssembly
 # =============================================================================
 
-name: build-qt6-wasm32_emscripten_matrix
+name: build-qt6-cross-wasm32_emscripten_linux_matrix
 
 on:
   workflow_dispatch:
@@ -310,7 +310,7 @@ jobs:
           set EMSCRIPTEN_VERSION=${{ env.EMSCRIPTEN_VERSION }}
           set BUILD_TYPE=${{ matrix.build_type }}
           set LINK_TYPE=${{ matrix.link_type }}
-          call D:\a\QtBuild\QtBuild\Qt6Build\build-qt6-wasm32_emscripten.cmd !QT_VERSION! !EMSCRIPTEN_VERSION! !BUILD_TYPE! !LINK_TYPE!
+          call D:\a\QtBuild\QtBuild\Qt6Build\build-qt6-cross-wasm32_emscripten_linux.sh !QT_VERSION! !EMSCRIPTEN_VERSION! !BUILD_TYPE! !LINK_TYPE!
 
       - name: Export Qt configure summary
         run: |

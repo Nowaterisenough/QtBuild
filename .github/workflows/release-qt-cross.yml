@@ -1,0 +1,233 @@
+# =============================================================================
+# Qt 6 Cross-Compilation Unified Release  
+# Creates releases for cross-compilation builds that depend on host Qt
+# =============================================================================
+
+name: release-qt-cross
+
+on:
+  workflow_dispatch:
+    inputs:
+      qt_version:
+        description: 'Qt Version to release (e.g., 6.9.2)'
+        required: true
+        default: '6.9.2'
+        type: string
+      search_days:
+        description: 'Search for artifacts from the last N days'
+        required: true
+        default: '7'
+        type: string
+
+env:
+  QT_VERSION: ${{ github.event.inputs.qt_version }}
+  SEARCH_DAYS: ${{ github.event.inputs.search_days || '7' }}
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download cross-compilation artifacts
+        id: download
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            
+            // Cross-compilation workflows only
+            const crossWorkflows = {
+              'wasm32-emscripten': 'build-qt6-cross-wasm32_emscripten_linux_matrix',
+              'aarch64-linux': 'build-qt6-cross-aarch64_linux_gnu_matrix'
+            };
+            
+            const qtVersion = process.env.QT_VERSION;
+            const searchDays = parseInt(process.env.SEARCH_DAYS);
+            const since = new Date(Date.now() - searchDays * 24 * 60 * 60 * 1000).toISOString();
+            
+            console.log(`Searching for Qt ${qtVersion} cross-compilation artifacts from the last ${searchDays} days`);
+            
+            let allArtifacts = [];
+            let foundWorkflows = new Set();
+            
+            // Get workflow runs for each cross-compilation workflow
+            for (const [platform, workflowName] of Object.entries(crossWorkflows)) {
+              try {
+                console.log(`Searching for workflow: ${workflowName}`);
+                
+                const runs = await github.rest.actions.listWorkflowRuns({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  workflow_id: `${workflowName}.yml`,
+                  status: 'success',
+                  created: `>${since}`,
+                  per_page: 20
+                });
+                
+                console.log(`Found ${runs.data.workflow_runs.length} successful runs for ${workflowName}`);
+                
+                for (const run of runs.data.workflow_runs) {
+                  const artifacts = await github.rest.actions.listWorkflowRunArtifacts({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    run_id: run.id
+                  });
+                  
+                  console.log(`Run ${run.id}: ${artifacts.data.artifacts.length} artifacts`);
+                  
+                  const qtArtifacts = artifacts.data.artifacts.filter(artifact => 
+                    artifact.name.includes(qtVersion) && artifact.name.startsWith('qt')
+                  );
+                  
+                  for (const artifact of qtArtifacts) {
+                    console.log(`Found artifact: ${artifact.name} (${artifact.size_in_bytes} bytes)`);
+                    
+                    // Download artifact
+                    const download = await github.rest.actions.downloadArtifact({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      artifact_id: artifact.id,
+                      archive_format: 'zip'
+                    });
+                    
+                    // Save to file
+                    const artifactPath = `${artifact.name}.zip`;
+                    fs.writeFileSync(artifactPath, Buffer.from(download.data));
+                    console.log(`Downloaded: ${artifactPath}`);
+                    
+                    allArtifacts.push(artifact.name);
+                    foundWorkflows.add(platform);
+                  }
+                }
+              } catch (error) {
+                console.log(`Warning: Could not find workflow ${workflowName}: ${error.message}`);
+              }
+            }
+            
+            if (allArtifacts.length === 0) {
+              core.setFailed(`No cross-compilation artifacts found for Qt ${qtVersion} in the last ${searchDays} days`);
+              return;
+            }
+            
+            console.log(`\nSUMMARY:`);
+            console.log(`- Found artifacts: ${allArtifacts.length}`);
+            console.log(`- Platforms covered: ${Array.from(foundWorkflows).join(', ')}`);
+            console.log(`- Artifacts: ${allArtifacts.join(', ')}`);
+            
+            // Set outputs
+            core.setOutput('artifacts_found', allArtifacts.length.toString());
+            core.setOutput('platforms', Array.from(foundWorkflows).join(','));
+            core.setOutput('artifact_list', allArtifacts.join('\n'));
+
+      - name: Extract downloaded artifacts
+        run: |
+          echo "Extracting all downloaded artifact archives..."
+          for zip_file in *.zip; do
+            if [ -f "$zip_file" ]; then
+              echo "Extracting: $zip_file"
+              unzip -q "$zip_file" 
+              rm "$zip_file"
+            fi
+          done
+          
+          echo "Available files after extraction:"
+          find . -name "qt${{ env.QT_VERSION }}*" -type f | head -20
+
+      - name: Generate release notes
+        id: release_notes
+        run: |
+          QT_VERSION="${{ env.QT_VERSION }}"
+          PLATFORMS="${{ steps.download.outputs.platforms }}"
+          ARTIFACT_COUNT="${{ steps.download.outputs.artifacts_found }}"
+          
+          cat > release_notes.md << 'EOF'
+          # Qt ${{ env.QT_VERSION }} - Cross-Compilation Builds
+          
+          ## 📦 Release Information
+          - **Qt Version**: ${{ env.QT_VERSION }}
+          - **Release Type**: Cross-compilation builds
+          - **Build Date**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')
+          - **Total Packages**: ${ARTIFACT_COUNT}
+          
+          ## 🎯 Target Platforms
+          ${PLATFORMS}
+          
+          ## 📋 Available Configurations
+          
+          ### WebAssembly (WASM32)
+          - **Toolchain**: Emscripten 
+          - **Host Platform**: Linux (via Docker)
+          - **Configurations**: Static Release, Static Debug
+          - **Features**: OpenGL ES, No Vulkan
+          
+          ### ARM64 Linux
+          - **Toolchain**: aarch64-linux-gnu-gcc
+          - **Host Platform**: Linux cross-compilation
+          - **Configurations**: Static/Shared × Release/Debug/RelWithDebInfo
+          
+          ## ⚙️ Prerequisites
+          **⚠️ IMPORTANT**: Cross-compilation builds require a **host Qt** installation.
+          
+          1. **Download and install Qt native build** for your development platform first
+          2. Set `QT_HOST_PATH` to your native Qt installation
+          3. Then use these cross-compiled Qt builds for your target platform
+          
+          ## 🚀 Installation
+          1. **Install host Qt**: Download from the native builds release
+          2. **Extract cross-compiled Qt**: Extract to your target platform directory
+          3. **Configure build system**: 
+             - Set `QT_HOST_PATH=/path/to/native/qt`
+             - Set `CMAKE_TOOLCHAIN_FILE` for your target platform
+          
+          ## 🛠️ Usage Examples
+          
+          ### WebAssembly Build
+          ```bash
+          # Ensure host Qt is installed
+          export QT_HOST_PATH=/opt/qt6.9.2-native
+          
+          # Configure your WASM project
+          emconfigure cmake -DQT_HOST_PATH=$QT_HOST_PATH .
+          ```
+          
+          ### ARM64 Cross-Compilation
+          ```bash
+          # Set host Qt path
+          export QT_HOST_PATH=/opt/qt6.9.2-native
+          
+          # Configure with cross-compile toolchain
+          cmake -DQT_HOST_PATH=$QT_HOST_PATH \
+                -DCMAKE_TOOLCHAIN_FILE=aarch64-linux-gnu.cmake .
+          ```
+          
+          ## 📝 Notes
+          - Cross-compilation builds are **NOT standalone**
+          - Host Qt tools (qmake, moc, uic, rcc) are required during build
+          - Target platform libraries are provided in these packages
+          EOF
+          
+          echo "Release notes generated:"
+          cat release_notes.md
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: qt${{ env.QT_VERSION }}-cross-$(date +%Y%m%d-%H%M)
+          name: Qt ${{ env.QT_VERSION }} Cross-Compilation Builds
+          body_path: release_notes.md
+          files: qt${{ env.QT_VERSION }}*
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Release Summary
+        run: |
+          echo "## ✅ Cross-Compilation Release Created Successfully"
+          echo "- **Qt Version**: ${{ env.QT_VERSION }}"
+          echo "- **Platforms**: ${{ steps.download.outputs.platforms }}"
+          echo "- **Artifacts**: ${{ steps.download.outputs.artifacts_found }}"
+          echo ""
+          echo "⚠️ **Remember**: These builds require host Qt installation to use properly."
