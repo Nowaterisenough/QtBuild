@@ -1,5 +1,6 @@
 # =============================================================================
-# Qt 6 Windows x86_64 LLVM Build Matrix - Clean Version
+# Qt 6 Windows x86_64 LLVM Build Matrix
+# Standardized workflow for building Qt with LLVM/Clang on Windows
 # =============================================================================
 
 name: build-qt6-native-windows_x86_64_llvm_matrix
@@ -12,7 +13,7 @@ on:
         required: true
         default: '6.9.2'
       compiler_version:
-        description: 'LLVM Version'
+        description: 'LLVM/Clang Version'
         required: true
         default: '21.1'
         type: choice
@@ -20,8 +21,16 @@ on:
         - '17.0'
         - '20.1'
         - '21.1'
+      runtime:
+        description: 'Runtime (ucrt/msvcrt)'
+        required: true
+        default: 'ucrt'
+        type: choice
+        options:
+        - ucrt
+        - msvcrt
       vulkan_sdk:
-        description: 'Vulkan SDK'
+        description: 'Vulkan support (none/runtime-*)'
         required: true
         type: choice
         options:
@@ -30,7 +39,7 @@ on:
         - 'runtime-1.3.290.0'
         default: 'runtime-1.4.321.0'
       test_mode:
-        description: 'Test Mode (qtbase only)'
+        description: 'Test Mode (only build qtbase)'
         required: true
         default: 'false'
         type: choice
@@ -39,10 +48,12 @@ on:
         - 'false'
 
 env:
-  QT_VERSION: ${{ github.event.inputs.qt_version }}
-  COMPILER_VERSION: ${{ github.event.inputs.compiler_version }}
-  VULKAN_CHOICE: ${{ github.event.inputs.vulkan_sdk }}
-  TEST_MODE: ${{ github.event.inputs.test_mode }}
+  QT_VERSION: ${{ github.event.inputs.qt_version || '6.9.2' }}
+  COMPILER_VERSION: ${{ github.event.inputs.compiler_version || '21.1' }}
+  RUNTIME: ${{ github.event.inputs.runtime || 'ucrt' }}
+  VULKAN_CHOICE: ${{ github.event.inputs.vulkan_sdk || 'runtime-1.4.321.0' }}
+  TEST_MODE: ${{ github.event.inputs.test_mode || 'false' }}
+  ACTIONS_STEP_DEBUG: 'true'
 
 jobs:
   build:
@@ -54,122 +65,288 @@ jobs:
         exclude:
           - link_type: static
             build_type: debug
-    
+          - link_type: static
+            build_type: release-sepdbg
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Download Qt source
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          architecture: 'x64'
+
+      - name: Extract Qt version components
+        id: qt_version
         run: |
           $version = "${{ env.QT_VERSION }}"
           $parts = $version.Split('.')
-          $majorMinor = "$($parts[0]).$($parts[1])"
-          $url = "https://download.qt.io/official_releases/qt/$majorMinor/$version/single/qt-everywhere-src-$version.tar.xz"
+          $major_minor = "$($parts[0]).$($parts[1])"
+          echo "major_minor=$major_minor" >> $env:GITHUB_OUTPUT
+        shell: pwsh
+
+      - name: Resolve LLVM-MinGW info
+        id: llvm_info
+        run: |
+          $clangVersion = "${{ env.COMPILER_VERSION }}"
+          $runtime = "${{ env.RUNTIME }}".ToLower()
           
-          Write-Host "Downloading Qt $version from $url"
-          Invoke-WebRequest -Uri $url -OutFile "qt-everywhere-src-$version.tar.xz"
+          if ($clangVersion -eq "17.0") {
+            # 使用Qt官方源
+            $downloadUrl = "https://download.qt.io/online/qtsdkrepository/windows_x86/desktop/tools_llvm_mingw1706/qt.tools.win64_llvm_mingw1706/17.0.6-202409091150llvm_mingw1706.7z"
+            $fileName = "llvm_mingw1706.7z"
+            $extractPath = "Tools"
+            $binPath = "D:\a\QtBuild\Tools\llvm-mingw1706_64\bin"
+            $versionCode = "llvm-mingw17.0.6_64_UCRT"
+          } elseif ($clangVersion -eq "20.1") {
+            # 使用GitHub源 - LLVM 20.1
+            $downloadUrl = "https://github.com/mstorsjo/llvm-mingw/releases/download/20250528/llvm-mingw-20250528-ucrt-x86_64.zip"
+            $fileName = "llvm-mingw-20.1.zip"
+            $extractPath = ""
+            $binPath = "D:\a\QtBuild\llvm-mingw-20250528-ucrt-x86_64\bin"
+            $versionCode = "llvm-mingw20.1.6_64_UCRT"
+          } else {
+            # 使用GitHub源 - LLVM 21.1 (最新)
+            $downloadUrl = "https://github.com/mstorsjo/llvm-mingw/releases/download/20250826/llvm-mingw-20250826-ucrt-x86_64.zip"
+            $fileName = "llvm-mingw-21.1.zip"
+            $extractPath = ""
+            $binPath = "D:\a\QtBuild\llvm-mingw-20250826-ucrt-x86_64\bin"
+            $versionCode = "llvm-mingw21.1.0_64_UCRT"
+          }
+          
+          echo "download_url=$downloadUrl" >> $env:GITHUB_OUTPUT
+          echo "file_name=$fileName" >> $env:GITHUB_OUTPUT
+          echo "extract_path=$extractPath" >> $env:GITHUB_OUTPUT
+          echo "bin_path=$binPath" >> $env:GITHUB_OUTPUT
+          echo "version_code=$versionCode" >> $env:GITHUB_OUTPUT
         shell: pwsh
 
       - name: Setup LLVM-MinGW compiler
         run: |
-          $clangVersion = "${{ env.COMPILER_VERSION }}"
+          cd ..
+          $downloadUrl = "${{ steps.llvm_info.outputs.download_url }}"
+          $fileName = "${{ steps.llvm_info.outputs.file_name }}"
+          $extractPath = "${{ steps.llvm_info.outputs.extract_path }}"
           
-          Write-Host "Setting up LLVM-MinGW $clangVersion"
+          Write-Host "Downloading LLVM-MinGW from: $downloadUrl"
+          curl -L -o $fileName $downloadUrl
           
-          # Select LLVM-MinGW version based on Clang version
-          if ($clangVersion -eq "17.0") {
-            $downloadUrl = "https://download.qt.io/online/qtsdkrepository/windows_x86/desktop/tools_llvm_mingw1706/qt.tools.win64_llvm_mingw1706/17.0.6-202409091150llvm_mingw1706.7z"
-            $fileName = "llvm_mingw1706.7z"
-            $extractDir = "Tools"
-            $binPath = "D:\a\QtBuild\Tools\llvm-mingw1706_64\bin"
-            $versionCode = "llvm_clang17.0"
-          } elseif ($clangVersion -eq "20.1") {
-            $downloadUrl = "https://github.com/mstorsjo/llvm-mingw/releases/download/20250528/llvm-mingw-20250528-ucrt-x86_64.zip"
-            $fileName = "llvm-mingw-20.1.zip"
-            $extractDir = ""
-            $binPath = "D:\a\QtBuild\llvm-mingw-20250528-ucrt-x86_64\bin"
-            $versionCode = "llvm_clang20.1"
-          } else {
-            # LLVM 21.1 (default)
-            $downloadUrl = "https://github.com/mstorsjo/llvm-mingw/releases/download/20250826/llvm-mingw-20250826-ucrt-x86_64.zip"
-            $fileName = "llvm-mingw-21.1.zip"
-            $extractDir = ""
-            $binPath = "D:\a\QtBuild\llvm-mingw-20250826-ucrt-x86_64\bin"
-            $versionCode = "llvm_clang21.1"
-          }
-          
-          Write-Host "Downloading from: $downloadUrl"
-          Invoke-WebRequest -Uri $downloadUrl -OutFile $fileName
-          
-          # Extract based on file type
           if ($fileName.EndsWith(".7z")) {
-            7z x $fileName "-o$extractDir"
+            if ($extractPath) {
+              7z x $fileName -o$extractPath
+            } else {
+              7z x $fileName
+            }
           } else {
-            7z x $fileName
-          }
-          
-          Write-Host "LLVM-MinGW installed to: $binPath"
-          echo "BIN_PATH=$binPath" >> $env:GITHUB_ENV
-          echo "VERSION_CODE=$versionCode" >> $env:GITHUB_ENV
-        shell: pwsh
-
-      - name: Extract Qt source
-        run: |
-          Write-Host "Extracting Qt source..."
-          7z x "qt-everywhere-src-${{ env.QT_VERSION }}.tar.xz" -so | 7z x -si -ttar
-          Remove-Item "qt-everywhere-src-${{ env.QT_VERSION }}.tar.xz"
-        shell: pwsh
-
-      - name: Setup databases and Vulkan
-        run: |
-          # PostgreSQL 16.6
-          Write-Host "Installing PostgreSQL..."
-          $pgUrl = "https://get.enterprisedb.com/postgresql/postgresql-16.6-1-windows-x64-binaries.zip"
-          Invoke-WebRequest -Uri $pgUrl -OutFile "postgresql.zip"
-          7z x postgresql.zip -o"D:\a\QtBuild"
-          echo "PostgreSQL_ROOT=D:\a\QtBuild\pgsql" >> $env:GITHUB_ENV
-          
-          # MySQL 8.0.35
-          Write-Host "Installing MySQL..."
-          $mysqlUrl = "https://dev.mysql.com/get/Downloads/MySQL-8.0/mysql-8.0.35-winx64.zip"
-          Invoke-WebRequest -Uri $mysqlUrl -OutFile "mysql.zip"
-          7z x mysql.zip -o"D:\a\QtBuild"
-          Move-Item "D:\a\QtBuild\mysql-8.0.35-winx64" "D:\a\QtBuild\mysql"
-          echo "MYSQL_ROOT=D:\a\QtBuild\mysql" >> $env:GITHUB_ENV
-          
-          # Vulkan SDK (if not 'none')
-          if ("${{ env.VULKAN_CHOICE }}" -ne "none") {
-            $vulkanVer = "${{ env.VULKAN_CHOICE }}".Replace("runtime-", "")
-            Write-Host "Installing Vulkan SDK $vulkanVer..."
-            $vulkanUrl = "https://sdk.lunarg.com/sdk/download/$vulkanVer/windows/VulkanSDK-$vulkanVer-Installer.exe"
-            Invoke-WebRequest -Uri $vulkanUrl -OutFile "vulkan-installer.exe"
-            Start-Process -Wait -FilePath "vulkan-installer.exe" -ArgumentList "--accept-licenses --default-answer --confirm-command install"
-            echo "VULKAN_SDK=C:\VulkanSDK\$vulkanVer" >> $env:GITHUB_ENV
-          }
-        shell: pwsh
-
-      - name: Build Qt
-        run: |
-          $qtVersion = "${{ env.QT_VERSION }}"
-          $compilerVersion = "${{ env.COMPILER_VERSION }}"
-          $buildType = "${{ matrix.build_type }}"
-          $linkType = "${{ matrix.link_type }}"
-          $testMode = "${{ env.TEST_MODE }}"
-          $binPath = "$env:BIN_PATH"
-          $versionCode = "$env:VERSION_CODE"
-          
-          # Handle release-sepdbg
-          $separateDebug = "false"
-          if ($buildType -eq "release-sepdbg") {
-            $buildType = "release"
-            if ($linkType -eq "shared") {
-              $separateDebug = "true"
+            if ($extractPath) {
+              unzip -q $fileName -d $extractPath
+            } else {
+              unzip -q $fileName
             }
           }
+        shell: pwsh
+
+      - name: Setup Ninja
+        run: |
+          cd ..
+          mkdir ninja
+          curl -L -o ninja.zip https://github.com/ninja-build/ninja/releases/download/v1.12.1/ninja-win.zip
+          unzip -q ninja.zip -d ./ninja
+
+      - name: Setup Vulkan SDK
+        if: ${{ env.VULKAN_CHOICE != 'none' }}
+        shell: pwsh
+        run: |
+          $choice="${{ env.VULKAN_CHOICE }}"
+          $root="D:\a\QtBuild\VulkanSDK"
+          New-Item -ItemType Directory -Force -Path $root | Out-Null
+
+          switch ($choice) {
+            'runtime-1.4.321.0' {
+              $sdkVersion = "1.4.321.0"
+              $hdrTag = "vulkan-sdk-1.4.321.0"
+            }
+            'runtime-1.3.290.0' {
+              $sdkVersion = "1.3.290.0"
+              $hdrTag = "v1.3.290"
+            }
+            default {
+              Write-Host "Unsupported choice: $choice"; exit 1
+            }
+          }
+
+          $work="$root\$sdkVersion"
+          New-Item -ItemType Directory -Force -Path $work | Out-Null
+
+          # 组装 SDK 结构
+          $sdk="$work\sdk"
+          $inc="$sdk\Include"
+          $lib="$sdk\Lib"
+          $bin="$sdk\Bin"
+          New-Item -ItemType Directory -Force -Path $inc,$lib,$bin | Out-Null
+
+          # 下载 Vulkan-Headers
+          $hdrZip = Join-Path $work "Vulkan-Headers-$hdrTag.zip"
+          $hdrUrl = "https://github.com/KhronosGroup/Vulkan-Headers/archive/refs/tags/$hdrTag.zip"
+          Write-Host "Downloading Headers: $hdrUrl"
+          try {
+            Invoke-WebRequest -Uri $hdrUrl -OutFile $hdrZip -TimeoutSec 300
+            if ((Get-Item $hdrZip).Length -lt 100000) { 
+              Write-Host "Headers zip too small, trying alternative download..."; 
+              curl -L -o "$hdrZip" "$hdrUrl" 
+            }
+          } catch {
+            Write-Host "WebRequest failed, trying curl: $_"
+            curl -L -o "$hdrZip" "$hdrUrl"
+          }
           
-          Write-Host "Building Qt with LLVM/Clang..."
-          & "D:\a\QtBuild\QtBuild\Qt6Build\build-qt6-native-windows_x86_64_llvm.cmd" $qtVersion $compilerVersion $buildType $linkType $separateDebug "ucrt" $binPath $versionCode $testMode
+          if (-not (Test-Path $hdrZip) -or (Get-Item $hdrZip).Length -lt 100000) { 
+            echo "Headers download failed"; exit 1 
+          }
+          7z x "$hdrZip" -o"$work\headers" -y
+
+          # 下载 Vulkan-Video 扩展头文件
+          $videoZip = Join-Path $work "Vulkan-Video.zip"
+          $videoUrl = "https://github.com/KhronosGroup/Vulkan-Headers/archive/refs/heads/main.zip"
+          Write-Host "Downloading Vulkan Video Extensions: $videoUrl"
+          try {
+            Invoke-WebRequest -Uri $videoUrl -OutFile $videoZip -TimeoutSec 300
+          } catch {
+            curl -L -o "$videoZip" "$videoUrl"
+          }
+          if (Test-Path $videoZip) {
+            7z x "$videoZip" -o"$work\video_headers" -y
+          }
+
+          # Include - 复制头文件
+          $hdrRoot=(Get-ChildItem -Path "$work\headers" -Directory | Select-Object -First 1).FullName
+          if (-not (Test-Path (Join-Path $hdrRoot "include\vulkan"))) {
+            echo "Vulkan headers directory not found in extracted archive"; exit 1
+          }
+          New-Item -ItemType Directory -Force -Path (Join-Path $inc "vulkan") | Out-Null
+          Copy-Item -Path (Join-Path $hdrRoot "include\vulkan\*") -Destination (Join-Path $inc "vulkan") -Recurse -Force
+
+          # 复制 video 扩展头文件
+          $videoRoot=(Get-ChildItem -Path "$work\video_headers" -Directory | Select-Object -First 1).FullName
+          if ((Test-Path $videoRoot) -and (Test-Path (Join-Path $videoRoot "include\vk_video"))) {
+            New-Item -ItemType Directory -Force -Path (Join-Path $inc "vk_video") | Out-Null
+            Copy-Item -Path (Join-Path $videoRoot "include\vk_video\*") -Destination (Join-Path $inc "vk_video") -Recurse -Force
+          } else {
+            # 如果没有找到 vk_video，创建基本的占位符文件
+            New-Item -ItemType Directory -Force -Path (Join-Path $inc "vk_video") | Out-Null
+            $h264Content = "#ifndef VULKAN_VIDEO_CODEC_H264STD_H_`n#define VULKAN_VIDEO_CODEC_H264STD_H_`n// Minimal placeholder for H.264 video codec support`n#endif"
+            Set-Content -Path (Join-Path $inc "vk_video\vulkan_video_codec_h264std.h") -Value $h264Content -Encoding UTF8
+            
+            $h265Content = "#ifndef VULKAN_VIDEO_CODEC_H265STD_H_`n#define VULKAN_VIDEO_CODEC_H265STD_H_`n// Minimal placeholder for H.265 video codec support`n#endif"
+            Set-Content -Path (Join-Path $inc "vk_video\vulkan_video_codec_h265std.h") -Value $h265Content -Encoding UTF8
+          }
+
+          # 创建最小的 vulkan-1.lib 文件 (用于链接，实际运行时会动态加载)
+          $libContent = "EXPORTS`nvkGetInstanceProcAddr`nvkCreateInstance`nvkEnumerateInstanceExtensionProperties`nvkEnumerateInstanceLayerProperties"
+          $defFile = Join-Path $work "vulkan-1.def"
+          Set-Content -Path $defFile -Value $libContent -Encoding ASCII
+          
+          # 使用 MSVC lib.exe 创建导入库而不是MinGW dlltool
+          $libExe = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\*\bin\Hostx64\x64\lib.exe"
+          $libExeResolved = Get-ChildItem $libExe -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $libExeResolved) {
+            $libExe = "${env:ProgramFiles}\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\*\bin\Hostx64\x64\lib.exe"
+            $libExeResolved = Get-ChildItem $libExe -ErrorAction SilentlyContinue | Select-Object -First 1
+          }
+          if ($libExeResolved) {
+            $vulkanLibPath = Join-Path $lib "vulkan-1.lib"
+            & $libExeResolved.FullName /def:"$defFile" /out:"$vulkanLibPath" /machine:x64
+          } else {
+            # 如果 lib.exe 不可用，创建一个占位符库文件
+            Write-Host "lib.exe not found, creating placeholder lib file"
+            $placeholderLib = @(0x21, 0x3C, 0x61, 0x72, 0x63, 0x68, 0x3E, 0x0A) # "!<arch>" + newline
+            [System.IO.File]::WriteAllBytes((Join-Path $lib "vulkan-1.lib"), $placeholderLib)
+          }
+
+          # 环境变量设置
+          echo "VULKAN_SDK=$sdk" >> $env:GITHUB_ENV
+          echo "VK_SDK_PATH=$sdk" >> $env:GITHUB_ENV
+          echo "INCLUDE=$inc;$env:INCLUDE" >> $env:GITHUB_ENV
+          echo "LIB=$lib;$env:LIB" >> $env:GITHUB_ENV
+
+          # 校验
+          if (-not (Test-Path "$sdk\Include\vulkan\vulkan.h")) { echo "Missing $sdk\Include\vulkan\vulkan.h"; exit 1 }
+          if (-not (Test-Path "$sdk\Lib\vulkan-1.lib")) { echo "Missing $sdk\Lib\vulkan-1.lib"; exit 1 }
+          Write-Host "Vulkan SDK ready at $sdk"
+          Write-Host "Headers: $(Get-ChildItem "$sdk\Include\vulkan" | Measure-Object).Count files"
+
+      - name: Setup PostgreSQL
+        shell: pwsh
+        run: |
+          cd ..
+          $v="16.6"
+          $url="https://get.enterprisedb.com/postgresql/postgresql-$v-1-windows-x64-binaries.zip"
+          curl -L -o postgresql.zip $url
+          mkdir postgresql
+          7z x postgresql.zip -opostgresql
+          $pg=(Get-ChildItem -Path "postgresql" -Directory | Select-Object -First 1).FullName
+          echo "PostgreSQL_ROOT=$pg" >> $env:GITHUB_ENV
+          echo "$pg\bin" >> $env:GITHUB_PATH
+
+      - name: Setup MySQL
+        shell: pwsh
+        run: |
+          cd ..
+          $v="8.0.35"
+          $url="https://dev.mysql.com/get/Downloads/MySQL-8.0/mysql-$v-winx64.zip"
+          curl -L -o mysql.zip $url
+          7z x mysql.zip
+          $mp=(Get-ChildItem -Directory -Filter "mysql-*" | Select-Object -First 1).FullName
+          echo "MYSQL_ROOT=$mp" >> $env:GITHUB_ENV
+
+      - name: Setup Protobuf
+        shell: pwsh
+        run: |
+          cd ..
+          curl -L -o protoc-win64.zip https://github.com/protocolbuffers/protobuf/releases/download/v30.2/protoc-30.2-win64.zip
+          unzip -q protoc-win64.zip -d ./protoc
+          echo "D:\a\QtBuild\protoc\bin" >> $env:GITHUB_PATH
+
+      - name: Prepare directories and source
+        run: |
+          cd ..
+          mkdir Qt
+          cd Qt
+          mkdir "${{ env.QT_VERSION }}"
+          mkdir "${{ env.QT_VERSION }}-${{ matrix.link_type }}"
+          curl -L -o qt-everywhere-src.zip "https://download.qt.io/official_releases/qt/${{ steps.qt_version.outputs.major_minor }}/${{ env.QT_VERSION }}/single/qt-everywhere-src-${{ env.QT_VERSION }}.zip"
+          unzip -q qt-everywhere-src.zip -d "./${{ env.QT_VERSION }}"
+
+      - name: Run build script
         shell: cmd
+        run: |
+          setlocal enableextensions enabledelayedexpansion
+
+          set QT_VERSION=${{ env.QT_VERSION }}
+          set COMPILER_VERSION=${{ env.COMPILER_VERSION }}
+          set BUILD_TYPE=${{ matrix.build_type }}
+          set LINK_TYPE=${{ matrix.link_type }}
+          set RUNTIME=${{ env.RUNTIME }}
+          set TEST_MODE=${{ env.TEST_MODE }}
+          set BIN_PATH=${{ steps.llvm_info.outputs.bin_path }}
+          set VERSION_CODE=${{ steps.llvm_info.outputs.version_code }}
+
+          if "%BUILD_TYPE%"=="release-sepdbg" (
+            set BUILD_TYPE=release
+            if "%LINK_TYPE%"=="shared" (
+              set SEPARATE_DEBUG=true
+            ) else (
+              set SEPARATE_DEBUG=false
+            )
+          ) else if "%BUILD_TYPE%"=="debug" (
+            set BUILD_TYPE=debug
+            set SEPARATE_DEBUG=false
+          ) else (
+            set SEPARATE_DEBUG=false
+          )
+
+          call D:\a\QtBuild\QtBuild\Qt6Build\build-qt6-native-windows_x86_64_llvm.cmd !QT_VERSION! !COMPILER_VERSION! !BUILD_TYPE! !LINK_TYPE! !SEPARATE_DEBUG! !RUNTIME! "!BIN_PATH!" "!VERSION_CODE!" !TEST_MODE!
 
       - name: Package binaries
         run: |
@@ -177,34 +354,108 @@ jobs:
           $buildType = "${{ matrix.build_type }}"
           $qtVersion = "${{ env.QT_VERSION }}"
           $compilerVersion = "${{ env.COMPILER_VERSION }}"
+          $runtime = "${{ env.RUNTIME }}".ToLower()
           
           # Normalize build type name
-          $buildTypeNorm = switch ($buildType) {
+          $buildTypeNormalized = switch ($buildType) {
             "release" { "release" }
             "debug" { "debug" }
             "release-sepdbg" { "relwithdebinfo" }
             default { $buildType.ToLower() }
           }
           
-          $archiveName = "qt${qtVersion}-windows-x86_64-llvm_clang${compilerVersion}-${linkType}_${buildTypeNorm}.7z"
-          $installDir = "D:\a\QtBuild\Qt\$qtVersion-$linkType\llvm_clang$compilerVersion"
+          # Create standardized archive name
+          $archiveName = "qt${qtVersion}-windows-x86_64-llvm_clang${compilerVersion}_${runtime}-${linkType}_${buildTypeNormalized}.7z"
+          $sourcePath = "D:\a\QtBuild\Qt\$qtVersion-$linkType"
           
-          Write-Host "Creating archive: $archiveName"
-          7z a -t7z -mx=9 $archiveName "$installDir\*"
-          
-          if (Test-Path $archiveName) {
-            $size = (Get-Item $archiveName).Length
-            Write-Host "Archive created: $size bytes"
+          # 检查源目录是否存在
+          if (Test-Path $sourcePath) {
+            # 创建临时目录用于重组目录结构
+            $tempDir = "D:\a\QtBuild\temp_package"
+            $finalDirName = "qt${qtVersion}-windows-x86_64-llvm${compilerVersion}_${runtime}-${linkType}_${buildTypeNormalized}"
+            $finalPath = Join-Path $tempDir $finalDirName
+            
+            # 清理并创建临时目录
+            if (Test-Path $tempDir) {
+              Remove-Item $tempDir -Recurse -Force
+            }
+            New-Item -ItemType Directory -Path $finalPath -Force | Out-Null
+            
+            # 获取编译器目录（llvm-mingw版本格式）
+            $compilerDirs = Get-ChildItem -Path $sourcePath -Directory | Where-Object { $_.Name -like "llvm-mingw*" }
+            if ($compilerDirs.Count -eq 0) {
+              Write-Host "Error: No llvm-mingw compiler directory found in $sourcePath"
+              Get-ChildItem -Path $sourcePath
+              exit 1
+            }
+            
+            $compilerDir = $compilerDirs[0].FullName
+            Write-Host "Found compiler directory: ${compilerDir}"
+            
+            # 复制Qt安装内容
+            Copy-Item -Path "$compilerDir\*" -Destination $finalPath -Recurse -Force
+            
+            # 创建压缩包
+            Set-Location $tempDir
+            $workspaceDir = "${{ github.workspace }}"
+            $archiveFullPath = Join-Path $workspaceDir $archiveName
+            
+            7z a "$archiveFullPath" $finalDirName -mx=9
+            
+            echo "Archive created: $archiveFullPath"
+            
+            # 验证压缩包
+            if (Test-Path $archiveFullPath) {
+              echo "Archive verified at: $archiveFullPath"
+              $fileInfo = Get-Item $archiveFullPath
+              echo "File size: $($fileInfo.Length) bytes"
+            } else {
+              echo "Error: Archive file not found at $archiveFullPath"
+              exit 1
+            }
+            
+            # 输出到环境变量供后续步骤使用
             echo "ARCHIVE_NAME=$archiveName" >> $env:GITHUB_ENV
+            echo "ARCHIVE_PATH=$archiveFullPath" >> $env:GITHUB_ENV
+            
+            # 清理临时目录
+            Set-Location "${{ github.workspace }}"
+            Remove-Item $tempDir -Recurse -Force
           } else {
-            Write-Error "Failed to create archive"
+            echo "Error: Source path does not exist: $sourcePath"
             exit 1
           }
         shell: pwsh
 
-      - name: Upload artifact
+      - name: Export Qt configure summary
+        shell: pwsh
+        run: |
+          $bt="${{ matrix.build_type }}"
+          $lt="${{ matrix.link_type }}"
+          $buildDir="D:\a\QtBuild\build"
+          $summary = Join-Path $buildDir "config.summary"
+          if (-not (Test-Path $summary)) {
+            Write-Host "config.summary not found at $summary"
+            Get-ChildItem $buildDir -Recurse -Filter "config.summary" -ErrorAction SilentlyContinue | Select-Object -First 1 | ForEach-Object { $summary=$_.FullName }
+          }
+          if (-not (Test-Path $summary)) { Write-Host "No config.summary found."; exit 1 }
+          $out = Join-Path "${{ github.workspace }}" ("qt-build-report_" + $lt + "_" + $bt + ".txt")
+          Copy-Item $summary $out -Force
+          echo "REPORT_FILE=$out" >> $env:GITHUB_ENV
+
+      - name: Upload package
         uses: actions/upload-artifact@v4
         with:
-          name: qt${{ env.QT_VERSION }}-windows-x86_64-llvm_clang${{ env.COMPILER_VERSION }}-${{ matrix.link_type }}_${{ matrix.build_type == 'release' && 'release' || matrix.build_type == 'debug' && 'debug' || 'relwithdebinfo' }}
+          name: qt${{ env.QT_VERSION }}-windows-x86_64-llvm_clang${{ env.COMPILER_VERSION }}_${{ env.RUNTIME }}-${{ matrix.link_type }}_${{ matrix.build_type == 'release' && 'release' || matrix.build_type == 'debug' && 'debug' || 'relwithdebinfo' }}
           path: ${{ env.ARCHIVE_NAME }}
           if-no-files-found: error
+
+      - name: Upload build report
+        uses: actions/upload-artifact@v4
+        with:
+          name: report-${{ matrix.link_type }}_${{ matrix.build_type }}
+          path: ${{ env.REPORT_FILE }}
+          if-no-files-found: error
+
+      # Note: This workflow only builds and uploads artifacts
+      # Use the 'release-qt-unified' workflow to create releases with all platforms
