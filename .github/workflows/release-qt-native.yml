@@ -269,20 +269,28 @@ jobs:
           else
             echo "No reports directory found - creating sample configuration data"
             # Add sample configurations for demonstration
-            build_configs=("Windows MSVC static release" "Windows MSVC shared release" "Linux GCC static release" "Linux GCC shared release")
+            build_configs=("Win-MSVC-static" "Win-MSVC-shared" "Linux-GCC-static" "Linux-GCC-shared")
             
-            # Add sample features
-            sample_features=("Qt Concurrent" "Qt D-Bus" "Qt Gui" "Qt Network" "Qt PrintSupport" "Qt Sql" "Qt Testlib" "Qt Widgets" "Qt Xml" "OpenSSL" "Vulkan" "Desktop OpenGL" "PostgreSQL" "MySQL" "SQLite")
+            # Add sample features - using shorter names for better table display
+            sample_features=("Qt Core" "Qt Gui" "Qt Network" "Qt Sql" "Qt Widgets" "OpenSSL" "Vulkan" "PostgreSQL" "MySQL" "SQLite")
+            
+            echo "Creating sample data with configs: ${build_configs[*]}"
+            echo "Sample features: ${sample_features[*]}"
             
             for feature in "${sample_features[@]}"; do
               all_features+=("$feature")
+              echo "Processing feature: $feature"
               for config in "${build_configs[@]}"; do
+                key="$feature,$config"
                 if [[ "$feature" == "OpenSSL" ]]; then
-                  features["$feature,$config"]="❌"  # OpenSSL typically disabled in Windows builds
-                elif [[ "$feature" == "Qt D-Bus" && "$config" =~ "Windows" ]]; then
-                  features["$feature,$config"]="❌"  # D-Bus not available on Windows
+                  features["$key"]="❌"
+                  echo "  $config: ❌ (OpenSSL)"
+                elif [[ "$feature" == "Qt D-Bus" && "$config" =~ "Win" ]]; then
+                  features["$key"]="❌"
+                  echo "  $config: ❌ (D-Bus on Windows)"
                 else
-                  features["$feature,$config"]="✅"  # Most features enabled
+                  features["$key"]="✅"
+                  echo "  $config: ✅"
                 fi
               done
             done
@@ -306,33 +314,39 @@ jobs:
           
           EOF
           
-          # Create table header
-          echo -n "| Feature |" >> config_table.md
-          for config in "${build_configs[@]}"; do
-            echo -n " $config |" >> config_table.md
-          done
-          echo "" >> config_table.md
+          # Create table header - ensure proper formatting
+          {
+            echo -n "| Feature"
+            for config in "${build_configs[@]}"; do
+              echo -n " | $config"
+            done
+            echo " |"
+          } >> config_table.md
           
-          # Create separator line
-          echo -n "|---------|" >> config_table.md
-          for config in "${build_configs[@]}"; do
-            echo -n "---------|" >> config_table.md
-          done
-          echo "" >> config_table.md
+          # Create separator line - ensure proper formatting
+          {
+            echo -n "|---------|"
+            for config in "${build_configs[@]}"; do
+              echo -n "---------|"
+            done
+            echo ""
+          } >> config_table.md
           
           # Sort features for better organization
           IFS=$'\n' sorted_features=($(sort <<<"${all_features[*]}"))
           unset IFS
           
-          # Create table rows
+          # Create table rows - ensure proper formatting
           for feature in "${sorted_features[@]}"; do
             if [[ -n "$feature" ]]; then
-              echo -n "| **$feature** |" >> config_table.md
-              for config in "${build_configs[@]}"; do
-                status="${features["$feature,$config"]:-"❓"}"
-                echo -n " $status |" >> config_table.md
-              done
-              echo "" >> config_table.md
+              {
+                echo -n "| **$feature**"
+                for config in "${build_configs[@]}"; do
+                  status="${features["$feature,$config"]:-"❓"}"
+                  echo -n " | $status"
+                done
+                echo " |"
+              } >> config_table.md
             fi
           done
           
