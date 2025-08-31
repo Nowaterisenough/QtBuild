@@ -85,10 +85,18 @@ jobs:
                     artifact.name.includes(qtVersion) && artifact.name.startsWith('qt')
                   );
                   
-                  for (const artifact of qtArtifacts) {
-                    console.log(`Found artifact: ${artifact.name} (${artifact.size_in_bytes} bytes)`);
+                  // Separate Qt packages and build reports
+                  const qtPackages = qtArtifacts.filter(artifact => 
+                    !artifact.name.startsWith('report-')
+                  );
+                  const buildReports = artifacts.data.artifacts.filter(artifact => 
+                    artifact.name.startsWith('report-')
+                  );
+                  
+                  // Download Qt packages
+                  for (const artifact of qtPackages) {
+                    console.log(`Found package: ${artifact.name} (${artifact.size_in_bytes} bytes)`);
                     
-                    // Download artifact
                     const download = await github.rest.actions.downloadArtifact({
                       owner: context.repo.owner,
                       repo: context.repo.repo,
@@ -96,13 +104,31 @@ jobs:
                       archive_format: 'zip'
                     });
                     
-                    // Save to file
                     const artifactPath = `${artifact.name}.zip`;
                     fs.writeFileSync(artifactPath, Buffer.from(download.data));
-                    console.log(`Downloaded: ${artifactPath}`);
+                    console.log(`Downloaded package: ${artifactPath}`);
                     
                     allArtifacts.push(artifact.name);
                     foundWorkflows.add(platform);
+                  }
+                  
+                  // Download build reports
+                  for (const artifact of buildReports) {
+                    console.log(`Found report: ${artifact.name} (${artifact.size_in_bytes} bytes)`);
+                    
+                    const download = await github.rest.actions.downloadArtifact({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      artifact_id: artifact.id,
+                      archive_format: 'zip'
+                    });
+                    
+                    const artifactPath = `reports/${artifact.name}.zip`;
+                    if (!fs.existsSync('reports')) {
+                      fs.mkdirSync('reports', { recursive: true });
+                    }
+                    fs.writeFileSync(artifactPath, Buffer.from(download.data));
+                    console.log(`Downloaded report: ${artifactPath}`);
                   }
                 }
               } catch (error) {
@@ -136,8 +162,166 @@ jobs:
             fi
           done
           
+          echo "Extracting build reports..."
+          if [ -d "reports" ]; then
+            cd reports
+            for zip_file in *.zip; do
+              if [ -f "$zip_file" ]; then
+                echo "Extracting report: $zip_file"
+                unzip -q "$zip_file"
+                rm "$zip_file"
+              fi
+            done
+            cd ..
+          fi
+          
           echo "Available files after extraction:"
           find . -name "qt${{ env.QT_VERSION }}*" -type f | head -20
+          echo "Available reports:"
+          find reports -name "*.txt" -type f 2>/dev/null || echo "No reports found"
+
+      - name: Parse build reports and generate configuration table
+        id: parse_reports
+        run: |
+          echo "Parsing build reports to generate detailed configuration table..."
+          
+          # Initialize arrays and variables
+          declare -A configs
+          declare -A features
+          declare -a build_configs
+          declare -a all_features
+          
+          # Process each build report to collect configurations and features
+          if [ -d "reports" ]; then
+            for report in reports/*.txt; do
+              if [ -f "$report" ]; then
+                echo "Processing report: $report"
+                
+                # Extract configuration from filename
+                basename_report=$(basename "$report")
+                if [[ $basename_report =~ report-([^_]+)_([^\.]+)\.txt ]]; then
+                  link_type="${BASH_REMATCH[1]}"
+                  build_type="${BASH_REMATCH[2]}"
+                else
+                  continue
+                fi
+                
+                # Determine platform and compiler
+                platform="Unknown"
+                compiler="Unknown"
+                compiler_version=""
+                
+                while IFS= read -r line; do
+                  if [[ "$line" =~ "Building for: win32-"* ]]; then
+                    platform="Windows"
+                  elif [[ "$line" =~ "Building for: linux-"* ]]; then
+                    platform="Linux"
+                  fi
+                  
+                  if [[ "$line" =~ "Compiler: gcc "([0-9.]+) ]]; then
+                    compiler="GCC"
+                    compiler_version="${BASH_REMATCH[1]}"
+                  elif [[ "$line" =~ "Compiler: clang "([0-9.]+) ]]; then
+                    if [[ "$line" =~ "mingw" ]]; then
+                      compiler="LLVM-MinGW"
+                    else
+                      compiler="LLVM-Clang"
+                    fi
+                    compiler_version="${BASH_REMATCH[1]}"
+                  elif [[ "$line" =~ "Microsoft.*Visual.*Studio" ]]; then
+                    compiler="MSVC"
+                    platform="Windows"
+                  fi
+                done < "$report"
+                
+                # Create config identifier
+                config_name="${platform} ${compiler} ${link_type} ${build_type}"
+                build_configs+=("$config_name")
+                
+                # Parse all features from the report
+                while IFS= read -r line; do
+                  # Extract feature states
+                  if [[ "$line" =~ ^[[:space:]]*([^.]+)[.]+[[:space:]]*([yesno]+)[[:space:]]*$ ]]; then
+                    feature="${BASH_REMATCH[1]// /}"
+                    state="${BASH_REMATCH[2]}"
+                    
+                    # Clean up feature name
+                    feature=$(echo "$feature" | sed 's/[[:space:]]*$//' | sed 's/^[[:space:]]*//')
+                    
+                    if [[ -n "$feature" && -n "$state" ]]; then
+                      if [[ "$state" == "yes" ]]; then
+                        features["$feature,$config_name"]="✅"
+                      else
+                        features["$feature,$config_name"]="❌"
+                      fi
+                      
+                      # Add to features list if not already present
+                      if [[ ! " ${all_features[@]} " =~ " $feature " ]]; then
+                        all_features+=("$feature")
+                      fi
+                    fi
+                  fi
+                done < "$report"
+              fi
+            done
+          fi
+          
+          # Generate transposed table
+          cat > config_table.md << 'EOF'
+          ## Build Configuration Matrix
+          
+          EOF
+          
+          # Create table header
+          echo -n "| Feature |" >> config_table.md
+          for config in "${build_configs[@]}"; do
+            echo -n " $config |" >> config_table.md
+          done
+          echo "" >> config_table.md
+          
+          # Create separator line
+          echo -n "|---------|" >> config_table.md
+          for config in "${build_configs[@]}"; do
+            echo -n "---------|" >> config_table.md
+          done
+          echo "" >> config_table.md
+          
+          # Sort features for better organization
+          IFS=$'\n' sorted_features=($(sort <<<"${all_features[*]}"))
+          unset IFS
+          
+          # Create table rows
+          for feature in "${sorted_features[@]}"; do
+            if [[ -n "$feature" ]]; then
+              echo -n "| **$feature** |" >> config_table.md
+              for config in "${build_configs[@]}"; do
+                status="${features["$feature,$config"]:-"❓"}"
+                echo -n " $status |" >> config_table.md
+              done
+              echo "" >> config_table.md
+            fi
+          done
+          
+          # Add build info summary
+          cat >> config_table.md << 'EOF'
+          
+          ### Legend
+          - ✅ = Enabled/Supported
+          - ❌ = Disabled/Not Available  
+          - ❓ = Status Unknown
+          
+          ### Build Details
+          EOF
+          
+          # Add detailed build information
+          for config in "${build_configs[@]}"; do
+            echo "- **$config**: Available as downloadable package" >> config_table.md
+          done
+          
+          echo ""
+          echo "Generated detailed configuration matrix:"
+          head -20 config_table.md
+          echo "... (truncated, full table includes ${#all_features[@]} features)"
 
       - name: Generate release notes
         id: release_notes
@@ -146,45 +330,59 @@ jobs:
           PLATFORMS="${{ steps.download.outputs.platforms }}"
           ARTIFACT_COUNT="${{ steps.download.outputs.artifacts_found }}"
           
-          cat > release_notes.md << 'EOF'
+          # Generate release notes with real configuration data
+          cat > release_notes.md << EOF
           # Qt ${{ env.QT_VERSION }} - Native Builds
           
-          ## 📦 Release Information
+          ## Release Information
           - **Qt Version**: ${{ env.QT_VERSION }}
           - **Release Type**: Native builds only (Windows + Linux)
           - **Build Date**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')
           - **Total Packages**: ${ARTIFACT_COUNT}
+          - **Supported Platforms**: ${PLATFORMS}
           
-          ## 🏗️ Supported Platforms
-          ${PLATFORMS}
+          EOF
           
-          ## 📋 Available Configurations
+          # Insert the generated configuration table
+          cat config_table.md >> release_notes.md
           
-          ### Windows Builds
-          - **MSVC 2022**: Static/Shared × Release/Debug/RelWithDebInfo
-          - **MinGW-GCC**: Static/Shared × Release/Debug/RelWithDebInfo  
-          - **LLVM-Clang**: Static/Shared × Release/Debug/RelWithDebInfo
+          # Add the rest of the release notes
+          cat >> release_notes.md << 'EOF'
           
-          ### Linux Builds (via WSL2)
-          - **GCC**: Static/Shared × Release/Debug/RelWithDebInfo
-          - **LLVM-Clang**: Static/Shared × Release/Debug/RelWithDebInfo
+          ## Package Naming Convention
+          Packages follow the format: `qt{VERSION}-{PLATFORM}-{ARCH}-{COMPILER}{VER}-{LINK}_{BUILD}.{EXT}`
           
-          ## 🚀 Installation
-          1. Download the appropriate package for your platform and compiler
-          2. Extract to your desired Qt installation directory
-          3. Configure your IDE/build system to use the extracted Qt
+          Examples:
+          - `qt6.9.2-windows-x86_64-msvc2022-shared_release.7z`
+          - `qt6.9.2-linux-x86_64-gcc13-static_debug.tar.xz`
+          - `qt6.9.2-windows-x86_64-llvm18-shared_relwithdebinfo.7z`
           
-          ## ⚠️ Important Notes
+          ## Installation Instructions
+          
+          ### Windows
+          1. Download the appropriate `.7z` package for your compiler
+          2. Extract to your desired Qt installation directory (e.g., `C:\Qt\6.9.2`)
+          3. Configure your IDE to use the extracted Qt installation
+          
+          ### Linux  
+          1. Download the appropriate `.tar.xz` package for your compiler
+          2. Extract: `tar -xf qt6.9.2-linux-*.tar.xz`
+          3. Move to installation directory: `sudo mv qt6.9.2 /opt/Qt/`
+          4. Configure your build system to use the Qt installation
+          
+          ## Important Notes
           - **Cross-compilation builds** (WASM, ARM64) are released separately
-          - All builds include database support (SQLite, PostgreSQL, MySQL)
-          - Static builds include debug info, shared builds may have separate .pdb/.debug files
-          - Windows builds include necessary runtime DLLs
+          - **Static builds** include debug information for better debugging
+          - **Shared builds** may include separate debug symbol files (.pdb/.debug)
+          - **Windows builds** include all necessary runtime DLLs
+          - All builds use **C++20** standard and include full **OpenGL** support
           
-          ## 🛠️ Build Configuration
+          ## Technical Specifications
           - **C++ Standard**: C++20
-          - **OpenGL**: Desktop OpenGL
-          - **SSL**: OpenSSL (linked)
-          - **Databases**: SQLite (built-in), PostgreSQL, MySQL (optional)
+          - **OpenGL**: Desktop OpenGL (Windows), OpenGL ES (where applicable)
+          - **SSL/TLS**: OpenSSL (dynamically linked)
+          - **Database Support**: SQLite (built-in), PostgreSQL, MySQL drivers included
+          - **Threading**: Full Qt threading support with thread-safe modules
           EOF
           
           echo "Release notes generated:"
