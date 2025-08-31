@@ -190,10 +190,14 @@ jobs:
           echo "Release notes generated:"
           cat release_notes.md
 
+      - name: Generate release tag
+        id: release_tag
+        run: echo "tag=qt${{ env.QT_VERSION }}-native-$(date +%Y%m%d-%H%M)" >> $GITHUB_OUTPUT
+
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: qt${{ env.QT_VERSION }}-native-$(date +%Y%m%d-%H%M)
+          tag_name: ${{ steps.release_tag.outputs.tag }}
           name: Qt ${{ env.QT_VERSION }} Native Builds
           body_path: release_notes.md
           files: qt${{ env.QT_VERSION }}*
