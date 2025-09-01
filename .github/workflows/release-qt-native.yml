@@ -250,6 +250,17 @@ jobs:
                   continue
                 fi
                 
+                # Debug: Show actual file content to understand format
+                echo "=== DEBUG: Analyzing $report content ==="
+                echo "File size: $file_size bytes"
+                echo "First 20 lines:"
+                head -20 "$report" || true
+                echo "Last 20 lines:"
+                tail -20 "$report" || true
+                echo "Lines matching our regex pattern:"
+                grep -E '^[[:space:]]+[A-Za-z][^.]*[A-Za-z0-9/\-+_[:space:]][[:space:]]*[.]{3,}[[:space:]]+(yes|no)[[:space:]]*$' "$report" || echo "No matches found"
+                echo "=== END DEBUG ==="
+                
                 # Parse all features from Qt config.summary format
                 # Add a newline at the end to ensure the last line is processed
                 { cat "$report"; echo; } | while IFS= read -r line; do
@@ -287,6 +298,10 @@ jobs:
                 
                 if [[ $feature_count -eq 0 ]]; then
                   echo "Warning: No Qt features found in $report - possibly not a config.summary format"
+                  echo "Sample lines from file for analysis:"
+                  cat "$report" | head -10 | while read -r sample_line; do
+                    echo "LINE: '$sample_line'"
+                  done
                 else
                   echo "Successfully parsed $feature_count features from $report"
                 fi
