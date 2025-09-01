@@ -251,7 +251,8 @@ jobs:
                 fi
                 
                 # Parse all features from Qt config.summary format
-                while IFS= read -r line; do
+                # Add a newline at the end to ensure the last line is processed
+                { cat "$report"; echo; } | while IFS= read -r line; do
                   # Match Qt summary format: "  Feature name .......................... yes/no"
                   if [[ "$line" =~ ^[[:space:]]+([A-Za-z][^.]*[A-Za-z0-9/\-+_[:space:]])[[:space:]]*[.]{3,}[[:space:]]+(yes|no)[[:space:]]*$ ]]; then
                     feature="${BASH_REMATCH[1]}"
@@ -282,7 +283,7 @@ jobs:
                       fi
                     fi
                   fi
-                done < "$report"
+                done
                 
                 if [[ $feature_count -eq 0 ]]; then
                   echo "Warning: No Qt features found in $report - possibly not a config.summary format"
