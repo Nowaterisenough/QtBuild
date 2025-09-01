@@ -307,11 +307,11 @@ jobs:
             echo "This usually means reports are in fallback format (missing config.summary files)"
             
             # Generate basic configuration table with build information only
-            cat > config_table.md << 'EOF'
+            cat > config_table.md << 'BASICEOF'
 ## Build Configuration Summary
 
 **Note**: Detailed Qt feature information is not available for this release as the build reports did not contain configuration summaries. The table below shows the available build configurations.
-EOF
+BASICEOF
             
             # Add basic config table
             if [ ${#build_configs[@]} -gt 0 ]; then
@@ -323,13 +323,13 @@ EOF
                 done
               } >> config_table.md
               
-              cat >> config_table.md << 'EOF'
+              cat >> config_table.md << 'NOTESEOF'
 
 ### Notes
 - Build packages are available for download
 - Detailed Qt feature information will be available in future releases when configuration summaries are properly generated
 - For specific feature availability, please refer to Qt documentation or test the builds directly
-EOF
+NOTESEOF
             else
               echo "| Status | Message |" >> config_table.md
               echo "|--------|---------|" >> config_table.md
@@ -337,9 +337,9 @@ EOF
             fi
           else
             # Generate detailed features table when we have feature data
-            cat > config_table.md << 'EOF'
+            cat > config_table.md << 'MATRIXEOF'
 ## Build Configuration Matrix
-EOF
+MATRIXEOF
             
             # Create table header - ensure proper formatting
             {
@@ -379,7 +379,7 @@ EOF
             done
             
             # Add build info summary
-            cat >> config_table.md << 'EOF'
+            cat >> config_table.md << 'LEGENDEOF'
 
 ### Legend
 - ✅ = Enabled/Supported
@@ -387,7 +387,7 @@ EOF
 - ❓ = Status Unknown
 
 ### Build Details
-EOF
+LEGENDEOF
             
             # Add detailed build information
             for config in "${build_configs[@]}"; do
