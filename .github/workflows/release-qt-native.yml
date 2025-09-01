@@ -239,6 +239,16 @@ jobs:
                 config_name="${platform} ${compiler} ${link_type} ${build_type}"
                 build_configs+=("$config_name")
                 
+                # Check if this is a Qt config.summary format report
+                file_size=$(wc -c < "$report")
+                feature_count=0
+                
+                # Skip small files (likely fallback reports without feature info)
+                if [[ $file_size -lt 1000 ]]; then
+                  echo "Skipping $report - too small to contain Qt configuration summary ($file_size bytes)"
+                  continue
+                fi
+                
                 # Parse all features from Qt config.summary format
                 while IFS= read -r line; do
                   # Match Qt summary format: "  Feature name .......................... yes/no"
@@ -250,6 +260,8 @@ jobs:
                     feature=$(echo "$feature" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
                     
                     if [[ -n "$feature" && -n "$state" ]]; then
+                      ((feature_count++))
+                      
                       if [[ "$state" == "yes" ]]; then
                         features["$feature,$config_name"]="✅"
                       else
@@ -270,6 +282,12 @@ jobs:
                     fi
                   fi
                 done < "$report"
+                
+                if [[ $feature_count -eq 0 ]]; then
+                  echo "Warning: No Qt features found in $report - possibly not a config.summary format"
+                else
+                  echo "Successfully parsed $feature_count features from $report"
+                fi
               fi
             done
           else
@@ -277,9 +295,16 @@ jobs:
             exit 1
           fi
           
-          # Ensure we have parsed actual data
+          # Check if we have any valid configurations and features
+          if [ ${#build_configs[@]} -eq 0 ]; then
+            echo "ERROR: No valid build configurations found"
+            exit 1
+          fi
+          
           if [ ${#all_features[@]} -eq 0 ]; then
-            echo "ERROR: No features parsed from build reports"
+            echo "ERROR: No Qt features parsed from any build reports"
+            echo "This usually means all reports are in fallback format (missing config.summary files)"
+            echo "Please ensure builds complete successfully and generate proper Qt configuration summaries"
             exit 1
           fi
           
@@ -308,7 +333,8 @@ jobs:
           } >> config_table.md
           
           # Sort features for better organization
-          IFS=$'\n' sorted_features=($(sort <<<"${all_features[*]}"))
+          IFS=$'\n'
+          sorted_features=($(printf '%s\n' "${all_features[@]}" | sort))
           unset IFS
           
           # Create table rows - ensure proper formatting
