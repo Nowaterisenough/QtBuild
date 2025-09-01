@@ -311,7 +311,6 @@ jobs:
 ## Build Configuration Summary
 
 **Note**: Detailed Qt feature information is not available for this release as the build reports did not contain configuration summaries. The table below shows the available build configurations.
-
 EOF
             
             # Add basic config table
@@ -330,7 +329,6 @@ EOF
 - Build packages are available for download
 - Detailed Qt feature information will be available in future releases when configuration summaries are properly generated
 - For specific feature availability, please refer to Qt documentation or test the builds directly
-
 EOF
             else
               echo "| Status | Message |" >> config_table.md
@@ -341,7 +339,6 @@ EOF
             # Generate detailed features table when we have feature data
             cat > config_table.md << 'EOF'
 ## Build Configuration Matrix
-
 EOF
             
             # Create table header - ensure proper formatting
