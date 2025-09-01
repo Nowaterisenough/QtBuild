@@ -307,11 +307,10 @@ jobs:
             echo "This usually means reports are in fallback format (missing config.summary files)"
             
             # Generate basic configuration table with build information only
-            cat > config_table.md << 'BASICEOF'
-## Build Configuration Summary
-
-**Note**: Detailed Qt feature information is not available for this release as the build reports did not contain configuration summaries. The table below shows the available build configurations.
-BASICEOF
+            echo "## Build Configuration Summary" > config_table.md
+            echo "" >> config_table.md
+            echo "**Note**: Detailed Qt feature information is not available for this release as the build reports did not contain configuration summaries. The table below shows the available build configurations." >> config_table.md
+            echo "" >> config_table.md
             
             # Add basic config table
             if [ ${#build_configs[@]} -gt 0 ]; then
@@ -323,13 +322,11 @@ BASICEOF
                 done
               } >> config_table.md
               
-              cat >> config_table.md << 'NOTESEOF'
-
-### Notes
-- Build packages are available for download
-- Detailed Qt feature information will be available in future releases when configuration summaries are properly generated
-- For specific feature availability, please refer to Qt documentation or test the builds directly
-NOTESEOF
+              echo "" >> config_table.md
+              echo "### Notes" >> config_table.md
+              echo "- Build packages are available for download" >> config_table.md
+              echo "- Detailed Qt feature information will be available in future releases when configuration summaries are properly generated" >> config_table.md
+              echo "- For specific feature availability, please refer to Qt documentation or test the builds directly" >> config_table.md
             else
               echo "| Status | Message |" >> config_table.md
               echo "|--------|---------|" >> config_table.md
@@ -337,9 +334,8 @@ NOTESEOF
             fi
           else
             # Generate detailed features table when we have feature data
-            cat > config_table.md << 'MATRIXEOF'
-## Build Configuration Matrix
-MATRIXEOF
+            echo "## Build Configuration Matrix" > config_table.md
+            echo "" >> config_table.md
             
             # Create table header - ensure proper formatting
             {
@@ -379,15 +375,13 @@ MATRIXEOF
             done
             
             # Add build info summary
-            cat >> config_table.md << 'LEGENDEOF'
-
-### Legend
-- ✅ = Enabled/Supported
-- ❌ = Disabled/Not Available  
-- ❓ = Status Unknown
-
-### Build Details
-LEGENDEOF
+            echo "" >> config_table.md
+            echo "### Legend" >> config_table.md
+            echo "- ✅ = Enabled/Supported" >> config_table.md
+            echo "- ❌ = Disabled/Not Available" >> config_table.md
+            echo "- ❓ = Status Unknown" >> config_table.md
+            echo "" >> config_table.md
+            echo "### Build Details" >> config_table.md
             
             # Add detailed build information
             for config in "${build_configs[@]}"; do
