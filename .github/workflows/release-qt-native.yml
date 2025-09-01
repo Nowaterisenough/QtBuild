@@ -241,8 +241,8 @@ jobs:
                 
                 # Parse all features from Qt config.summary format
                 while IFS= read -r line; do
-                  # Match Qt summary format: "Feature name ..................... yes/no" or "  Feature ........... yes/no"
-                  if [[ "$line" =~ ^[[:space:]]*([A-Za-z][^.]*[A-Za-z0-9/\-+_[:space:]])[[:space:]]*[.]{3,}[[:space:]]+(yes|no)[[:space:]]*$ ]]; then
+                  # Match Qt summary format: "  Feature name .......................... yes/no"
+                  if [[ "$line" =~ ^[[:space:]]+([A-Za-z][^.]*[A-Za-z0-9/\-+_[:space:]])[[:space:]]*[.]{3,}[[:space:]]+(yes|no)[[:space:]]*$ ]]; then
                     feature="${BASH_REMATCH[1]}"
                     state="${BASH_REMATCH[2]}"
                     
@@ -257,7 +257,14 @@ jobs:
                       fi
                       
                       # Add to features list if not already present
-                      if [[ ! " ${all_features[@]} " =~ " $feature " ]]; then
+                      found=false
+                      for existing_feature in "${all_features[@]}"; do
+                        if [[ "$existing_feature" == "$feature" ]]; then
+                          found=true
+                          break
+                        fi
+                      done
+                      if [[ "$found" == "false" ]]; then
                         all_features+=("$feature")
                       fi
                     fi
