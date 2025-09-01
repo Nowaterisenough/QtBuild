@@ -197,12 +197,13 @@ jobs:
               if [ -f "$report" ]; then
                 echo "Processing report: $report"
                 
-                # Extract configuration from filename
+                # Extract configuration from filename: qt-build-report_shared_debug.txt
                 basename_report=$(basename "$report")
-                if [[ $basename_report =~ report-([^_]+)_([^\.]+)\.txt ]]; then
+                if [[ $basename_report =~ qt-build-report_([^_]+)_([^\.]+)\.txt ]]; then
                   link_type="${BASH_REMATCH[1]}"
                   build_type="${BASH_REMATCH[2]}"
                 else
+                  echo "Skipping file with unrecognized name: $basename_report"
                   continue
                 fi
                 
@@ -238,15 +239,15 @@ jobs:
                 config_name="${platform} ${compiler} ${link_type} ${build_type}"
                 build_configs+=("$config_name")
                 
-                # Parse all features from the report - fixed regex
+                # Parse all features from Qt config.summary format
                 while IFS= read -r line; do
-                  # Match pattern: "  Feature name ............. yes/no"
-                  if [[ "$line" =~ ^[[:space:]]+([A-Za-z][^.]*[A-Za-z0-9/+-])[[:space:]]*[.]+[[:space:]]+(yes|no)[[:space:]]*$ ]]; then
+                  # Match Qt summary format: "Feature name ..................... yes/no" or "  Feature ........... yes/no"
+                  if [[ "$line" =~ ^[[:space:]]*([A-Za-z][^.]*[A-Za-z0-9/\-+_[:space:]])[[:space:]]*[.]{3,}[[:space:]]+(yes|no)[[:space:]]*$ ]]; then
                     feature="${BASH_REMATCH[1]}"
                     state="${BASH_REMATCH[2]}"
                     
-                    # Clean up feature name - remove trailing spaces
-                    feature=$(echo "$feature" | sed 's/[[:space:]]*$//')
+                    # Clean up feature name - remove trailing/leading spaces
+                    feature=$(echo "$feature" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
                     
                     if [[ -n "$feature" && -n "$state" ]]; then
                       if [[ "$state" == "yes" ]]; then
