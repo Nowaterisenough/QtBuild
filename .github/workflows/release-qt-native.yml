@@ -238,23 +238,21 @@ jobs:
                 config_name="${platform} ${compiler} ${link_type} ${build_type}"
                 build_configs+=("$config_name")
                 
-                # Parse all features from the report with simpler regex
+                # Parse all features from the report - fixed regex
                 while IFS= read -r line; do
-                  # Extract feature states - simpler pattern
-                  if [[ "$line" =~ ^[[:space:]]*([^.]+)[.]+[[:space:]]*([a-zA-Z]+)[[:space:]]*$ ]]; then
+                  # Match pattern: "  Feature name ............. yes/no"
+                  if [[ "$line" =~ ^[[:space:]]+([A-Za-z][^.]*[A-Za-z0-9/+-])[[:space:]]*[.]+[[:space:]]+(yes|no)[[:space:]]*$ ]]; then
                     feature="${BASH_REMATCH[1]}"
                     state="${BASH_REMATCH[2]}"
                     
-                    # Clean up feature name
-                    feature=$(echo "$feature" | sed 's/[[:space:]]*$//' | sed 's/^[[:space:]]*//')
+                    # Clean up feature name - remove trailing spaces
+                    feature=$(echo "$feature" | sed 's/[[:space:]]*$//')
                     
                     if [[ -n "$feature" && -n "$state" ]]; then
                       if [[ "$state" == "yes" ]]; then
                         features["$feature,$config_name"]="✅"
-                      elif [[ "$state" == "no" ]]; then
-                        features["$feature,$config_name"]="❌"
                       else
-                        features["$feature,$config_name"]="❓"
+                        features["$feature,$config_name"]="❌"
                       fi
                       
                       # Add to features list if not already present
@@ -267,45 +265,14 @@ jobs:
               fi
             done
           else
-            echo "No reports directory found - creating sample configuration data"
-            # Add sample configurations for demonstration
-            build_configs=("Win-MSVC-static" "Win-MSVC-shared" "Linux-GCC-static" "Linux-GCC-shared")
-            
-            # Add sample features - using shorter names for better table display
-            sample_features=("Qt Core" "Qt Gui" "Qt Network" "Qt Sql" "Qt Widgets" "OpenSSL" "Vulkan" "PostgreSQL" "MySQL" "SQLite")
-            
-            echo "Creating sample data with configs: ${build_configs[*]}"
-            echo "Sample features: ${sample_features[*]}"
-            
-            for feature in "${sample_features[@]}"; do
-              all_features+=("$feature")
-              echo "Processing feature: $feature"
-              for config in "${build_configs[@]}"; do
-                key="$feature,$config"
-                if [[ "$feature" == "OpenSSL" ]]; then
-                  features["$key"]="❌"
-                  echo "  $config: ❌ (OpenSSL)"
-                elif [[ "$feature" == "Qt D-Bus" && "$config" =~ "Win" ]]; then
-                  features["$key"]="❌"
-                  echo "  $config: ❌ (D-Bus on Windows)"
-                else
-                  features["$key"]="✅"
-                  echo "  $config: ✅"
-                fi
-              done
-            done
+            echo "ERROR: No reports directory found - cannot generate configuration table without build reports"
+            exit 1
           fi
           
-          # Ensure we have some data to display
+          # Ensure we have parsed actual data
           if [ ${#all_features[@]} -eq 0 ]; then
-            echo "No features found, adding basic Qt modules"
-            basic_features=("Qt Core" "Qt Gui" "Qt Widgets" "Qt Network" "Qt Sql")
-            for feature in "${basic_features[@]}"; do
-              all_features+=("$feature")
-              for config in "${build_configs[@]}"; do
-                features["$feature,$config"]="✅"
-              done
-            done
+            echo "ERROR: No features parsed from build reports"
+            exit 1
           fi
           
           # Generate transposed table
@@ -383,60 +350,14 @@ jobs:
           PLATFORMS="${{ steps.download.outputs.platforms }}"
           ARTIFACT_COUNT="${{ steps.download.outputs.artifacts_found }}"
           
-          # Generate release notes with real configuration data
+          # Generate simplified release notes with only configuration table
           cat > release_notes.md << EOF
-          # Qt ${{ env.QT_VERSION }} - Native Builds
-          
-          ## Release Information
-          - **Qt Version**: ${{ env.QT_VERSION }}
-          - **Release Type**: Native builds only (Windows + Linux)
-          - **Build Date**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')
-          - **Total Packages**: ${ARTIFACT_COUNT}
-          - **Supported Platforms**: ${PLATFORMS}
+          # Qt ${{ env.QT_VERSION }} Build Configuration Matrix
           
           EOF
           
           # Insert the generated configuration table
           cat config_table.md >> release_notes.md
-          
-          # Add the rest of the release notes
-          cat >> release_notes.md << 'EOF'
-          
-          ## Package Naming Convention
-          Packages follow the format: `qt{VERSION}-{PLATFORM}-{ARCH}-{COMPILER}{VER}-{LINK}_{BUILD}.{EXT}`
-          
-          Examples:
-          - `qt6.9.2-windows-x86_64-msvc2022-shared_release.7z`
-          - `qt6.9.2-linux-x86_64-gcc13-static_debug.tar.xz`
-          - `qt6.9.2-windows-x86_64-llvm18-shared_relwithdebinfo.7z`
-          
-          ## Installation Instructions
-          
-          ### Windows
-          1. Download the appropriate `.7z` package for your compiler
-          2. Extract to your desired Qt installation directory (e.g., `C:\Qt\6.9.2`)
-          3. Configure your IDE to use the extracted Qt installation
-          
-          ### Linux  
-          1. Download the appropriate `.tar.xz` package for your compiler
-          2. Extract: `tar -xf qt6.9.2-linux-*.tar.xz`
-          3. Move to installation directory: `sudo mv qt6.9.2 /opt/Qt/`
-          4. Configure your build system to use the Qt installation
-          
-          ## Important Notes
-          - **Cross-compilation builds** (WASM, ARM64) are released separately
-          - **Static builds** include debug information for better debugging
-          - **Shared builds** may include separate debug symbol files (.pdb/.debug)
-          - **Windows builds** include all necessary runtime DLLs
-          - All builds use **C++20** standard and include full **OpenGL** support
-          
-          ## Technical Specifications
-          - **C++ Standard**: C++20
-          - **OpenGL**: Desktop OpenGL (Windows), OpenGL ES (where applicable)
-          - **SSL/TLS**: OpenSSL (dynamically linked)
-          - **Database Support**: SQLite (built-in), PostgreSQL, MySQL drivers included
-          - **Threading**: Full Qt threading support with thread-safe modules
-          EOF
           
           echo "Release notes generated:"
           cat release_notes.md
