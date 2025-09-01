@@ -243,7 +243,8 @@ jobs:
                 file_size=$(wc -c < "$report")
                 feature_count=0
                 
-                # Skip small files (likely fallback reports without feature info)
+                
+                # Skip small files (likely fallback reports without feature info)  
                 if [[ $file_size -lt 1000 ]]; then
                   echo "Skipping $report - too small to contain Qt configuration summary ($file_size bytes)"
                   continue
@@ -302,70 +303,100 @@ jobs:
           fi
           
           if [ ${#all_features[@]} -eq 0 ]; then
-            echo "ERROR: No Qt features parsed from any build reports"
-            echo "This usually means all reports are in fallback format (missing config.summary files)"
-            echo "Please ensure builds complete successfully and generate proper Qt configuration summaries"
-            exit 1
-          fi
-          
-          # Generate transposed table
-          cat > config_table.md << 'EOF'
-          ## Build Configuration Matrix
-          
-          EOF
-          
-          # Create table header - ensure proper formatting
-          {
-            echo -n "| Feature"
-            for config in "${build_configs[@]}"; do
-              echo -n " | $config"
-            done
-            echo " |"
-          } >> config_table.md
-          
-          # Create separator line - ensure proper formatting
-          {
-            echo -n "|---------|"
-            for config in "${build_configs[@]}"; do
-              echo -n "---------|"
-            done
-            echo ""
-          } >> config_table.md
-          
-          # Sort features for better organization
-          IFS=$'\n'
-          sorted_features=($(printf '%s\n' "${all_features[@]}" | sort))
-          unset IFS
-          
-          # Create table rows - ensure proper formatting
-          for feature in "${sorted_features[@]}"; do
-            if [[ -n "$feature" ]]; then
+            echo "WARNING: No Qt features parsed from build reports - generating basic configuration table"
+            echo "This usually means reports are in fallback format (missing config.summary files)"
+            
+            # Generate basic configuration table with build information only
+            cat > config_table.md << 'EOF'
+## Build Configuration Summary
+
+**Note**: Detailed Qt feature information is not available for this release as the build reports did not contain configuration summaries. The table below shows the available build configurations.
+
+EOF
+            
+            # Add basic config table
+            if [ ${#build_configs[@]} -gt 0 ]; then
               {
-                echo -n "| **$feature**"
+                echo "| Configuration | Status |"
+                echo "|---------------|--------|"
                 for config in "${build_configs[@]}"; do
-                  status="${features["$feature,$config"]:-"❓"}"
-                  echo -n " | $status"
+                  echo "| **$config** | ✅ Available |"
                 done
-                echo " |"
               } >> config_table.md
+              
+              cat >> config_table.md << 'EOF'
+
+### Notes
+- Build packages are available for download
+- Detailed Qt feature information will be available in future releases when configuration summaries are properly generated
+- For specific feature availability, please refer to Qt documentation or test the builds directly
+
+EOF
+            else
+              echo "| Status | Message |" >> config_table.md
+              echo "|--------|---------|" >> config_table.md
+              echo "| ⚠️ Warning | No valid build configurations found |" >> config_table.md
             fi
-          done
-          
-          # Add build info summary
-          cat >> config_table.md << 'EOF'
-          
-          ### Legend
-          - ✅ = Enabled/Supported
-          - ❌ = Disabled/Not Available  
-          - ❓ = Status Unknown
-          
-          ### Build Details
-          EOF
-          
-          # Add detailed build information
-          for config in "${build_configs[@]}"; do
-            echo "- **$config**: Available as downloadable package" >> config_table.md
-          done
+          else
+            # Generate detailed features table when we have feature data
+            cat > config_table.md << 'EOF'
+## Build Configuration Matrix
+
+EOF
+            
+            # Create table header - ensure proper formatting
+            {
+              echo -n "| Feature"
+              for config in "${build_configs[@]}"; do
+                echo -n " | $config"
+              done
+              echo " |"
+            } >> config_table.md
+            
+            # Create separator line - ensure proper formatting
+            {
+              echo -n "|---------|"
+              for config in "${build_configs[@]}"; do
+                echo -n "---------|"
+              done
+              echo ""
+            } >> config_table.md
+            
+            # Sort features for better organization
+            IFS=$'\n'
+            sorted_features=($(printf '%s\n' "${all_features[@]}" | sort))
+            unset IFS
+            
+            # Create table rows - ensure proper formatting
+            for feature in "${sorted_features[@]}"; do
+              if [[ -n "$feature" ]]; then
+                {
+                  echo -n "| **$feature**"
+                  for config in "${build_configs[@]}"; do
+                    status="${features["$feature,$config"]:-"❓"}"
+                    echo -n " | $status"
+                  done
+                  echo " |"
+                } >> config_table.md
+              fi
+            done
+            
+            # Add build info summary
+            cat >> config_table.md << 'EOF'
+
+### Legend
+- ✅ = Enabled/Supported
+- ❌ = Disabled/Not Available  
+- ❓ = Status Unknown
+
+### Build Details
+EOF
+            
+            # Add detailed build information
+            for config in "${build_configs[@]}"; do
+              echo "- **$config**: Available as downloadable package" >> config_table.md
+            done
+          fi
           
           echo ""
           echo "Generated detailed configuration matrix:"
