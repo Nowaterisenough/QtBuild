@@ -8,6 +8,17 @@ set EMSCRIPTEN_VERSION=%2
 set BUILD_TYPE=%3
 set LINK_TYPE=%4
 
+REM 参数验证和默认值
+if "%QT_VERSION%"=="" (
+    echo Error: Qt version is required
+    echo Usage: %0 QT_VERSION EMSCRIPTEN_VERSION BUILD_TYPE LINK_TYPE
+    echo Example: %0 6.9.2 4.0.14 release static
+    exit /b 1
+)
+if "%EMSCRIPTEN_VERSION%"=="" set EMSCRIPTEN_VERSION=4.0.14
+if "%BUILD_TYPE%"=="" set BUILD_TYPE=release
+if "%LINK_TYPE%"=="" set LINK_TYPE=static
+
 REM 例如: 6.9.2  4.0.14  release  static
 
 REM 设置WASM版本代号
@@ -40,7 +51,7 @@ set TEMP_INSTALL_DIR=D:\a\QtBuild\temp_install
 REM 路径和文件名定义
 set SRC_QT="%QT_PATH%\%QT_VERSION%\qt-everywhere-src-%QT_VERSION%"
 set HOST_QT_DIR="%QT_PATH%\%QT_VERSION%-host"
-set FINAL_INSTALL_DIR="%QT_PATH%\%QT_VERSION%-%LINK_TYPE%\%WASM_VERSION%"
+set FINAL_INSTALL_DIR="%QT_PATH%\%QT_VERSION%-%LINK_TYPE%-%WASM_VERSION%"
 set BUILD_DIR="%SHORT_BUILD_PATH%"
 
 echo.
@@ -66,7 +77,16 @@ mkdir "%TEMP_INSTALL_DIR%"
 cd /d "%SHORT_BUILD_PATH%"
 
 REM 配置参数
-set CFG_OPTIONS=-%LINK_TYPE% -prefix %TEMP_INSTALL_DIR% -platform wasm-emscripten -no-warnings-are-errors -qt-host-path %HOST_QT_DIR% -nomake examples -nomake tests -submodules qtbase,qtdeclarative -c++std c++20 -opensource -confirm-license -qt-libpng -qt-libjpeg -qt-zlib -qt-pcre -qt-freetype -no-dbus -feature-thread
+set CFG_OPTIONS=-prefix %TEMP_INSTALL_DIR% -platform wasm-emscripten -no-warnings-are-errors -qt-host-path %HOST_QT_DIR% -nomake examples -nomake tests -submodules qtbase,qtdeclarative -c++std c++20 -opensource -confirm-license -qt-libpng -qt-libjpeg -qt-zlib -qt-pcre -qt-freetype -no-dbus -feature-thread
+
+REM 添加链接类型选项
+if "%LINK_TYPE%"=="static" (
+    set CFG_OPTIONS=%CFG_OPTIONS% -static
+) else if "%LINK_TYPE%"=="shared" (
+    set CFG_OPTIONS=%CFG_OPTIONS% -shared
+) else (
+    set CFG_OPTIONS=%CFG_OPTIONS% -static
+)
 
 REM 根据构建类型添加相应选项
 if "%BUILD_TYPE%"=="debug" (

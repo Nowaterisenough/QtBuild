@@ -307,7 +307,7 @@ jobs:
         run: |
           setlocal enableextensions enabledelayedexpansion
           set QT_VERSION=${{ env.QT_VERSION }}
-          set EMSCRIPTEN_VERSION=${{ env.EMSCRIPTEN_VERSION }}
+          set EMSCRIPTEN_VERSION=${{ env.COMPILER_VERSION }}
           set BUILD_TYPE=${{ matrix.build_type }}
           set LINK_TYPE=${{ matrix.link_type }}
           call D:\a\QtBuild\QtBuild\Qt6Build\build-qt6-cross-wasm32_emscripten_windows.cmd !QT_VERSION! !EMSCRIPTEN_VERSION! !BUILD_TYPE! !LINK_TYPE!
@@ -317,7 +317,7 @@ jobs:
           $linkType = "${{ matrix.link_type }}"
           $buildType = "${{ matrix.build_type }}"
           $qtVersion = "${{ env.QT_VERSION }}"
-          $emscriptenVersion = "${{ env.EMSCRIPTEN_VERSION }}"
+          $emscriptenVersion = "${{ env.COMPILER_VERSION }}"
           $gccVersion = "${{ env.HOST_GCC_VERSION }}"
           
           $buildTypeNormalized = switch ($buildType) {
@@ -329,7 +329,7 @@ jobs:
           
           # Configure summary 文件路径
           $summaryFileName = "qt${qtVersion}-wasm32_emscripten${emscriptenVersion}-cross_mingw_gcc${gccVersion}-${linkType}_${buildTypeNormalized}_configure_summary.txt"
-          $buildDir = "D:\a\QtBuild\Qt\$qtVersion-build-$linkType"
+          $buildDir = "D:\a\QtBuild\build"
           $configSummaryFile = Join-Path $buildDir "config.summary"
           
           Write-Host "Looking for config.summary at: $configSummaryFile"
@@ -373,7 +373,7 @@ jobs:
           $linkType = "${{ matrix.link_type }}"
           $buildType = "${{ matrix.build_type }}"
           $qtVersion = "${{ env.QT_VERSION }}"
-          $emscriptenVersion = "${{ env.EMSCRIPTEN_VERSION }}"
+          $emscriptenVersion = "${{ env.COMPILER_VERSION }}"
           $gccVersion = "${{ env.HOST_GCC_VERSION }}"
           $buildTypeNormalized = switch ($buildType) {
             "release" { "release" }
@@ -387,7 +387,7 @@ jobs:
           }
           # 命名体现交叉编译与 host GCC
           $archiveName = "qt${qtVersion}-wasm32_emscripten${emscriptenVersion}-cross_mingw_gcc${gccVersion}-${linkTypeNormalized}_${buildTypeNormalized}.7z"
-          $sourcePath = "D:\a\QtBuild\Qt\$qtVersion-$linkType"
+          $sourcePath = "D:\a\QtBuild\Qt\$qtVersion-$linkType-wasm32_emscripten"
           if (Test-Path $sourcePath) {
             7z a $archiveName $sourcePath -mx=9
             echo "Archive created: $archiveName"
@@ -402,7 +402,7 @@ jobs:
       - name: Upload package
         uses: actions/upload-artifact@v4
         with:
-          name: qt${{ env.QT_VERSION }}-wasm32_emscripten${{ env.EMSCRIPTEN_VERSION }}-cross_mingw_gcc${{ env.HOST_GCC_VERSION }}-${{ matrix.link_type }}_${{ matrix.build_type == 'release' && 'release' || matrix.build_type == 'debug' && 'debug' || 'releaseanddebug' }}
+          name: qt${{ env.QT_VERSION }}-wasm32_emscripten${{ env.COMPILER_VERSION }}-cross_mingw_gcc${{ env.HOST_GCC_VERSION }}-${{ matrix.link_type }}_${{ matrix.build_type == 'release' && 'release' || matrix.build_type == 'debug' && 'debug' || 'releaseanddebug' }}
           path: |
             ${{ env.ARCHIVE_NAME }}
             ${{ env.SUMMARY_FILE }}
