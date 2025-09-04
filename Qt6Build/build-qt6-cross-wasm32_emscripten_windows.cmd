@@ -8,7 +8,7 @@ set EMSCRIPTEN_VERSION=%2
 set BUILD_TYPE=%3
 set LINK_TYPE=%4
 
-REM 例如: 6.9.2  4.0.13  release  static
+REM 例如: 6.9.2  4.0.14  release  static
 
 REM 设置WASM版本代号
 set WASM_VERSION=wasm32_emscripten

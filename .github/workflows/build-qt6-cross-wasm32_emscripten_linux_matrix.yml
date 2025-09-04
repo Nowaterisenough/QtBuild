@@ -1,9 +1,9 @@
 # =============================================================================
 # Qt 6 WASM Emscripten Build Matrix
-# Standardized workflow for building Qt with Emscripten for WebAssembly
+# Standardized workflow for building Qt with Emscripten for WebAssembly on Windows
 # =============================================================================
 
-name: build-qt6-cross-wasm32_emscripten_linux_matrix
+name: build-qt6-cross-wasm32_emscripten_windows_matrix
 
 on:
   workflow_dispatch:
@@ -15,11 +15,11 @@ on:
       compiler_version:
         description: 'Emscripten Version'
         required: true
-        default: '4.0.13'
+        default: '4.0.14'
         type: choice
         options:
         - '3.1.70'
-        - '4.0.13'
+        - '4.0.14'
       host_gcc_version:
         description: 'Host GCC Version (MinGW for cross-compilation)'
         required: true
@@ -57,7 +57,7 @@ on:
 
 env:
   QT_VERSION: ${{ github.event.inputs.qt_version || '6.9.2' }}
-  COMPILER_VERSION: ${{ github.event.inputs.compiler_version || '4.0.13' }}
+  COMPILER_VERSION: ${{ github.event.inputs.compiler_version || '4.0.14' }}
   HOST_GCC_VERSION: ${{ github.event.inputs.host_gcc_version || '15.2.0' }}
   HOST_QT_URL: ${{ github.event.inputs.host_qt_url || 'https://github.com/Nowaterisenough/QtBuild/releases/download/qt6.9.2-windows-mingw15.2.0-ucrt-20250819063525/qt6.9.2-windows-x86_64-mingw_gcc15.2.0_ucrt-shared_release.7z' }}
   VULKAN_CHOICE: ${{ github.event.inputs.vulkan_sdk || 'runtime-1.4.321.0' }}
@@ -310,7 +310,7 @@ jobs:
           set EMSCRIPTEN_VERSION=${{ env.EMSCRIPTEN_VERSION }}
           set BUILD_TYPE=${{ matrix.build_type }}
           set LINK_TYPE=${{ matrix.link_type }}
-          call D:\a\QtBuild\QtBuild\Qt6Build\build-qt6-cross-wasm32_emscripten_linux.sh !QT_VERSION! !EMSCRIPTEN_VERSION! !BUILD_TYPE! !LINK_TYPE!
+          call D:\a\QtBuild\QtBuild\Qt6Build\build-qt6-cross-wasm32_emscripten_windows.cmd !QT_VERSION! !EMSCRIPTEN_VERSION! !BUILD_TYPE! !LINK_TYPE!
 
       - name: Export Qt configure summary
         run: |
@@ -318,7 +318,7 @@ jobs:
           $buildType = "${{ matrix.build_type }}"
           $qtVersion = "${{ env.QT_VERSION }}"
           $emscriptenVersion = "${{ env.EMSCRIPTEN_VERSION }}"
-          $gccVersion = "${{ env.GCC_VERSION }}"
+          $gccVersion = "${{ env.HOST_GCC_VERSION }}"
           
           $buildTypeNormalized = switch ($buildType) {
             "release" { "release" }
@@ -374,7 +374,7 @@ jobs:
           $buildType = "${{ matrix.build_type }}"
           $qtVersion = "${{ env.QT_VERSION }}"
           $emscriptenVersion = "${{ env.EMSCRIPTEN_VERSION }}"
-          $gccVersion = "${{ env.GCC_VERSION }}"
+          $gccVersion = "${{ env.HOST_GCC_VERSION }}"
           $buildTypeNormalized = switch ($buildType) {
             "release" { "release" }
             "debug" { "debug" }
@@ -402,7 +402,7 @@ jobs:
       - name: Upload package
         uses: actions/upload-artifact@v4
         with:
-          name: qt${{ env.QT_VERSION }}-wasm32_emscripten${{ env.EMSCRIPTEN_VERSION }}-cross_mingw_gcc${{ env.GCC_VERSION }}-${{ matrix.link_type }}_${{ matrix.build_type == 'release' && 'release' || matrix.build_type == 'debug' && 'debug' || 'releaseanddebug' }}
+          name: qt${{ env.QT_VERSION }}-wasm32_emscripten${{ env.EMSCRIPTEN_VERSION }}-cross_mingw_gcc${{ env.HOST_GCC_VERSION }}-${{ matrix.link_type }}_${{ matrix.build_type == 'release' && 'release' || matrix.build_type == 'debug' && 'debug' || 'releaseanddebug' }}
           path: |
             ${{ env.ARCHIVE_NAME }}
             ${{ env.SUMMARY_FILE }}
