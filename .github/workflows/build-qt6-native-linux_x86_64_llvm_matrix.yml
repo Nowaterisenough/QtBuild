@@ -55,7 +55,7 @@ env:
   QT_VERSION: ${{ github.event.inputs.qt_version || '6.9.2' }}
   COMPILER_VERSION: ${{ github.event.inputs.compiler_version || '18' }}
   VULKAN_CHOICE: ${{ github.event.inputs.vulkan_sdk || 'none' }}
-  TEST_MODE: ${{ github.event.inputs.test_mode || 'true' }}
+  TEST_MODE: ${{ github.event.inputs.test_mode || 'false' }}
   ACTIONS_STEP_DEBUG: 'true'
 
 jobs:
@@ -64,7 +64,12 @@ jobs:
     strategy:
       matrix:
         link_type: [static, shared]
-        build_type: [release, release-sepdbg]
+        build_type: [release, debug, release-sepdbg]
+        exclude:
+          - link_type: static
+            build_type: debug
+          - link_type: static
+            build_type: release-sepdbg
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -171,7 +176,7 @@ jobs:
       - name: Upload package
         uses: actions/upload-artifact@v4
         with:
-          name: qt${{ env.QT_VERSION }}-linux-x86_64-llvm${{ env.COMPILER_VERSION }}-${{ matrix.link_type }}_${{ matrix.build_type == 'release' && 'release' || 'relwithdebinfo' }}
+          name: qt${{ env.QT_VERSION }}-linux-x86_64-llvm${{ env.COMPILER_VERSION }}-${{ matrix.link_type }}_${{ matrix.build_type == 'release' && 'release' || matrix.build_type == 'debug' && 'debug' || 'relwithdebinfo' }}
           path: ${{ env.ARCHIVE_NAME }}
           if-no-files-found: error
 
