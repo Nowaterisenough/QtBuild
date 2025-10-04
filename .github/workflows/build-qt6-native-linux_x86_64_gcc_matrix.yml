@@ -6,6 +6,11 @@
 name: build-qt6-native-linux_x86_64_gcc_matrix
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/build-qt6-native-linux_x86_64_gcc_matrix.yml'
   workflow_dispatch:
     inputs:
       qt_version:
@@ -52,9 +57,9 @@ on:
 
 env:
   QT_VERSION: ${{ github.event.inputs.qt_version || '6.9.2' }}
-  COMPILER_VERSION: ${{ github.event.inputs.compiler_version || '13' }}
+  COMPILER_VERSION: ${{ github.event.inputs.compiler_version || 'latest' }}
   VULKAN_CHOICE: ${{ github.event.inputs.vulkan_sdk || 'none' }}
-  TEST_MODE: ${{ github.event.inputs.test_mode || 'false' }}
+  TEST_MODE: ${{ github.event.inputs.test_mode || 'true' }}
   ACTIONS_STEP_DEBUG: 'true'
 
 jobs:
