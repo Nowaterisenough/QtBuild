@@ -57,7 +57,7 @@ on:
 
 env:
   QT_VERSION: ${{ github.event.inputs.qt_version || '6.9.2' }}
-  COMPILER_VERSION: ${{ github.event.inputs.compiler_version || 'latest' }}
+  COMPILER_VERSION: ${{ github.event.inputs.compiler_version || '14' }}
   VULKAN_CHOICE: ${{ github.event.inputs.vulkan_sdk || 'none' }}
   TEST_MODE: ${{ github.event.inputs.test_mode || 'true' }}
   ACTIONS_STEP_DEBUG: 'true'
