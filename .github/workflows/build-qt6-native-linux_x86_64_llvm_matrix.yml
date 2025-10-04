@@ -6,11 +6,6 @@
 name: build-qt6-native-linux_x86_64_llvm_matrix
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - '.github/workflows/build-qt6-native-linux_x86_64_llvm_matrix.yml'
   workflow_dispatch:
     inputs:
       qt_version:
