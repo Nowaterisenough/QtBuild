@@ -158,12 +158,14 @@ jobs:
             exit 1
           }
           
-          # Prepare build report
+          # Prepare build report - use the summary created by build script
           $reportName = "qt-build-report_${linkType}_${buildType}.txt"
-          if (wsl test -f build_summary.txt) {
-            wsl cp build_summary.txt $reportName
+          if (Test-Path "build_summary.txt") {
+            Copy-Item "build_summary.txt" $reportName
+            Write-Host "Build report copied from build_summary.txt ($(Get-Item build_summary.txt | Select-Object -ExpandProperty Length) bytes)"
           } else {
-            $basicReport = "Qt ${{ env.QT_VERSION }} Build Report`n" + 
+            Write-Host "WARNING: build_summary.txt not found, creating basic report"
+            $basicReport = "Qt ${{ env.QT_VERSION }} Build Report`n" +
                           "Build Type: $buildType`n" +
                           "Link Type: $linkType`n" +
                           "Compiler: GCC ${{ env.COMPILER_VERSION }}`n" +
