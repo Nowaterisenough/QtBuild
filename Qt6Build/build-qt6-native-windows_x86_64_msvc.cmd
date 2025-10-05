@@ -2,13 +2,13 @@
 @chcp 65001 >nul
 setlocal enableextensions
 
-REM 参数: QT_VERSION COMPILER_VERSION BUILD_TYPE LINK_TYPE SEPARATE_DEBUG [UNUSED] [EXTRA] TEST_MODE
+REM 参数: QT_VERSION COMPILER_VERSION BUILD_TYPE LINK_TYPE SEPARATE_DEBUG [UNUSED] TEST_MODE
 set "QT_VERSION=%~1"
 set "COMPILER_VERSION=%~2"
 set "BUILD_TYPE=%~3"
 set "LINK_TYPE=%~4"
 set "SEPARATE_DEBUG=%~5"
-set "TEST_MODE=%~8"
+set "TEST_MODE=%~7"
 
 REM 默认值
 if "%TEST_MODE%"=="" set "TEST_MODE=false"
@@ -35,6 +35,7 @@ echo === Qt %QT_VERSION% MSVC Build ===
 echo MSVC Version: %COMPILER_VERSION%
 echo Build Type: %BUILD_TYPE%
 echo Link Type: %LINK_TYPE%
+echo Test Mode: %TEST_MODE%
 echo Install Dir: %FINAL_INSTALL_DIR%
 
 REM 验证编译器

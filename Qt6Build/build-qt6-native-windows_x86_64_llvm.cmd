@@ -30,6 +30,7 @@ echo === Qt %QT_VERSION% LLVM Build ===
 echo Compiler: LLVM/Clang %COMPILER_VERSION%
 echo Build Type: %BUILD_TYPE%
 echo Link Type: %LINK_TYPE%
+echo Test Mode: %TEST_MODE%
 echo Install Dir: %FINAL_INSTALL_DIR%
 
 REM 验证编译器
