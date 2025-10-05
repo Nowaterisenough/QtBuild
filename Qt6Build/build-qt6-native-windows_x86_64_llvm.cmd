@@ -60,23 +60,36 @@ set "CFG_OPTIONS=-%LINK_TYPE% -prefix "%TEMP_INSTALL_DIR%" -platform win32-clang
 REM 模块选择
 if /i "%TEST_MODE%"=="true" (
     set "CFG_OPTIONS=%CFG_OPTIONS% -submodules qtbase"
+    echo Test mode: Only building qtbase, skipping SQL drivers
 ) else (
     set "CFG_OPTIONS=%CFG_OPTIONS% -skip qtwebengine"
-)
 
-REM 数据库支持
-set "CFG_OPTIONS=%CFG_OPTIONS% -sql-sqlite"
+    REM 数据库支持（仅在非test mode下）
+    set "CFG_OPTIONS=%CFG_OPTIONS% -sql-sqlite"
 
-REM PostgreSQL支持
-if defined PostgreSQL_ROOT if exist "%PostgreSQL_ROOT%" (
+    REM PostgreSQL支持 - 必须存在
+    if not defined PostgreSQL_ROOT (
+        echo ERROR: PostgreSQL_ROOT not defined
+        exit /b 1
+    )
+    if not exist "%PostgreSQL_ROOT%" (
+        echo ERROR: PostgreSQL directory not found: %PostgreSQL_ROOT%
+        exit /b 1
+    )
     set "CFG_OPTIONS=%CFG_OPTIONS% -sql-psql"
     set "PostgreSQL_INCLUDE_DIRS=%PostgreSQL_ROOT%/include"
     set "PostgreSQL_LIBRARY_DIRS=%PostgreSQL_ROOT%/lib"
     echo PostgreSQL support enabled: %PostgreSQL_ROOT%
-)
 
-REM MySQL支持  
-if defined MYSQL_ROOT if exist "%MYSQL_ROOT%" (
+    REM MySQL支持 - 必须存在
+    if not defined MYSQL_ROOT (
+        echo ERROR: MYSQL_ROOT not defined
+        exit /b 1
+    )
+    if not exist "%MYSQL_ROOT%" (
+        echo ERROR: MySQL directory not found: %MYSQL_ROOT%
+        exit /b 1
+    )
     set "CFG_OPTIONS=%CFG_OPTIONS% -sql-mysql"
     set "MySQL_INCLUDE_DIRS=%MYSQL_ROOT%/include"
     set "MySQL_LIBRARY_DIRS=%MYSQL_ROOT%/lib"
@@ -123,18 +136,45 @@ move "%TEMP_INSTALL_DIR%" "%FINAL_INSTALL_DIR%" >nul || (
     rmdir /s /q "%TEMP_INSTALL_DIR%" 2>nul
 )
 
-REM 复制运行时DLL（仅shared）
+REM 复制运行时DLL（仅shared）- 必须存在
 if /i "%LINK_TYPE%"=="shared" (
-    copy "%BIN_PATH%\libc++.dll" "%FINAL_INSTALL_DIR%\bin\" 2>nul
-    copy "%BIN_PATH%\libunwind.dll" "%FINAL_INSTALL_DIR%\bin\" 2>nul
-    copy "%BIN_PATH%\libwinpthread-1.dll" "%FINAL_INSTALL_DIR%\bin\" 2>nul
-    
-    REM 复制数据库DLL
-    if defined PostgreSQL_ROOT if exist "%PostgreSQL_ROOT%\bin\libpq.dll" (
-        copy "%PostgreSQL_ROOT%\bin\libpq.dll" "%FINAL_INSTALL_DIR%\bin\" >nul
+    REM LLVM C++ 运行时库
+    if not exist "%BIN_PATH%\libc++.dll" (
+        echo ERROR: libc++.dll not found: %BIN_PATH%\libc++.dll
+        exit /b 1
     )
-    if defined MYSQL_ROOT if exist "%MYSQL_ROOT%\bin\libmysql.dll" (
-        copy "%MYSQL_ROOT%\bin\libmysql.dll" "%FINAL_INSTALL_DIR%\bin\" >nul
+    copy "%BIN_PATH%\libc++.dll" "%FINAL_INSTALL_DIR%\bin\" || exit /b 1
+
+    if not exist "%BIN_PATH%\libunwind.dll" (
+        echo ERROR: libunwind.dll not found: %BIN_PATH%\libunwind.dll
+        exit /b 1
+    )
+    copy "%BIN_PATH%\libunwind.dll" "%FINAL_INSTALL_DIR%\bin\" || exit /b 1
+
+    if not exist "%BIN_PATH%\libwinpthread-1.dll" (
+        echo ERROR: libwinpthread-1.dll not found: %BIN_PATH%\libwinpthread-1.dll
+        exit /b 1
+    )
+    copy "%BIN_PATH%\libwinpthread-1.dll" "%FINAL_INSTALL_DIR%\bin\" || exit /b 1
+    echo Copied LLVM runtime DLLs
+    
+    REM 复制数据库DLL（仅非test mode）
+    if /i "%TEST_MODE%"=="false" (
+        REM PostgreSQL DLL - 必须存在
+        if not exist "%PostgreSQL_ROOT%\bin\libpq.dll" (
+            echo ERROR: PostgreSQL DLL not found: %PostgreSQL_ROOT%\bin\libpq.dll
+            exit /b 1
+        )
+        copy "%PostgreSQL_ROOT%\bin\libpq.dll" "%FINAL_INSTALL_DIR%\bin\" || exit /b 1
+        echo Copied: libpq.dll
+
+        REM MySQL DLL - 必须存在
+        if not exist "%MYSQL_ROOT%\bin\libmysql.dll" (
+            echo ERROR: MySQL DLL not found: %MYSQL_ROOT%\bin\libmysql.dll
+            exit /b 1
+        )
+        copy "%MYSQL_ROOT%\bin\libmysql.dll" "%FINAL_INSTALL_DIR%\bin\" || exit /b 1
+        echo Copied: libmysql.dll
     )
 )
 

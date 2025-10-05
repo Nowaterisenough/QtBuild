@@ -54,23 +54,36 @@ set "CFG_OPTIONS=-%LINK_TYPE% -prefix "%TEMP_INSTALL_DIR%" -nomake examples -nom
 REM 模块选择
 if /i "%TEST_MODE%"=="true" (
     set "CFG_OPTIONS=%CFG_OPTIONS% -submodules qtbase"
+    echo Test mode: Only building qtbase, skipping SQL drivers
 ) else (
     set "CFG_OPTIONS=%CFG_OPTIONS% -skip qtwebengine"
-)
 
-REM 数据库支持
-set "CFG_OPTIONS=%CFG_OPTIONS% -sql-sqlite"
+    REM 数据库支持（仅在非test mode下）
+    set "CFG_OPTIONS=%CFG_OPTIONS% -sql-sqlite"
 
-REM PostgreSQL支持
-if defined PostgreSQL_ROOT if exist "%PostgreSQL_ROOT%" (
+    REM PostgreSQL支持 - 必须存在
+    if not defined PostgreSQL_ROOT (
+        echo ERROR: PostgreSQL_ROOT not defined
+        exit /b 1
+    )
+    if not exist "%PostgreSQL_ROOT%" (
+        echo ERROR: PostgreSQL directory not found: %PostgreSQL_ROOT%
+        exit /b 1
+    )
     set "CFG_OPTIONS=%CFG_OPTIONS% -sql-psql"
     set "PostgreSQL_INCLUDE_DIRS=%PostgreSQL_ROOT%/include"
     set "PostgreSQL_LIBRARY_DIRS=%PostgreSQL_ROOT%/lib"
     echo PostgreSQL support enabled: %PostgreSQL_ROOT%
-)
 
-REM MySQL支持  
-if defined MYSQL_ROOT if exist "%MYSQL_ROOT%" (
+    REM MySQL支持 - 必须存在
+    if not defined MYSQL_ROOT (
+        echo ERROR: MYSQL_ROOT not defined
+        exit /b 1
+    )
+    if not exist "%MYSQL_ROOT%" (
+        echo ERROR: MySQL directory not found: %MYSQL_ROOT%
+        exit /b 1
+    )
     set "CFG_OPTIONS=%CFG_OPTIONS% -sql-mysql"
     set "MySQL_INCLUDE_DIRS=%MYSQL_ROOT%/include"
     set "MySQL_LIBRARY_DIRS=%MYSQL_ROOT%/lib"
@@ -110,14 +123,23 @@ move "%TEMP_INSTALL_DIR%" "%FINAL_INSTALL_DIR%" >nul || (
 REM 复制qt.conf
 if exist "%~dp0qt.conf" copy "%~dp0qt.conf" "%FINAL_INSTALL_DIR%\bin\" >nul
 
-REM 复制数据库DLL（仅shared）
-if /i "%LINK_TYPE%"=="shared" (
-    if defined PostgreSQL_ROOT if exist "%PostgreSQL_ROOT%\bin\libpq.dll" (
-        copy "%PostgreSQL_ROOT%\bin\libpq.dll" "%FINAL_INSTALL_DIR%\bin\" >nul
+REM 复制数据库DLL（仅shared且非test mode）
+if /i "%LINK_TYPE%"=="shared" if /i "%TEST_MODE%"=="false" (
+    REM PostgreSQL DLL - 必须存在
+    if not exist "%PostgreSQL_ROOT%\bin\libpq.dll" (
+        echo ERROR: PostgreSQL DLL not found: %PostgreSQL_ROOT%\bin\libpq.dll
+        exit /b 1
     )
-    if defined MYSQL_ROOT if exist "%MYSQL_ROOT%\bin\libmysql.dll" (
-        copy "%MYSQL_ROOT%\bin\libmysql.dll" "%FINAL_INSTALL_DIR%\bin\" >nul
+    copy "%PostgreSQL_ROOT%\bin\libpq.dll" "%FINAL_INSTALL_DIR%\bin\" || exit /b 1
+    echo Copied: libpq.dll
+
+    REM MySQL DLL - 必须存在
+    if not exist "%MYSQL_ROOT%\bin\libmysql.dll" (
+        echo ERROR: MySQL DLL not found: %MYSQL_ROOT%\bin\libmysql.dll
+        exit /b 1
     )
+    copy "%MYSQL_ROOT%\bin\libmysql.dll" "%FINAL_INSTALL_DIR%\bin\" || exit /b 1
+    echo Copied: libmysql.dll
 )
 
 echo Build completed successfully!
