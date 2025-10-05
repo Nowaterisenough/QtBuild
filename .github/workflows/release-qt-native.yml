@@ -145,10 +145,23 @@ jobs:
             console.log(`- Found artifacts: ${allArtifacts.length}`);
             console.log(`- Platforms covered: ${Array.from(foundWorkflows).join(', ')}`);
             console.log(`- Artifacts: ${allArtifacts.join(', ')}`);
-            
+
+            // Check for missing platforms
+            const allPlatforms = Object.keys(nativeWorkflows);
+            const missingPlatforms = allPlatforms.filter(p => !foundWorkflows.has(p));
+
+            if (missingPlatforms.length > 0) {
+              console.log(`\n⚠️  WARNING: Missing platforms: ${missingPlatforms.join(', ')}`);
+              console.log(`Please run the following workflows before creating a complete native release:`);
+              missingPlatforms.forEach(platform => {
+                console.log(`  - ${nativeWorkflows[platform]}`);
+              });
+            }
+
             // Set outputs
             core.setOutput('artifacts_found', allArtifacts.length.toString());
             core.setOutput('platforms', Array.from(foundWorkflows).join(','));
+            core.setOutput('missing_platforms', missingPlatforms.join(','));
             core.setOutput('artifact_list', allArtifacts.join('\n'));
 
       - name: Extract downloaded artifacts
@@ -211,14 +224,23 @@ jobs:
                 platform="Unknown"
                 compiler="Unknown"
                 compiler_version=""
-                
+
                 while IFS= read -r line; do
+                  # Qt config.summary format
                   if [[ "$line" =~ "Building for: win32-"* ]]; then
                     platform="Windows"
                   elif [[ "$line" =~ "Building for: linux-"* ]]; then
                     platform="Linux"
                   fi
-                  
+
+                  # Fallback format detection
+                  if [[ "$line" =~ "Platform: Windows" ]]; then
+                    platform="Windows"
+                  elif [[ "$line" =~ "Platform: Linux" ]]; then
+                    platform="Linux"
+                  fi
+
+                  # Compiler detection - Qt config.summary format
                   if [[ "$line" =~ "Compiler: gcc "([0-9.]+) ]]; then
                     compiler="GCC"
                     compiler_version="${BASH_REMATCH[1]}"
@@ -233,10 +255,26 @@ jobs:
                     compiler="MSVC"
                     platform="Windows"
                   fi
+
+                  # Fallback format detection
+                  if [[ "$line" =~ Compiler:[[:space:]]*GCC[[:space:]]+([0-9.a-z]+) ]]; then
+                    compiler="GCC"
+                    compiler_version="${BASH_REMATCH[1]}"
+                  elif [[ "$line" =~ Compiler:[[:space:]]*(LLVM/Clang|LLVM)[[:space:]]+([0-9.]+) ]]; then
+                    compiler="LLVM"
+                    compiler_version="${BASH_REMATCH[2]}"
+                  elif [[ "$line" =~ LLVM[[:space:]]Version:[[:space:]]+([0-9.]+) ]]; then
+                    compiler="LLVM"
+                    compiler_version="${BASH_REMATCH[1]}"
+                  elif [[ "$line" =~ Compiler:[[:space:]]*MSVC ]]; then
+                    compiler="MSVC"
+                  fi
                 done < "$report"
-                
+
+                echo "Detected config: platform=$platform, compiler=$compiler $compiler_version, link=$link_type, build=$build_type"
+
                 # Create config identifier
-                config_name="${platform} ${compiler} ${link_type} ${build_type}"
+                config_name="${platform} ${compiler}${compiler_version:+ $compiler_version} ${link_type} ${build_type}"
                 build_configs+=("$config_name")
                 
                 # Check if this is a Qt config.summary format report
@@ -420,17 +458,42 @@ jobs:
         run: |
           QT_VERSION="${{ env.QT_VERSION }}"
           PLATFORMS="${{ steps.download.outputs.platforms }}"
+          MISSING_PLATFORMS="${{ steps.download.outputs.missing_platforms }}"
           ARTIFACT_COUNT="${{ steps.download.outputs.artifacts_found }}"
-          
+
           # Generate simplified release notes with only configuration table
           cat > release_notes.md << EOF
           # Qt ${{ env.QT_VERSION }} Build Configuration Matrix
-          
+
           EOF
-          
+
+          # Add warning if platforms are missing
+          if [ -n "$MISSING_PLATFORMS" ]; then
+            cat >> release_notes.md << EOF
+          ## ⚠️ Incomplete Release
+
+          This release is missing builds for the following platforms: **${MISSING_PLATFORMS/,/, }**
+
+          To create a complete native release, please run the corresponding build workflows first:
+          EOF
+
+            IFS=',' read -ra MISSING <<< "$MISSING_PLATFORMS"
+            for platform in "${MISSING[@]}"; do
+              case "$platform" in
+                "windows-msvc") echo "- \`build-qt6-native-windows_x86_64_msvc_matrix\`" >> release_notes.md ;;
+                "windows-mingw") echo "- \`build-qt6-native-windows_x86_64_mingw_matrix\`" >> release_notes.md ;;
+                "windows-llvm") echo "- \`build-qt6-native-windows_x86_64_llvm_matrix\`" >> release_notes.md ;;
+                "linux-gcc") echo "- \`build-qt6-native-linux_x86_64_gcc_matrix\`" >> release_notes.md ;;
+                "linux-llvm") echo "- \`build-qt6-native-linux_x86_64_llvm_matrix\`" >> release_notes.md ;;
+              esac
+            done
+
+            echo "" >> release_notes.md
+          fi
+
           # Insert the generated configuration table
           cat config_table.md >> release_notes.md
-          
+
           echo "Release notes generated:"
           cat release_notes.md
 
