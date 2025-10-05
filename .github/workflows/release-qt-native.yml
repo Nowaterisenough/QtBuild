@@ -402,59 +402,139 @@ jobs:
             fi
           else
             # Generate detailed features table when we have feature data
-            echo "## Build Configuration Matrix" > config_table.md
+            echo "## Build Configuration Summary" > config_table.md
             echo "" >> config_table.md
-            
-            # Create table header - ensure proper formatting
+
+            # List available configurations
+            echo "### Available Build Configurations" >> config_table.md
+            echo "" >> config_table.md
             {
-              echo -n "| Feature"
+              echo "| Configuration | Package Size | Status |"
+              echo "|---------------|--------------|--------|"
               for config in "${build_configs[@]}"; do
-                echo -n " | $config"
+                echo "| **$config** | See assets below | ✅ Available |"
+              done
+            } >> config_table.md
+
+            echo "" >> config_table.md
+            echo "### Key Features Summary" >> config_table.md
+            echo "" >> config_table.md
+            echo "**Total features parsed**: ${#all_features[@]}" >> config_table.md
+            echo "" >> config_table.md
+
+            # Define important features to highlight
+            important_features=(
+              "Qt Concurrent"
+              "Qt D-Bus"
+              "Qt Gui"
+              "Qt Network"
+              "Qt Sql"
+              "Qt Widgets"
+              "Qt Xml"
+              "OpenSSL"
+              "Vulkan"
+              "OpenGL"
+              "EGL"
+              "Accessibility"
+              "FreeType"
+              "HarfBuzz"
+              "Fontconfig"
+              "JPEG"
+              "PNG"
+              "Qt QML"
+              "Qt Quick"
+              "Qt Multimedia"
+              "Qt 3D"
+              "Qt Bluetooth"
+              "Qt NFC"
+            )
+
+            # Create compact feature summary table
+            {
+              echo "| Feature"
+              for config in "${build_configs[@]}"; do
+                # Abbreviate config names for table width
+                short_config=$(echo "$config" | sed 's/Linux //g' | sed 's/Windows //g' | sed 's/ shared/ sh/g' | sed 's/ static/ st/g' | sed 's/ debug/ dbg/g' | sed 's/ release/ rel/g' | sed 's/ relwithdebinfo/ rdi/g')
+                echo -n " | $short_config"
               done
               echo " |"
-            } >> config_table.md
-            
-            # Create separator line - ensure proper formatting
-            {
+
               echo -n "|---------|"
               for config in "${build_configs[@]}"; do
                 echo -n "---------|"
               done
               echo ""
-            } >> config_table.md
-            
-            # Sort features for better organization
-            IFS=$'\n'
-            sorted_features=($(printf '%s\n' "${all_features[@]}" | sort))
-            unset IFS
-            
-            # Create table rows - ensure proper formatting
-            for feature in "${sorted_features[@]}"; do
-              if [[ -n "$feature" ]]; then
-                {
+
+              # Add rows for important features only
+              for feature in "${important_features[@]}"; do
+                # Check if this feature exists in our parsed features
+                found=false
+                for parsed_feature in "${all_features[@]}"; do
+                  if [[ "$parsed_feature" == "$feature" ]]; then
+                    found=true
+                    break
+                  fi
+                done
+
+                if [[ "$found" == "true" ]]; then
                   echo -n "| **$feature**"
                   for config in "${build_configs[@]}"; do
                     status="${features["$feature,$config"]:-"❓"}"
                     echo -n " | $status"
                   done
                   echo " |"
-                } >> config_table.md
-              fi
-            done
-            
-            # Add build info summary
+                fi
+              done
+            } >> config_table.md
+
             echo "" >> config_table.md
+            echo "<details>" >> config_table.md
+            echo "<summary><b>📋 Click to see full feature list (${#all_features[@]} features)</b></summary>" >> config_table.md
+            echo "" >> config_table.md
+
+            # Full features table in collapsible section
+            {
+              echo "| Feature"
+              for config in "${build_configs[@]}"; do
+                short_config=$(echo "$config" | sed 's/Linux //g' | sed 's/Windows //g' | sed 's/ shared/ sh/g' | sed 's/ static/ st/g' | sed 's/ debug/ dbg/g' | sed 's/ release/ rel/g' | sed 's/ relwithdebinfo/ rdi/g')
+                echo -n " | $short_config"
+              done
+              echo " |"
+
+              echo -n "|---------|"
+              for config in "${build_configs[@]}"; do
+                echo -n "---------|"
+              done
+              echo ""
+
+              # Sort features for better organization
+              IFS=$'\n'
+              sorted_features=($(printf '%s\n' "${all_features[@]}" | sort))
+              unset IFS
+
+              for feature in "${sorted_features[@]}"; do
+                if [[ -n "$feature" ]]; then
+                  echo -n "| **$feature**"
+                  for config in "${build_configs[@]}"; do
+                    status="${features["$feature,$config"]:-"❓"}"
+                    echo -n " | $status"
+                  done
+                  echo " |"
+                fi
+              done
+            } >> config_table.md
+
+            echo "" >> config_table.md
+            echo "</details>" >> config_table.md
+            echo "" >> config_table.md
+
+            # Add legend
             echo "### Legend" >> config_table.md
             echo "- ✅ = Enabled/Supported" >> config_table.md
             echo "- ❌ = Disabled/Not Available" >> config_table.md
             echo "- ❓ = Status Unknown" >> config_table.md
             echo "" >> config_table.md
-            echo "### Build Details" >> config_table.md
-            
-            # Add detailed build information
-            for config in "${build_configs[@]}"; do
-              echo "- **$config**: Available as downloadable package" >> config_table.md
-            done
+            echo "**Note**: The summary table above shows only key Qt features. Click the collapsible section to see all ${#all_features[@]} detected features." >> config_table.md
           fi
           
           echo ""
