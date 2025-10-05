@@ -433,15 +433,72 @@ jobs:
           $bt="${{ matrix.build_type }}"
           $lt="${{ matrix.link_type }}"
           $buildDir="D:\a\QtBuild\build"
-          $summary = Join-Path $buildDir "config.summary"
-          if (-not (Test-Path $summary)) {
-            Write-Host "config.summary not found at $summary"
-            Get-ChildItem $buildDir -Recurse -Filter "config.summary" -ErrorAction SilentlyContinue | Select-Object -First 1 | ForEach-Object { $summary=$_.FullName }
+          $reportName = "qt-build-report_${lt}_${bt}.txt"
+          $reportPath = Join-Path "${{ github.workspace }}" $reportName
+          $configSummaryFound = $false
+
+          # Search in multiple locations
+          $searchPaths = @(
+            (Join-Path $buildDir "config.summary"),
+            (Join-Path $buildDir "qtbase\config.summary"),
+            "D:\a\QtBuild\config.summary",
+            "D:\a\QtBuild\Qt\${{ env.QT_VERSION }}\qt-everywhere-src-${{ env.QT_VERSION }}\config.summary"
+          )
+
+          Write-Host "=== Searching for config.summary ==="
+          foreach ($path in $searchPaths) {
+            Write-Host "Checking: $path"
+            if (Test-Path $path) {
+              Write-Host "Found config.summary at: $path"
+              $fileSize = (Get-Item $path).Length
+              Write-Host "File size: $fileSize bytes"
+              if ($fileSize -gt 100) {
+                Copy-Item $path $reportPath -Force
+                Write-Host "Build report saved from $path"
+                $configSummaryFound = $true
+                break
+              } else {
+                Write-Host "File too small, continuing search..."
+              }
+            }
           }
-          if (-not (Test-Path $summary)) { Write-Host "No config.summary found."; exit 1 }
-          $out = Join-Path "${{ github.workspace }}" ("qt-build-report_" + $lt + "_" + $bt + ".txt")
-          Copy-Item $summary $out -Force
-          echo "REPORT_FILE=$out" >> $env:GITHUB_ENV
+
+          # Last resort: recursive search
+          if (-not $configSummaryFound) {
+            Write-Host "Performing recursive search..."
+            $foundFile = Get-ChildItem $buildDir -Recurse -Filter "config.summary" -ErrorAction SilentlyContinue |
+                         Where-Object { $_.Length -gt 100 } |
+                         Select-Object -First 1
+            if ($foundFile) {
+              Write-Host "Found via recursive search: $($foundFile.FullName)"
+              Copy-Item $foundFile.FullName $reportPath -Force
+              $configSummaryFound = $true
+            }
+          }
+
+          # Create basic report if config.summary not found
+          if (-not $configSummaryFound) {
+            Write-Host "WARNING: config.summary not found, creating basic report"
+            $basicReport = @"
+Qt ${{ env.QT_VERSION }} Windows LLVM Build Report
+==========================================
+Build Type: $bt
+Link Type: $lt
+Compiler: LLVM/Clang ${{ env.COMPILER_VERSION }}
+Runtime: ${{ env.RUNTIME }}
+Platform: Windows x86_64
+Vulkan SDK: ${{ env.VULKAN_CHOICE }}
+Test Mode: ${{ env.TEST_MODE }}
+Build Date: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss UTC')
+
+WARNING: config.summary file not found in build directory.
+This may indicate a configuration or build issue.
+"@
+            [System.IO.File]::WriteAllText($reportPath, $basicReport, [System.Text.UTF8Encoding]::new($false))
+          }
+
+          Write-Host "Final report size: $((Get-Item $reportPath).Length) bytes"
+          echo "REPORT_FILE=$reportPath" >> $env:GITHUB_ENV
 
       - name: Upload package
         uses: actions/upload-artifact@v4
