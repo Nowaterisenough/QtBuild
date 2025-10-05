@@ -365,14 +365,15 @@ jobs:
           }
           
           # Create standardized archive name
-          $archiveName = "qt${qtVersion}-windows-x86_64-llvm_clang${compilerVersion}_${runtime}-${linkType}_${buildTypeNormalized}.7z"
+          # Format: qt{version}-windows-x86_64-llvm{version}-{runtime}-{linktype}_{buildtype}.7z
+          $archiveName = "qt${qtVersion}-windows-x86_64-llvm${compilerVersion}-${runtime}-${linkType}_${buildTypeNormalized}.7z"
           $sourcePath = "D:\a\QtBuild\Qt\$qtVersion-$linkType"
           
           # 检查源目录是否存在
           if (Test-Path $sourcePath) {
             # 创建临时目录用于重组目录结构
             $tempDir = "D:\a\QtBuild\temp_package"
-            $finalDirName = "qt${qtVersion}-windows-x86_64-llvm${compilerVersion}_${runtime}-${linkType}_${buildTypeNormalized}"
+            $finalDirName = "qt${qtVersion}-windows-x86_64-llvm${compilerVersion}-${runtime}-${linkType}_${buildTypeNormalized}"
             $finalPath = Join-Path $tempDir $finalDirName
             
             # 清理并创建临时目录
@@ -500,7 +501,7 @@ jobs:
       - name: Upload package
         uses: actions/upload-artifact@v4
         with:
-          name: qt${{ env.QT_VERSION }}-windows-x86_64-llvm_clang${{ env.COMPILER_VERSION }}_${{ env.RUNTIME }}-${{ matrix.link_type }}_${{ matrix.build_type == 'release' && 'release' || matrix.build_type == 'debug' && 'debug' || 'relwithdebinfo' }}
+          name: qt${{ env.QT_VERSION }}-windows-x86_64-llvm${{ env.COMPILER_VERSION }}-${{ env.RUNTIME }}-${{ matrix.link_type }}_${{ matrix.build_type == 'release' && 'release' || matrix.build_type == 'debug' && 'debug' || 'relwithdebinfo' }}
           path: ${{ env.ARCHIVE_NAME }}
           if-no-files-found: error
 
