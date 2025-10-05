@@ -166,16 +166,19 @@ jobs:
 
       - name: Extract downloaded artifacts
         run: |
-          echo "Extracting all downloaded artifact archives..."
-          for zip_file in *.zip; do
+          echo "=== Extracting Qt package artifacts (but not the Qt packages themselves) ==="
+
+          # Extract Qt packages from artifact zips, but keep Qt packages intact
+          for zip_file in qt*.zip; do
             if [ -f "$zip_file" ]; then
-              echo "Extracting: $zip_file"
-              unzip -q "$zip_file" 
+              echo "Extracting artifact: $zip_file"
+              unzip -q "$zip_file"
               rm "$zip_file"
             fi
           done
-          
-          echo "Extracting build reports..."
+
+          echo ""
+          echo "=== Extracting build report artifacts ==="
           if [ -d "reports" ]; then
             cd reports
             for zip_file in *.zip; do
@@ -187,11 +190,15 @@ jobs:
             done
             cd ..
           fi
-          
-          echo "Available files after extraction:"
-          find . -name "qt${{ env.QT_VERSION }}*" -type f | head -20
-          echo "Available reports:"
-          find reports -name "*.txt" -type f 2>/dev/null || echo "No reports found"
+
+          echo ""
+          echo "=== Available Qt packages (ready for upload) ==="
+          find . -maxdepth 1 -name "qt${{ env.QT_VERSION }}*" -type f | sort
+          echo ""
+          echo "Total Qt packages: $(find . -maxdepth 1 -name "qt${{ env.QT_VERSION }}*" -type f | wc -l)"
+          echo ""
+          echo "=== Available build reports ==="
+          find reports -name "*.txt" -type f 2>/dev/null | sort || echo "No reports found"
 
       - name: Parse build reports and generate configuration table
         id: parse_reports
@@ -501,13 +508,33 @@ jobs:
         id: release_tag
         run: echo "tag=qt${{ env.QT_VERSION }}-native-$(date +%Y%m%d-%H%M)" >> $GITHUB_OUTPUT
 
+      - name: Prepare files for release
+        id: prepare_files
+        run: |
+          echo "Collecting all Qt package files for release..."
+          find . -maxdepth 1 -name "qt${{ env.QT_VERSION }}*" -type f > release_files.txt
+
+          echo "Files to be uploaded:"
+          cat release_files.txt
+
+          echo ""
+          echo "Total files: $(wc -l < release_files.txt)"
+
+          # Create newline-separated list for GitHub action
+          FILES=$(find . -maxdepth 1 -name "qt${{ env.QT_VERSION }}*" -type f | tr '\n' '\n')
+          echo "file_list<<EOF" >> $GITHUB_OUTPUT
+          echo "$FILES" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.release_tag.outputs.tag }}
           name: Qt ${{ env.QT_VERSION }} Native Builds
           body_path: release_notes.md
-          files: qt${{ env.QT_VERSION }}*
+          files: |
+            qt${{ env.QT_VERSION }}-*.tar.xz
+            qt${{ env.QT_VERSION }}-*.7z
           draft: false
           prerelease: false
         env:
