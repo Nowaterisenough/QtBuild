@@ -13,9 +13,9 @@ on:
         default: '14.3.rel1'
         type: choice
         options:
-        - '14.3.rel1'
-        - '13.2.rel1'
         - '12.3.rel1'
+        - '13.2.rel1'
+        - '14.3.rel1'
       host_qt_url:
         description: 'Host Qt URL'
         required: false

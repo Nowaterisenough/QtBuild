@@ -26,13 +26,13 @@ on:
         default: '15.2.0'
         type: choice
         options:
-        - '15.2.0'
-        - '15.1.0'
-        - '14.2.0'
-        - '14.1.0'
-        - '13.2.0'
-        - '13.1.0'
         - '12.2.0'
+        - '13.1.0'
+        - '13.2.0'
+        - '14.1.0'
+        - '14.2.0'
+        - '15.1.0'
+        - '15.2.0'
       host_qt_url:
         description: 'Host Qt Download URL'
         required: false
@@ -43,8 +43,8 @@ on:
         type: choice
         options:
         - 'none'
-        - 'runtime-1.4.321.0'
         - 'runtime-1.3.290.0'
+        - 'runtime-1.4.321.0'
         default: 'runtime-1.4.321.0'
       test_mode:
         description: 'Test Mode (only build qtbase)'
