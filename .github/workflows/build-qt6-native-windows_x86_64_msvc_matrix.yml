@@ -9,11 +9,11 @@ on:
   workflow_dispatch:
     inputs:
       qt_version:
-        description: 'QT Version'
+        description: 'Qt Version'
         required: true
         default: '6.9.2'
       compiler_version:
-        description: 'MSVC Version'
+        description: 'Compiler Version'
         required: true
         default: '2022'
         type: choice
@@ -30,7 +30,7 @@ on:
         - 'runtime-1.4.321.0'
         default: 'runtime-1.4.321.0'
       test_mode:
-        description: 'Test Mode (only build qtbase)'
+        description: 'Test mode (build qtbase only)'
         required: true
         default: 'false'
         type: choice
@@ -49,6 +49,7 @@ jobs:
   build:
     runs-on: windows-latest
     strategy:
+      fail-fast: false
       matrix:
         link_type: [static, shared]
         build_type: [release, debug, release-sepdbg]
@@ -67,7 +68,7 @@ jobs:
           python-version: '3.13'
           architecture: 'x64'
 
-      - name: Extract Qt major.minor version
+      - name: Extract Qt version components
         id: qt_version
         run: |
           $version = "${{ env.QT_VERSION }}"
@@ -227,6 +228,7 @@ jobs:
           echo "D:\a\QtBuild\protoc\bin" >> $env:GITHUB_PATH
 
       - name: Prepare directories and source
+        shell: pwsh
         run: |
           cd ..
           mkdir Qt

@@ -14,7 +14,7 @@ on:
         default: '6.9.2'
         type: string
       compiler_version:
-        description: 'GCC Version'
+        description: 'Compiler Version'
         required: true
         default: 'latest'
         type: choice
@@ -26,7 +26,7 @@ on:
         - '15.2'
         - 'latest'
       vulkan_sdk:
-        description: 'Vulkan SDK (none for disable, runtime-* for specific version)'
+        description: 'Vulkan support (none/runtime-*)'
         required: true
         type: choice
         options:
@@ -35,17 +35,9 @@ on:
         - 'runtime-1.4.321.0'
         default: 'runtime-1.4.321.0'
       test_mode:
-        description: 'Test Mode (build qtbase only for faster testing)'
+        description: 'Test mode (build qtbase only)'
         required: true
         default: 'false'
-        type: choice
-        options:
-        - 'true'
-        - 'false'
-      create_release:
-        description: 'Create Release'
-        required: true
-        default: 'true'
         type: choice
         options:
         - 'true'
@@ -62,6 +54,7 @@ jobs:
   build:
     runs-on: windows-latest
     strategy:
+      fail-fast: false
       matrix:
         link_type: [static, shared]
         build_type: [release, debug, release-sepdbg]
