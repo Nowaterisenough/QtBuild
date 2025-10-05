@@ -479,21 +479,18 @@ jobs:
           # Create basic report if config.summary not found
           if (-not $configSummaryFound) {
             Write-Host "WARNING: config.summary not found, creating basic report"
-            $basicReport = @"
-Qt ${{ env.QT_VERSION }} Windows LLVM Build Report
-==========================================
-Build Type: $bt
-Link Type: $lt
-Compiler: LLVM/Clang ${{ env.COMPILER_VERSION }}
-Runtime: ${{ env.RUNTIME }}
-Platform: Windows x86_64
-Vulkan SDK: ${{ env.VULKAN_CHOICE }}
-Test Mode: ${{ env.TEST_MODE }}
-Build Date: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss UTC')
-
-WARNING: config.summary file not found in build directory.
-This may indicate a configuration or build issue.
-"@
+            $basicReport = "Qt ${{ env.QT_VERSION }} Windows LLVM Build Report`n" +
+                          "==========================================" + "`n" +
+                          "Build Type: $bt`n" +
+                          "Link Type: $lt`n" +
+                          "Compiler: LLVM/Clang ${{ env.COMPILER_VERSION }}`n" +
+                          "Runtime: ${{ env.RUNTIME }}`n" +
+                          "Platform: Windows x86_64`n" +
+                          "Vulkan SDK: ${{ env.VULKAN_CHOICE }}`n" +
+                          "Test Mode: ${{ env.TEST_MODE }}`n" +
+                          "Build Date: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss UTC')`n`n" +
+                          "WARNING: config.summary file not found in build directory.`n" +
+                          "This may indicate a configuration or build issue.`n"
             [System.IO.File]::WriteAllText($reportPath, $basicReport, [System.Text.UTF8Encoding]::new($false))
           }
 
