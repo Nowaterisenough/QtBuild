@@ -71,65 +71,72 @@ jobs:
                 });
                 
                 console.log(`Found ${runs.data.workflow_runs.length} successful runs for ${workflowName}`);
-                
-                for (const run of runs.data.workflow_runs) {
-                  const artifacts = await github.rest.actions.listWorkflowRunArtifacts({
+
+                // Only use the most recent successful run to avoid duplicates
+                if (runs.data.workflow_runs.length === 0) {
+                  console.log(`No successful runs found for ${workflowName}`);
+                  continue;
+                }
+
+                const mostRecentRun = runs.data.workflow_runs[0];
+                console.log(`Using most recent run: ${mostRecentRun.id} (${mostRecentRun.created_at})`);
+
+                const artifacts = await github.rest.actions.listWorkflowRunArtifacts({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  run_id: mostRecentRun.id
+                });
+
+                console.log(`Run ${mostRecentRun.id}: ${artifacts.data.artifacts.length} artifacts`);
+
+                const qtArtifacts = artifacts.data.artifacts.filter(artifact =>
+                  artifact.name.includes(qtVersion) && artifact.name.startsWith('qt')
+                );
+
+                // Separate Qt packages and build reports
+                const qtPackages = qtArtifacts.filter(artifact =>
+                  !artifact.name.startsWith('report-')
+                );
+                const buildReports = artifacts.data.artifacts.filter(artifact =>
+                  artifact.name.startsWith('report-')
+                );
+
+                // Download Qt packages
+                for (const artifact of qtPackages) {
+                  console.log(`Found package: ${artifact.name} (${artifact.size_in_bytes} bytes)`);
+
+                  const download = await github.rest.actions.downloadArtifact({
                     owner: context.repo.owner,
                     repo: context.repo.repo,
-                    run_id: run.id
+                    artifact_id: artifact.id,
+                    archive_format: 'zip'
                   });
-                  
-                  console.log(`Run ${run.id}: ${artifacts.data.artifacts.length} artifacts`);
-                  
-                  const qtArtifacts = artifacts.data.artifacts.filter(artifact => 
-                    artifact.name.includes(qtVersion) && artifact.name.startsWith('qt')
-                  );
-                  
-                  // Separate Qt packages and build reports
-                  const qtPackages = qtArtifacts.filter(artifact => 
-                    !artifact.name.startsWith('report-')
-                  );
-                  const buildReports = artifacts.data.artifacts.filter(artifact => 
-                    artifact.name.startsWith('report-')
-                  );
-                  
-                  // Download Qt packages
-                  for (const artifact of qtPackages) {
-                    console.log(`Found package: ${artifact.name} (${artifact.size_in_bytes} bytes)`);
-                    
-                    const download = await github.rest.actions.downloadArtifact({
-                      owner: context.repo.owner,
-                      repo: context.repo.repo,
-                      artifact_id: artifact.id,
-                      archive_format: 'zip'
-                    });
-                    
-                    const artifactPath = `${artifact.name}.zip`;
-                    fs.writeFileSync(artifactPath, Buffer.from(download.data));
-                    console.log(`Downloaded package: ${artifactPath}`);
-                    
-                    allArtifacts.push(artifact.name);
-                    foundWorkflows.add(platform);
+
+                  const artifactPath = `${artifact.name}.zip`;
+                  fs.writeFileSync(artifactPath, Buffer.from(download.data));
+                  console.log(`Downloaded package: ${artifactPath}`);
+
+                  allArtifacts.push(artifact.name);
+                  foundWorkflows.add(platform);
+                }
+
+                // Download build reports
+                for (const artifact of buildReports) {
+                  console.log(`Found report: ${artifact.name} (${artifact.size_in_bytes} bytes)`);
+
+                  const download = await github.rest.actions.downloadArtifact({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    artifact_id: artifact.id,
+                    archive_format: 'zip'
+                  });
+
+                  const artifactPath = `reports/${artifact.name}.zip`;
+                  if (!fs.existsSync('reports')) {
+                    fs.mkdirSync('reports', { recursive: true });
                   }
-                  
-                  // Download build reports
-                  for (const artifact of buildReports) {
-                    console.log(`Found report: ${artifact.name} (${artifact.size_in_bytes} bytes)`);
-                    
-                    const download = await github.rest.actions.downloadArtifact({
-                      owner: context.repo.owner,
-                      repo: context.repo.repo,
-                      artifact_id: artifact.id,
-                      archive_format: 'zip'
-                    });
-                    
-                    const artifactPath = `reports/${artifact.name}.zip`;
-                    if (!fs.existsSync('reports')) {
-                      fs.mkdirSync('reports', { recursive: true });
-                    }
-                    fs.writeFileSync(artifactPath, Buffer.from(download.data));
-                    console.log(`Downloaded report: ${artifactPath}`);
-                  }
+                  fs.writeFileSync(artifactPath, Buffer.from(download.data));
+                  console.log(`Downloaded report: ${artifactPath}`);
                 }
               } catch (error) {
                 console.log(`Warning: Could not find workflow ${workflowName}: ${error.message}`);
