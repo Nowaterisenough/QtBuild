@@ -1,0 +1,90 @@
+#!/bin/bash
+# ============================================================================
+# WSL2 Environment Setup for Qt LLVM Build
+# Parameters: LLVM_VERSION VULKAN_SDK
+# ============================================================================
+
+set -e
+
+LLVM_VERSION="${1}"
+VULKAN_SDK="${2}"
+
+echo "=== WSL2 LLVM ${LLVM_VERSION} Environment Setup ==="
+
+export DEBIAN_FRONTEND=noninteractive
+
+# === Enable Universe Repository ===
+echo "Enabling Ubuntu Universe repository..."
+sudo add-apt-repository universe -y >/dev/null 2>&1
+sudo apt-get update -qq
+
+# === Install Base Build Tools ===
+echo "Installing base build tools..."
+sudo apt-get install -y -qq --no-install-recommends \
+    build-essential cmake ninja-build python3 pkg-config \
+    wget curl xz-utils
+
+# === Install LLVM Compiler ===
+echo "Adding LLVM APT repository..."
+wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc >/dev/null
+echo "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-${LLVM_VERSION} main" | sudo tee /etc/apt/sources.list.d/llvm.list
+sudo apt-get update -qq
+
+echo "Installing LLVM/Clang-${LLVM_VERSION} toolchain..."
+sudo apt-get install -y -qq --no-install-recommends \
+    clang-${LLVM_VERSION} clang++-${LLVM_VERSION} lld-${LLVM_VERSION} \
+    libc++-${LLVM_VERSION}-dev libc++abi-${LLVM_VERSION}-dev
+
+# === Setup Alternatives ===
+sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-${LLVM_VERSION} 100
+sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-${LLVM_VERSION} 100
+sudo update-alternatives --install /usr/bin/lld lld /usr/bin/lld-${LLVM_VERSION} 100
+
+# === Install Qt Dependencies ===
+echo "Installing X11/OpenGL libraries..."
+sudo apt-get install -y -qq --no-install-recommends \
+    libgl1-mesa-dev libglu1-mesa-dev libx11-dev libxext-dev \
+    libxrender-dev libxrandr-dev libxcursor-dev
+
+echo "Installing XCB libraries..."
+sudo apt-get install -y -qq --no-install-recommends \
+    libxcb1-dev libxcb-util-dev libxcb-image0-dev libxcb-keysyms1-dev \
+    libxcb-render0-dev libxcb-render-util0-dev libxcb-randr0-dev libxcb-cursor-dev
+
+echo "Installing remaining dependencies..."
+sudo apt-get install -y -qq --no-install-recommends \
+    libxkbcommon-dev libxkbcommon-x11-dev libfontconfig1-dev \
+    libfreetype6-dev libglib2.0-dev libegl1-mesa-dev libssl-dev
+
+# === Compiler Verification ===
+echo "=== Compiler Verification ==="
+clang-${LLVM_VERSION} --version | head -1
+clang++-${LLVM_VERSION} --version | head -1
+lld-${LLVM_VERSION} --version | head -1
+
+# === Install Vulkan SDK ===
+if [ "$VULKAN_SDK" != "none" ]; then
+    echo "Installing Vulkan SDK headers..."
+    vulkan_version=$(echo "$VULKAN_SDK" | sed 's/runtime-//')
+
+    if [ "$vulkan_version" = "1.4.321.0" ] || [ "$vulkan_version" = "1.3.290.0" ]; then
+        cd /tmp
+        wget -q https://github.com/KhronosGroup/Vulkan-Headers/archive/refs/tags/vulkan-sdk-${vulkan_version}.tar.gz
+        tar -xzf vulkan-sdk-${vulkan_version}.tar.gz
+        cd Vulkan-Headers-vulkan-sdk-${vulkan_version}
+        sudo mkdir -p /usr/local/include
+        sudo cp -r include/vulkan /usr/local/include/
+        sudo cp -r include/vk_video /usr/local/include/ 2>/dev/null || true
+        cd /tmp
+        rm -rf Vulkan-Headers-* vulkan-sdk-*.tar.gz
+        echo "Vulkan SDK headers installed: $vulkan_version"
+    else
+        sudo apt-get install -y -qq libvulkan-dev || echo "Warning: libvulkan-dev not available"
+    fi
+fi
+
+# === Cleanup ===
+sudo apt-get clean >/dev/null 2>&1
+sudo rm -rf /var/lib/apt/lists/*
+
+echo "=== WSL2 LLVM Environment Setup Completed ==="

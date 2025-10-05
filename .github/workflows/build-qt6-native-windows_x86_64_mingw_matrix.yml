@@ -314,8 +314,9 @@ jobs:
           set LINK_TYPE=${{ matrix.link_type }}
           set RUNTIME=${{ env.RUNTIME }}
           set TEST_MODE=${{ env.TEST_MODE }}
+          set VULKAN_CHOICE=${{ env.VULKAN_CHOICE }}
           if "%BUILD_TYPE%"=="release-sepdbg" (set BUILD_TYPE=release& set SEPARATE_DEBUG=true) else (set SEPARATE_DEBUG=false)
-          call D:\a\QtBuild\QtBuild\Qt6Build\build-qt6-native-windows_x86_64_mingw.cmd %QT_VERSION% %COMPILER_VERSION% %BUILD_TYPE% %LINK_TYPE% %SEPARATE_DEBUG% %RUNTIME% "" %TEST_MODE%
+          call D:\a\QtBuild\QtBuild\Qt6Build\build-qt6-native-windows_x86_64_mingw.cmd %QT_VERSION% %COMPILER_VERSION% %BUILD_TYPE% %LINK_TYPE% %SEPARATE_DEBUG% %VULKAN_CHOICE% %TEST_MODE% %RUNTIME%
           endlocal
 
       - name: Export Qt configure summary

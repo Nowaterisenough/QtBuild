@@ -1,6 +1,6 @@
 # =============================================================================
 # Qt 6 Linux x86_64 GCC Build Matrix
-# Standardized workflow for building Qt with GCC on Linux via WSL2
+# Standardized workflow using dedicated build scripts
 # =============================================================================
 
 name: build-qt6-native-linux_x86_64_gcc_matrix
@@ -47,7 +47,6 @@ env:
   COMPILER_VERSION: ${{ github.event.inputs.compiler_version || '15.2' }}
   VULKAN_CHOICE: ${{ github.event.inputs.vulkan_sdk || 'runtime-1.4.321.0' }}
   TEST_MODE: ${{ github.event.inputs.test_mode || 'false' }}
-  ACTIONS_STEP_DEBUG: 'true'
 
 jobs:
   build:
@@ -62,12 +61,12 @@ jobs:
             build_type: debug
           - link_type: static
             build_type: release-sepdbg
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup WSL2 with Ubuntu 24.04
+      - name: Setup WSL2
         uses: Vampire/setup-wsl@v3
         with:
           distribution: Ubuntu-24.04
@@ -76,57 +75,82 @@ jobs:
 
       - name: Cache GCC 15.2
         if: ${{ env.COMPILER_VERSION == '15.2' }}
-        id: cache-gcc
         uses: actions/cache@v4
         with:
-          path: |
-            gcc-15.2-install.tar.xz
+          path: gcc-15.2-install.tar.xz
           key: gcc-15.2-ubuntu2404-${{ runner.os }}
 
-      - name: Extract Qt version components
-        id: qt_version
+      - name: Copy scripts to WSL
         run: |
-          $version = "${{ env.QT_VERSION }}"
-          $parts = $version.Split('.')
-          $major_minor = "$($parts[0]).$($parts[1])"
-          echo "major_minor=$major_minor" >> $env:GITHUB_OUTPUT
-        shell: pwsh
+          wsl cp Qt6Build/setup-wsl-gcc.sh .
+          wsl cp Qt6Build/download-qt-source.sh .
+          wsl cp Qt6Build/build-qt6-native-linux_x86_64_gcc.sh .
+          wsl chmod +x setup-wsl-gcc.sh download-qt-source.sh build-qt6-native-linux_x86_64_gcc.sh
 
-      - name: Create build scripts
-        run: |
-          # WSL environment setup script
-          $setupScript = "#!/bin/bash`nset -e`necho `"=== Qt ${{ env.QT_VERSION }} Linux GCC Build Setup ===`"`n`nexport DEBIAN_FRONTEND=noninteractive`n`n# Enable Universe repository`necho `"Enabling Ubuntu Universe repository...`"`nsudo add-apt-repository universe -y >/dev/null 2>&1`nsudo apt-get update -qq`n`n# Install base build tools`necho `"Installing base build tools...`"`nsudo apt-get install -y -qq --no-install-recommends build-essential cmake ninja-build python3 pkg-config wget curl xz-utils`n`n# Install compiler based on version`nif [ `"${{ env.COMPILER_VERSION }}`" = `"15.2`" ]; then`n  GCC_PREFIX=/opt/gcc-15.2`n  CACHE_FILE=`"`$(pwd)/gcc-15.2-install.tar.xz`"`n  if [ -f `"`$CACHE_FILE`" ]; then`n    echo `"Restoring GCC 15.2 from cache...`"`n    sudo mkdir -p `$GCC_PREFIX`n    sudo tar -xJf `"`$CACHE_FILE`" -C /`n  else`n    echo `"Building GCC 15.2 from source (this will take 60-90 minutes)...`"`n    sudo apt-get install -y -qq libgmp-dev libmpfr-dev libmpc-dev flex`n    cd /tmp`n    wget -q https://ftp.gnu.org/gnu/gcc/gcc-15.2.0/gcc-15.2.0.tar.xz`n    tar -xf gcc-15.2.0.tar.xz`n    cd gcc-15.2.0`n    ./configure --prefix=`$GCC_PREFIX --enable-languages=c,c++ --disable-multilib --disable-bootstrap`n    make -j`$(nproc)`n    sudo make install`n    cd `"`$(pwd)/..`"`n    rm -rf /tmp/gcc-15.2.0*`n    sudo tar -cJf `"`$CACHE_FILE`" -C / opt/gcc-15.2`n  fi`n  sudo ln -sf `$GCC_PREFIX/bin/gcc /usr/local/bin/gcc`n  sudo ln -sf `$GCC_PREFIX/bin/g++ /usr/local/bin/g++`n  export PATH=`"`$GCC_PREFIX/bin:`$PATH`"`n  export LD_LIBRARY_PATH=`"`$GCC_PREFIX/lib64:`$LD_LIBRARY_PATH`"`n  echo `"export PATH=`$GCC_PREFIX/bin:`\`$PATH`" | sudo tee -a /etc/environment`n  echo `"export LD_LIBRARY_PATH=`$GCC_PREFIX/lib64:`\`$LD_LIBRARY_PATH`" | sudo tee -a /etc/environment`nelse`n  echo `"Installing GCC-${{ env.COMPILER_VERSION }} from repository...`"`n  sudo apt-get install -y -qq --no-install-recommends gcc-${{ env.COMPILER_VERSION }} g++-${{ env.COMPILER_VERSION }}`n  sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-${{ env.COMPILER_VERSION }} 100`n  sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-${{ env.COMPILER_VERSION }} 100`nfi`n`n# Install Qt dependencies in batches to reduce memory pressure`necho `"Installing X11/OpenGL libraries...`"`nsudo apt-get install -y -qq --no-install-recommends libgl1-mesa-dev libglu1-mesa-dev libx11-dev libxext-dev libxrender-dev libxrandr-dev libxcursor-dev`n`necho `"Installing XCB libraries...`"`nsudo apt-get install -y -qq --no-install-recommends libxcb1-dev libxcb-util-dev libxcb-image0-dev libxcb-keysyms1-dev libxcb-render0-dev libxcb-render-util0-dev libxcb-randr0-dev libxcb-cursor-dev`n`necho `"Installing remaining dependencies...`"`nsudo apt-get install -y -qq --no-install-recommends libxkbcommon-dev libxkbcommon-x11-dev libfontconfig1-dev libfreetype6-dev libglib2.0-dev libegl1-mesa-dev libssl-dev`n`n# Verify compiler installation`necho `"=== Compiler Information ===`"`ngcc --version | head -1`ng++ --version | head -1`necho `"============================`"`n`n# Install Vulkan SDK if requested`nif [ `"${{ env.VULKAN_CHOICE }}`" != `"none`" ]; then`n  echo `"Installing Vulkan SDK headers...`"`n  vulkan_version=`$(echo `"${{ env.VULKAN_CHOICE }}`" | sed 's/runtime-//')`n  `n  # Install Vulkan headers from Ubuntu package or download from Khronos`n  if [ `"`$vulkan_version`" = `"1.4.321.0`" ] || [ `"`$vulkan_version`" = `"1.3.290.0`" ]; then`n    # Download Vulkan headers from Khronos GitHub`n    cd /tmp`n    wget -q https://github.com/KhronosGroup/Vulkan-Headers/archive/refs/tags/vulkan-sdk-`${vulkan_version}.tar.gz`n    tar -xzf vulkan-sdk-`${vulkan_version}.tar.gz`n    cd Vulkan-Headers-vulkan-sdk-`${vulkan_version}`n    sudo mkdir -p /usr/local/include`n    sudo cp -r include/vulkan /usr/local/include/`n    sudo cp -r include/vk_video /usr/local/include/ 2>/dev/null || true`n    cd /tmp`n    rm -rf Vulkan-Headers-* vulkan-sdk-*.tar.gz`n    echo `"Vulkan SDK headers installed: `$vulkan_version`"`n  else`n    echo `"Using system Vulkan headers`"`n    sudo apt-get install -y -qq libvulkan-dev || echo `"Warning: libvulkan-dev not available`"`n  fi`nfi`n`n# Cleanup`nsudo apt-get clean >/dev/null 2>&1`nsudo rm -rf /var/lib/apt/lists/*`necho `"WSL2 environment setup completed`""
-          [System.IO.File]::WriteAllText("setup_environment.sh", $setupScript.Replace("`r`n", "`n"), [System.Text.UTF8Encoding]::new($false))
-
-          # Qt download script
-          $downloadScript = "#!/bin/bash`nset -e`necho `"=== Downloading Qt ${{ env.QT_VERSION }} Source ===`"`n`nqt_version=`"${{ env.QT_VERSION }}`"`nmajor_minor=`"${{ steps.qt_version.outputs.major_minor }}`"`nsource_url=`"https://download.qt.io/official_releases/qt/`$major_minor/`$qt_version/single/qt-everywhere-src-`$qt_version.tar.xz`"`n`necho `"Downloading from: `$source_url`"`nwget -q --show-progress -O `"qt-everywhere-src-`$qt_version.tar.xz`" `"`$source_url`"`n`necho `"Qt source download completed`""
-          [System.IO.File]::WriteAllText("download_qt.sh", $downloadScript.Replace("`r`n", "`n"), [System.Text.UTF8Encoding]::new($false))
-
-          # Main build script
-          $buildScript = "#!/bin/bash`nset -e`n`necho `"=== Qt ${{ env.QT_VERSION }} Linux GCC Build Started ===`"`n`n# Build parameters`nqt_version=`"${{ env.QT_VERSION }}`"`ncompiler_version=`"${{ env.COMPILER_VERSION }}`"`nbuild_type=`"`$1`"`nlink_type=`"`$2`"`nseparate_debug=`"`$3`"`ntest_mode=`"${{ env.TEST_MODE }}`"`nvulkan_choice=`"${{ env.VULKAN_CHOICE }}`"`n`necho `"=== Build Configuration ===`"`necho `"Qt Version: `$qt_version`"`necho `"GCC Version: `$compiler_version`"`necho `"Build Type: `$build_type`"`necho `"Link Type: `$link_type`"`necho `"Separate Debug: `$separate_debug`"`necho `"Test Mode: `$test_mode`"`necho `"Vulkan Support: `$vulkan_choice`"`necho `"==============================`"`n`n# Set GCC environment if needed`nif [ `"`$compiler_version`" = `"15.2`" ]; then`n  export PATH=`"/opt/gcc-15.2/bin:`$PATH`"`n  export LD_LIBRARY_PATH=`"/opt/gcc-15.2/lib64:`$LD_LIBRARY_PATH`"`nfi`n`n# Verify compiler`necho `"Using compiler:`"`ngcc --version | head -1`ng++ --version | head -1`necho `"==============================`"`n`n# Extract Qt source`necho `"Extracting Qt source...`"`ntar -xf qt-everywhere-src-`$qt_version.tar.xz`nrm qt-everywhere-src-`$qt_version.tar.xz`n`n# Setup build directories`nSRC_QT=`"`$(pwd)/qt-everywhere-src-`$qt_version`"`nBUILD_DIR=`"`$(pwd)/build`"`nINSTALL_DIR=`"`$(pwd)/install`"`n`nmkdir -p `"`$BUILD_DIR`"`nmkdir -p `"`$INSTALL_DIR`"`ncd `"`$BUILD_DIR`"`n`n# Configure Qt build options`nCFG_OPTIONS=`"-`$link_type -prefix `$INSTALL_DIR -c++std c++20 -opensource -confirm-license -qt-libpng -qt-libjpeg -qt-zlib -qt-pcre -openssl-linked -platform linux-g++ -opengl desktop`"`n`n# Add test mode configuration`nif [ `"`$test_mode`" = `"true`" ]; then`n  CFG_OPTIONS=`"`$CFG_OPTIONS -submodules qtbase -nomake examples -nomake tests`"`n  echo `"Test mode enabled: building qtbase only`"`nelse`n  CFG_OPTIONS=`"`$CFG_OPTIONS -nomake examples -nomake tests -skip qtwebengine`"`nfi`n`n# Configure Vulkan support`nif [ `"`$vulkan_choice`" != `"none`" ]; then`n  echo `"Vulkan support enabled (runtime)`"`nelse`n  CFG_OPTIONS=`"`$CFG_OPTIONS -no-feature-vulkan`"`n  echo `"Vulkan support disabled`"`nfi`n`n# Build type configuration`nif [ `"`$build_type`" = `"debug`" ]; then`n  CFG_OPTIONS=`"`$CFG_OPTIONS -debug`"`nelse`n  CFG_OPTIONS=`"`$CFG_OPTIONS -release`"`nfi`n`n# Separate debug info for shared builds`nif [ `"`$link_type`" = `"shared`" ] && [ `"`$separate_debug`" = `"true`" ]; then`n  CFG_OPTIONS=`"`$CFG_OPTIONS -force-debug-info -separate-debug-info`"`nfi`n`necho `"=== Qt Configuration ===`"`necho `"Configure options: `$CFG_OPTIONS`"`necho `"========================`"`n`n# Configure Qt`necho `"Configuring Qt...`"`n`"`$SRC_QT/configure`" `$CFG_OPTIONS`n`n# Build Qt with memory optimization`necho `"=== Building Qt ===`"`nPARALLEL_JOBS=`$(nproc)`nif [ `$PARALLEL_JOBS -gt 3 ]; then`n  PARALLEL_JOBS=3  # Limit for resource-constrained environments`nfi`n`n# Set memory-optimized compiler flags`nexport CXXFLAGS=`"`$CXXFLAGS -fno-lto`"`nexport LDFLAGS=`"`$LDFLAGS -Wl,--no-keep-memory`"`n`necho `"Using `$PARALLEL_JOBS parallel jobs`"`ncmake --build . --parallel `$PARALLEL_JOBS`n`n# Install Qt`necho `"Installing Qt...`"`ncmake --install .`n`n# Save build configuration summary`necho `"=== Searching for config.summary ===`"`necho `"Current directory: `$(pwd)`"`necho `"Build directory structure:`"`nls -la . | head -20`n`nconfig_summary_found=false`n`n# Comprehensive search for config.summary`necho `"Searching in multiple locations...`"`nfor search_path in `"`$(pwd)/config.summary`" `"`$(pwd)/qtbase/config.summary`" `"`$(pwd)/../config.summary`" `"`$SRC_QT/config.summary`" `"`$BUILD_DIR/config.summary`"; do`n  echo `"Checking: `$search_path`"`n  if [ -f `"`$search_path`" ]; then`n    echo `"Found config.summary at: `$search_path`"`n    cp `"`$search_path`" `"`$(pwd)/../build_summary.txt`"`n    echo `"Build summary saved (size: `$(stat -c%s `$search_path) bytes)`"`n    config_summary_found=true`n    break`n  fi`ndone`n`n# Last resort: use find command`nif [ `"`$config_summary_found`" = `"false`" ]; then`n  echo `"Searching recursively with find...`"`n  found_file=`$(find `$(pwd) -name 'config.summary' -type f 2>/dev/null | head -1)`n  if [ -n `"`$found_file`" ] && [ -f `"`$found_file`" ]; then`n    echo `"Found config.summary via find at: `$found_file`"`n    cp `"`$found_file`" `"`$(pwd)/../build_summary.txt`"`n    echo `"Build summary saved (size: `$(stat -c%s `$found_file) bytes)`"`n    config_summary_found=true`n  fi`nfi`n`nif [ `"`$config_summary_found`" = `"false`" ]; then`n  echo `"WARNING: config.summary not found in any location`"`n  echo `"Available files matching 'config*':`"`n  find `$(pwd) -name 'config*' -type f 2>/dev/null | head -10`n  echo `"Creating basic build summary...`"`n  echo `"Qt ${{ env.QT_VERSION }} Linux GCC Build Summary`" > `"`$(pwd)/../build_summary.txt`"`n  echo `"=====================================`" >> `"`$(pwd)/../build_summary.txt`"`n  echo `"Build Type: `$build_type`" >> `"`$(pwd)/../build_summary.txt`"`n  echo `"Link Type: `$link_type`" >> `"`$(pwd)/../build_summary.txt`"`n  echo `"Compiler: GCC `$compiler_version`" >> `"`$(pwd)/../build_summary.txt`"`n  echo `"Platform: Linux x86_64 (WSL2)`" >> `"`$(pwd)/../build_summary.txt`"`n  echo `"Test Mode: `$test_mode`" >> `"`$(pwd)/../build_summary.txt`"`n  echo `"Build Date: `$(date +'%Y-%m-%d %H:%M:%S UTC')`" >> `"`$(pwd)/../build_summary.txt`"`nfi`n`necho `"Final build_summary.txt size: `$(stat -c%s `$(pwd)/../build_summary.txt 2>/dev/null || echo 0) bytes`"`n`n# Cleanup source directory`ncd `"`$(pwd)/..`"`nrm -rf `"qt-everywhere-src-`$qt_version`"`n`necho `"=== Qt build completed successfully ===`""
-          [System.IO.File]::WriteAllText("build_qt.sh", $buildScript.Replace("`r`n", "`n"), [System.Text.UTF8Encoding]::new($false))
-
-          # Build runner script
-          $runnerScript = "#!/bin/bash`nset -e`n`n# Parse matrix parameters`nbuild_type=`"${{ matrix.build_type }}`"`nlink_type=`"${{ matrix.link_type }}`"`n`n# Handle release-sepdbg build type`nactual_build_type=`"`$build_type`"`nseparate_debug=`"false`"`nif [ `"`$build_type`" = `"release-sepdbg`" ]; then`n  actual_build_type=`"release`"`n  if [ `"`$link_type`" = `"shared`" ]; then`n    separate_debug=`"true`"`n  fi`nfi`n`n# Make scripts executable`nchmod +x ./setup_environment.sh`nchmod +x ./download_qt.sh`nchmod +x ./build_qt.sh`n`n# Run build process`n./build_qt.sh `"`$actual_build_type`" `"`$link_type`" `"`$separate_debug`""
-          [System.IO.File]::WriteAllText("run_build.sh", $runnerScript.Replace("`r`n", "`n"), [System.Text.UTF8Encoding]::new($false))
-        shell: pwsh
-
-      - name: Setup WSL2 environment
-        run: wsl bash ./setup_environment.sh
+      - name: Setup WSL environment
+        run: wsl bash ./setup-wsl-gcc.sh "${{ env.COMPILER_VERSION }}" "${{ env.VULKAN_CHOICE }}"
 
       - name: Download Qt source
-        run: wsl bash ./download_qt.sh
+        run: wsl bash ./download-qt-source.sh "${{ env.QT_VERSION }}"
 
       - name: Build Qt
-        run: wsl bash ./run_build.sh
+        run: |
+          $buildType = "${{ matrix.build_type }}"
+          $linkType = "${{ matrix.link_type }}"
+
+          # Handle release-sepdbg
+          $actualBuildType = $buildType
+          $separateDebug = "false"
+          if ($buildType -eq "release-sepdbg") {
+            $actualBuildType = "release"
+            if ($linkType -eq "shared") {
+              $separateDebug = "true"
+            }
+          }
+
+          wsl bash ./build-qt6-native-linux_x86_64_gcc.sh "${{ env.QT_VERSION }}" "${{ env.COMPILER_VERSION }}" "$actualBuildType" "$linkType" "$separateDebug" "${{ env.VULKAN_CHOICE }}" "${{ env.TEST_MODE }}"
+        shell: pwsh
+
+      - name: Export config.summary
+        run: |
+          $buildDir = "build"
+          $reportName = "qt-build-report_${{ matrix.link_type }}_${{ matrix.build_type }}.txt"
+
+          # Search for config.summary in WSL
+          $summaryPath = wsl bash -c "find build -name 'config.summary' -type f 2>/dev/null | head -1"
+
+          if ($summaryPath) {
+            Write-Host "Found config.summary at: $summaryPath"
+            wsl cp "$summaryPath" "$reportName"
+          } else {
+            Write-Host "WARNING: config.summary not found, creating basic report"
+            $qtVersion = "${{ env.QT_VERSION }}"
+            $compilerVersion = "${{ env.COMPILER_VERSION }}"
+            $buildTypeVal = "${{ matrix.build_type }}"
+            $linkTypeVal = "${{ matrix.link_type }}"
+            $testMode = "${{ env.TEST_MODE }}"
+            $vulkan = "${{ env.VULKAN_CHOICE }}"
+            $buildDate = Get-Date -Format 'yyyy-MM-dd HH:mm:ss UTC'
+
+            $basicReport = "Qt $qtVersion Linux GCC $compilerVersion Build Report`n" +
+                          "Build Type: $buildTypeVal`n" +
+                          "Link Type: $linkTypeVal`n" +
+                          "Compiler: GCC $compilerVersion`n" +
+                          "Platform: Linux x86_64 (WSL2)`n" +
+                          "Test Mode: $testMode`n" +
+                          "Vulkan: $vulkan`n" +
+                          "Build Date: $buildDate"
+            [System.IO.File]::WriteAllText($reportName, $basicReport, [System.Text.UTF8Encoding]::new($false))
+          }
+
+          echo "REPORT_FILE=$reportName" >> $env:GITHUB_ENV
+        shell: pwsh
 
       - name: Package binaries
         run: |
           $linkType = "${{ matrix.link_type }}"
           $buildType = "${{ matrix.build_type }}"
-          $qtVersion = "${{ env.QT_VERSION }}"
-          $compilerVersion = "${{ env.COMPILER_VERSION }}"
-          
+
           # Normalize build type name
           $buildTypeNormalized = switch ($buildType) {
             "release" { "release" }
@@ -134,38 +158,21 @@ jobs:
             "release-sepdbg" { "relwithdebinfo" }
             default { $buildType.ToLower() }
           }
-          
+
           # Create standardized archive name
-          $compilerSuffix = "gcc${compilerVersion}"
-          $archiveName = "qt${qtVersion}-linux-x86_64-${compilerSuffix}-${linkType}_${buildTypeNormalized}.tar.xz"
-          
+          $archiveName = "qt${{ env.QT_VERSION }}-linux-x86_64-gcc${{ env.COMPILER_VERSION }}-${linkType}_${buildTypeNormalized}.tar.xz"
+
           Write-Host "Creating archive: $archiveName"
-          wsl tar -cJf $archiveName -C install .
-          
+          wsl tar -cJf "$archiveName" -C output .
+
           if (Test-Path $archiveName) {
-            Write-Host "Archive created successfully: $(Get-Item $archiveName | Select-Object -ExpandProperty Length) bytes"
+            $size = (Get-Item $archiveName).Length
+            Write-Host "Archive created: $size bytes"
             echo "ARCHIVE_NAME=$archiveName" >> $env:GITHUB_ENV
           } else {
             Write-Error "Failed to create archive"
             exit 1
           }
-          
-          # Prepare build report - use the summary created by build script
-          $reportName = "qt-build-report_${linkType}_${buildType}.txt"
-          if (Test-Path "build_summary.txt") {
-            Copy-Item "build_summary.txt" $reportName
-            Write-Host "Build report copied from build_summary.txt ($(Get-Item build_summary.txt | Select-Object -ExpandProperty Length) bytes)"
-          } else {
-            Write-Host "WARNING: build_summary.txt not found, creating basic report"
-            $basicReport = "Qt ${{ env.QT_VERSION }} Build Report`n" +
-                          "Build Type: $buildType`n" +
-                          "Link Type: $linkType`n" +
-                          "Compiler: GCC ${{ env.COMPILER_VERSION }}`n" +
-                          "Platform: Linux x86_64 (WSL2)`n" +
-                          "Build Date: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss UTC')"
-            [System.IO.File]::WriteAllText($reportName, $basicReport, [System.Text.UTF8Encoding]::new($false))
-          }
-          echo "REPORT_FILE=$reportName" >> $env:GITHUB_ENV
         shell: pwsh
 
       - name: Upload package
@@ -181,6 +188,3 @@ jobs:
           name: report-${{ matrix.link_type }}_${{ matrix.build_type }}
           path: ${{ env.REPORT_FILE }}
           if-no-files-found: error
-
-      # Note: This workflow only builds and uploads artifacts
-      # Use the 'release-qt-unified' workflow to create releases with all platforms

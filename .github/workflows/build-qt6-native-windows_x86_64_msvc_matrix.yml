@@ -263,7 +263,8 @@ jobs:
             set SEPARATE_DEBUG=false
           )
 
-          call D:\a\QtBuild\QtBuild\Qt6Build\build-qt6-native-windows_x86_64_msvc.cmd !QT_VERSION! !COMPILER_VERSION! !BUILD_TYPE! !LINK_TYPE! !SEPARATE_DEBUG! "" !TEST_MODE!
+          set VULKAN_CHOICE=${{ env.VULKAN_CHOICE }}
+          call D:\a\QtBuild\QtBuild\Qt6Build\build-qt6-native-windows_x86_64_msvc.cmd !QT_VERSION! !COMPILER_VERSION! !BUILD_TYPE! !LINK_TYPE! !SEPARATE_DEBUG! !VULKAN_CHOICE! !TEST_MODE!
       
       - name: Export Qt configure summary
         shell: pwsh
