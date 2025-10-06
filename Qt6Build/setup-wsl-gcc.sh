@@ -78,6 +78,21 @@ sudo apt-get install -y -qq --no-install-recommends \
     libxkbcommon-dev libxkbcommon-x11-dev libfontconfig1-dev \
     libfreetype6-dev libglib2.0-dev libegl1-mesa-dev libssl-dev
 
+# === Install Database Development Libraries ===
+echo "Installing PostgreSQL development libraries..."
+sudo apt-get install -y -qq --no-install-recommends \
+    libpq-dev postgresql-server-dev-all
+
+echo "Installing MySQL development libraries..."
+sudo apt-get install -y -qq --no-install-recommends \
+    libmysqlclient-dev
+
+# Set environment variables for Qt configure
+export PostgreSQL_ROOT=/usr
+export MYSQL_ROOT=/usr
+echo "PostgreSQL: /usr (libpq-dev installed)"
+echo "MySQL: /usr (libmysqlclient-dev installed)"
+
 # === Compiler Verification ===
 echo "=== Compiler Verification ==="
 gcc --version | head -1

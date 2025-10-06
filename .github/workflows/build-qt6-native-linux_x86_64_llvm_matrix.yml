@@ -103,7 +103,8 @@ jobs:
             }
           }
 
-          wsl bash ./build-qt6-native-linux_x86_64_llvm.sh "${{ env.QT_VERSION }}" "${{ env.COMPILER_VERSION }}" "$actualBuildType" "$linkType" "$separateDebug" "${{ env.VULKAN_CHOICE }}" "${{ env.TEST_MODE }}"
+          # Set database environment variables in WSL
+          wsl bash -c "export PostgreSQL_ROOT=/usr && export MYSQL_ROOT=/usr && ./build-qt6-native-linux_x86_64_llvm.sh '${{ env.QT_VERSION }}' '${{ env.COMPILER_VERSION }}' '$actualBuildType' '$linkType' '$separateDebug' '${{ env.VULKAN_CHOICE }}' '${{ env.TEST_MODE }}'"
         shell: pwsh
 
       - name: Export config.summary

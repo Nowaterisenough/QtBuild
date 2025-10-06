@@ -95,7 +95,7 @@ if [ "$TEST_MODE" = "false" ]; then
     # SQLite is built-in
     CFG_OPTIONS="${CFG_OPTIONS} -sql-sqlite"
 
-    # PostgreSQL
+    # PostgreSQL - 必须存在
     if [ -z "$PostgreSQL_ROOT" ]; then
         echo "ERROR: PostgreSQL_ROOT not defined"
         exit 1
@@ -109,7 +109,7 @@ if [ "$TEST_MODE" = "false" ]; then
     export PostgreSQL_LIBRARY_DIRS="${PostgreSQL_ROOT}/lib"
     echo "SQL: SQLite + PostgreSQL"
 
-    # MySQL
+    # MySQL - 必须存在
     if [ -z "$MYSQL_ROOT" ]; then
         echo "ERROR: MYSQL_ROOT not defined"
         exit 1
