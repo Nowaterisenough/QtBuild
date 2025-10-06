@@ -85,22 +85,22 @@ lld-${LLVM_VERSION} --version | head -1
 
 # === Install Vulkan SDK ===
 if [ "$VULKAN_SDK" != "none" ]; then
-    echo "Installing Vulkan SDK headers..."
+    echo "Installing Vulkan runtime library..."
+    sudo apt-get install -y -qq --no-install-recommends libvulkan-dev
+
     vulkan_version=$(echo "$VULKAN_SDK" | sed 's/runtime-//')
 
     if [ "$vulkan_version" = "1.4.321.0" ] || [ "$vulkan_version" = "1.3.290.0" ]; then
+        echo "Installing Vulkan SDK headers: $vulkan_version"
         cd /tmp
         wget -q https://github.com/KhronosGroup/Vulkan-Headers/archive/refs/tags/vulkan-sdk-${vulkan_version}.tar.gz
         tar -xzf vulkan-sdk-${vulkan_version}.tar.gz
         cd Vulkan-Headers-vulkan-sdk-${vulkan_version}
-        sudo mkdir -p /usr/local/include
         sudo cp -r include/vulkan /usr/local/include/
         sudo cp -r include/vk_video /usr/local/include/ 2>/dev/null || true
         cd /tmp
         rm -rf Vulkan-Headers-* vulkan-sdk-*.tar.gz
-        echo "Vulkan SDK headers installed: $vulkan_version"
-    else
-        sudo apt-get install -y -qq libvulkan-dev || echo "Warning: libvulkan-dev not available"
+        echo "Vulkan headers updated to: $vulkan_version"
     fi
 fi
 
