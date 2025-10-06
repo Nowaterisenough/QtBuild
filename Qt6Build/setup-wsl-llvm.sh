@@ -33,7 +33,13 @@ sudo apt-get update -qq
 echo "Installing LLVM/Clang-${LLVM_VERSION} toolchain..."
 sudo apt-get install -y -qq --no-install-recommends \
     clang-${LLVM_VERSION} clang++-${LLVM_VERSION} lld-${LLVM_VERSION} \
-    libc++-${LLVM_VERSION}-dev libc++abi-${LLVM_VERSION}-dev
+    libc++-${LLVM_VERSION}-dev libc++abi-${LLVM_VERSION}-dev \
+    libclang-${LLVM_VERSION}-dev llvm-${LLVM_VERSION}-dev
+
+# Qt Tools 需要 libclang,可能会找到系统的旧版本,同时安装系统版本的开发包
+echo "Installing system LLVM development libraries for Qt Tools..."
+sudo apt-get install -y -qq --no-install-recommends \
+    libclang-dev llvm-dev || true
 
 # === Setup Alternatives ===
 sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-${LLVM_VERSION} 100

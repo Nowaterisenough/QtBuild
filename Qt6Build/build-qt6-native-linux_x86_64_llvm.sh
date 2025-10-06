@@ -93,6 +93,7 @@ if [ "$VULKAN_SDK" = "none" ]; then
     CFG_OPTIONS="${CFG_OPTIONS} -no-feature-vulkan"
     echo "Vulkan: disabled"
 else
+    CFG_OPTIONS="${CFG_OPTIONS} -feature-vulkan"
     echo "Vulkan: enabled (runtime)"
 fi
 
