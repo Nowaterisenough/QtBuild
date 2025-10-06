@@ -213,11 +213,11 @@ if /i "%LINK_TYPE%"=="shared" (
         )
         copy "%PostgreSQL_ROOT%\bin\libpq.dll" "%FINAL_INSTALL_DIR%\bin\" || exit /b 1
 
-        if not exist "%MYSQL_ROOT%\bin\libmysql.dll" (
-            echo ERROR: libmysql.dll not found: %MYSQL_ROOT%\bin\libmysql.dll
+        if not exist "%MYSQL_ROOT%\lib\libmysql.dll" (
+            echo ERROR: libmysql.dll not found: %MYSQL_ROOT%\lib\libmysql.dll
             exit /b 1
         )
-        copy "%MYSQL_ROOT%\bin\libmysql.dll" "%FINAL_INSTALL_DIR%\bin\" || exit /b 1
+        copy "%MYSQL_ROOT%\lib\libmysql.dll" "%FINAL_INSTALL_DIR%\bin\" || exit /b 1
 
         echo DLLs: libpq.dll + libmysql.dll copied
     )
