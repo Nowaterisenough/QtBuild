@@ -145,6 +145,15 @@ cmake --build . --parallel ${PARALLEL_JOBS}
 # === Install ===
 cmake --install .
 
+# === Save config.summary ===
+SUMMARY_FILE=$(find . -name "config.summary" -type f 2>/dev/null | head -1)
+if [ -n "$SUMMARY_FILE" ]; then
+    echo "Saving config.summary..."
+    cp "$SUMMARY_FILE" "${INSTALL_DIR}/config.summary"
+else
+    echo "WARNING: config.summary not found"
+fi
+
 # === Cleanup ===
 cd ..
 rm -rf "$BUILD_DIR"

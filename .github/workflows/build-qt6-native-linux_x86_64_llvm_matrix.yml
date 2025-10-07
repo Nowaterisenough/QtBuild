@@ -111,10 +111,9 @@ jobs:
         run: |
           $reportName = "qt-build-report_${{ matrix.link_type }}_${{ matrix.build_type }}.txt"
 
-          # Search for config.summary in WSL
-          $summaryPath = wsl bash -c "find build -name 'config.summary' -type f 2>/dev/null | head -1"
-
-          if ($summaryPath) {
+          # Check for config.summary in output directory
+          $summaryPath = "output/config.summary"
+          if (wsl test -f "$summaryPath") {
             Write-Host "Found config.summary at: $summaryPath"
             wsl cp "$summaryPath" "$reportName"
           } else {
