@@ -59,7 +59,7 @@ mkdir -p "$INSTALL_DIR"
 cd "$BUILD_DIR"
 
 # === Base Configuration ===
-CFG_OPTIONS="-${LINK_TYPE} -prefix ${INSTALL_DIR} -nomake examples -nomake tests -c++std c++23 -opensource -confirm-license -qt-libpng -qt-libjpeg -qt-zlib -qt-pcre -openssl-linked -platform linux-g++ -opengl desktop -feature-backtrace -feature-jemalloc"
+CFG_OPTIONS="-${LINK_TYPE} -prefix ${INSTALL_DIR} -nomake examples -nomake tests -c++std c++23 -opensource -confirm-license -qt-libpng -qt-libjpeg -qt-zlib -qt-pcre -openssl-linked -platform linux-g++ -opengl desktop -feature-backtrace -feature-jemalloc -feature-wayland -qpa xcb,wayland"
 
 # === Module Selection ===
 if [ "$TEST_MODE" = "true" ]; then
@@ -131,15 +131,22 @@ echo "Configure: ${CFG_OPTIONS}"
 "${SRC_QT}/configure" ${CFG_OPTIONS}
 
 # === Save config.summary (generated during configure) ===
-echo "Looking for config.summary..."
-SUMMARY_FILE=$(find . -name "config.summary" -type f 2>/dev/null | head -1)
-if [ -n "$SUMMARY_FILE" ]; then
-    echo "Found config.summary at: $SUMMARY_FILE"
-    cp "$SUMMARY_FILE" "${INSTALL_DIR}/config.summary"
+echo "Looking for config.summary in build directory..."
+if [ -f "config.summary" ]; then
+    echo "Found config.summary in current directory"
+    cp "config.summary" "${INSTALL_DIR}/config.summary"
     echo "Saved config.summary to: ${INSTALL_DIR}/config.summary"
+    cat "config.summary"
+elif [ -f "qtbase/config.summary" ]; then
+    echo "Found config.summary in qtbase subdirectory"
+    cp "qtbase/config.summary" "${INSTALL_DIR}/config.summary"
+    echo "Saved config.summary to: ${INSTALL_DIR}/config.summary"
+    cat "qtbase/config.summary"
 else
     echo "WARNING: config.summary not found after configure"
-    ls -la config.summary 2>/dev/null || echo "config.summary does not exist in current directory"
+    echo "Searching for config.summary..."
+    find . -name "config.summary" -type f 2>/dev/null || echo "No config.summary file found"
+    ls -la config.summary qtbase/config.summary 2>/dev/null || true
 fi
 
 # === Build ===

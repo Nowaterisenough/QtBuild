@@ -57,9 +57,14 @@ sudo apt-get install -y -qq --no-install-recommends \
     libxcb1-dev libxcb-util-dev libxcb-image0-dev libxcb-keysyms1-dev \
     libxcb-render0-dev libxcb-render-util0-dev libxcb-randr0-dev libxcb-cursor-dev
 
+echo "Installing Wayland libraries..."
+sudo apt-get install -y -qq --no-install-recommends \
+    libwayland-dev libwayland-egl1-mesa libwayland-cursor0 \
+    wayland-protocols libxkbcommon-dev
+
 echo "Installing remaining dependencies..."
 sudo apt-get install -y -qq --no-install-recommends \
-    libxkbcommon-dev libxkbcommon-x11-dev libfontconfig1-dev \
+    libxkbcommon-x11-dev libfontconfig1-dev \
     libfreetype6-dev libglib2.0-dev libegl1-mesa-dev libssl-dev
 
 # === Install Database Development Libraries ===

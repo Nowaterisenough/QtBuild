@@ -81,19 +81,25 @@ jobs:
           key: gcc-15.2-ubuntu2404-${{ runner.os }}
 
       - name: Copy scripts to WSL
+        shell: pwsh
         run: |
-          wsl cp Qt6Build/setup-wsl-gcc.sh .
-          wsl cp Qt6Build/download-qt-source.sh .
-          wsl cp Qt6Build/build-qt6-native-linux_x86_64_gcc.sh .
-          wsl chmod +x setup-wsl-gcc.sh download-qt-source.sh build-qt6-native-linux_x86_64_gcc.sh
+          # Convert Windows path to WSL path
+          $wslPath = wsl wslpath "'${{ github.workspace }}'"
+          Write-Host "WSL workspace path: $wslPath"
+
+          # Copy scripts to WSL home directory and make executable
+          wsl bash -c "cd ~ && cp '$wslPath/Qt6Build/setup-wsl-gcc.sh' . && cp '$wslPath/Qt6Build/download-qt-source.sh' . && cp '$wslPath/Qt6Build/build-qt6-native-linux_x86_64_gcc.sh' . && chmod +x *.sh && ls -la *.sh"
 
       - name: Setup WSL environment
-        run: wsl bash ./setup-wsl-gcc.sh "${{ env.COMPILER_VERSION }}" "${{ env.VULKAN_CHOICE }}"
+        shell: pwsh
+        run: wsl bash -c "cd ~ && ./setup-wsl-gcc.sh '${{ env.COMPILER_VERSION }}' '${{ env.VULKAN_CHOICE }}'"
 
       - name: Download Qt source
-        run: wsl bash ./download-qt-source.sh "${{ env.QT_VERSION }}"
+        shell: pwsh
+        run: wsl bash -c "cd ~ && ./download-qt-source.sh '${{ env.QT_VERSION }}'"
 
       - name: Build Qt
+        shell: pwsh
         run: |
           $buildType = "${{ matrix.build_type }}"
           $linkType = "${{ matrix.link_type }}"
@@ -108,19 +114,22 @@ jobs:
             }
           }
 
-          # Set database environment variables in WSL
-          wsl bash -c "export PostgreSQL_ROOT=/usr && export MYSQL_ROOT=/usr && ./build-qt6-native-linux_x86_64_gcc.sh '${{ env.QT_VERSION }}' '${{ env.COMPILER_VERSION }}' '$actualBuildType' '$linkType' '$separateDebug' '${{ env.VULKAN_CHOICE }}' '${{ env.TEST_MODE }}'"
-        shell: pwsh
+          # Set database environment variables in WSL and run build script from home directory
+          wsl bash -c "cd ~ && export PostgreSQL_ROOT=/usr && export MYSQL_ROOT=/usr && ./build-qt6-native-linux_x86_64_gcc.sh '${{ env.QT_VERSION }}' '${{ env.COMPILER_VERSION }}' '$actualBuildType' '$linkType' '$separateDebug' '${{ env.VULKAN_CHOICE }}' '${{ env.TEST_MODE }}'"
 
       - name: Export config.summary
+        shell: pwsh
         run: |
           $reportName = "qt-build-report_${{ matrix.link_type }}_${{ matrix.build_type }}.txt"
 
-          # Check for config.summary in output directory
-          $summaryPath = "output/config.summary"
-          if (wsl test -f "$summaryPath") {
-            Write-Host "Found config.summary at: $summaryPath"
-            wsl cp "$summaryPath" "$reportName"
+          # Check for config.summary in WSL output directory
+          $summaryExists = wsl bash -c "cd ~ && test -f output/config.summary && echo 'true' || echo 'false'"
+
+          if ($summaryExists.Trim() -eq "true") {
+            Write-Host "Found config.summary in ~/output/"
+            # Copy from WSL to Windows workspace
+            wsl bash -c "cd ~ && cp output/config.summary /tmp/config.summary"
+            wsl cp /tmp/config.summary "$reportName"
           } else {
             Write-Host "WARNING: config.summary not found, creating basic report"
             $qtVersion = "${{ env.QT_VERSION }}"
@@ -143,9 +152,9 @@ jobs:
           }
 
           echo "REPORT_FILE=$reportName" >> $env:GITHUB_ENV
-        shell: pwsh
 
       - name: Package binaries
+        shell: pwsh
         run: |
           $linkType = "${{ matrix.link_type }}"
           $buildType = "${{ matrix.build_type }}"
@@ -162,7 +171,15 @@ jobs:
           $archiveName = "qt${{ env.QT_VERSION }}-linux-x86_64-gcc${{ env.COMPILER_VERSION }}-${linkType}_${buildTypeNormalized}.tar.xz"
 
           Write-Host "Creating archive: $archiveName"
-          wsl tar -cJf "$archiveName" -C output .
+
+          # Create archive from WSL home directory's output folder
+          wsl bash -c "cd ~ && tar -cJf '$archiveName' -C output ."
+
+          # Convert WSL path to Windows path
+          $wslPath = wsl wslpath "'${{ github.workspace }}'"
+
+          # Copy archive to Windows workspace
+          wsl bash -c "cd ~ && cp '$archiveName' '$wslPath/'"
 
           if (Test-Path $archiveName) {
             $size = (Get-Item $archiveName).Length
@@ -172,7 +189,6 @@ jobs:
             Write-Error "Failed to create archive"
             exit 1
           }
-        shell: pwsh
 
       - name: Upload package
         uses: actions/upload-artifact@v4
