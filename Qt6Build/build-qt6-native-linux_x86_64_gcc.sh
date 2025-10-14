@@ -59,7 +59,7 @@ mkdir -p "$INSTALL_DIR"
 cd "$BUILD_DIR"
 
 # === Base Configuration ===
-CFG_OPTIONS="-${LINK_TYPE} -prefix ${INSTALL_DIR} -nomake examples -nomake tests -c++std c++23 -opensource -confirm-license -qt-libpng -qt-libjpeg -qt-zlib -qt-pcre -openssl-linked -platform linux-g++ -opengl desktop -feature-backtrace -feature-lttng"
+CFG_OPTIONS="-${LINK_TYPE} -prefix ${INSTALL_DIR} -nomake examples -nomake tests -c++std c++23 -opensource -confirm-license -qt-libpng -qt-libjpeg -qt-zlib -qt-pcre -openssl-linked -platform linux-g++ -opengl desktop -feature-backtrace -feature-jemalloc"
 
 # === Module Selection ===
 if [ "$TEST_MODE" = "true" ]; then

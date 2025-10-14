@@ -71,10 +71,10 @@ echo "Installing MySQL development libraries..."
 sudo apt-get install -y -qq --no-install-recommends \
     libmysqlclient-dev
 
-# === Install LTTng for Tracing Support ===
-echo "Installing LTTng tracing libraries..."
+# === Install JeMalloc for Memory Allocator ===
+echo "Installing JeMalloc memory allocator..."
 sudo apt-get install -y -qq --no-install-recommends \
-    liblttng-ust-dev lttng-tools babeltrace
+    libjemalloc-dev
 
 # Set environment variables for Qt configure
 export PostgreSQL_ROOT=/usr
