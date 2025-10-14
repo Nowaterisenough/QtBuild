@@ -11,7 +11,7 @@ on:
       qt_version:
         description: 'Qt Version to release (e.g., 6.9.2)'
         required: true
-        default: '6.9.2'
+        default: '6.10.0'
         type: string
       search_days:
         description: 'Search for artifacts from the last N days'
@@ -186,16 +186,16 @@ jobs:
           ### WebAssembly Build
           ```bash
           # Ensure host Qt is installed
-          export QT_HOST_PATH=/opt/qt6.9.2-native
-          
+          export QT_HOST_PATH=/opt/qt6.10.0-native
+
           # Configure your WASM project
           emconfigure cmake -DQT_HOST_PATH=$QT_HOST_PATH .
           ```
-          
+
           ### ARM64 Cross-Compilation
           ```bash
           # Set host Qt path
-          export QT_HOST_PATH=/opt/qt6.9.2-native
+          export QT_HOST_PATH=/opt/qt6.10.0-native
           
           # Configure with cross-compile toolchain
           cmake -DQT_HOST_PATH=$QT_HOST_PATH \

@@ -11,7 +11,7 @@ on:
       qt_version:
         description: 'Qt Version'
         required: true
-        default: '6.9.2'
+        default: '6.10.0'
       compiler_version:
         description: 'Compiler Version'
         required: true
@@ -39,7 +39,7 @@ on:
         - 'false'
 
 env:
-  QT_VERSION: ${{ github.event.inputs.qt_version || '6.9.2' }}
+  QT_VERSION: ${{ github.event.inputs.qt_version || '6.10.0' }}
   COMPILER_VERSION: ${{ github.event.inputs.compiler_version || '2022' }}
   VULKAN_CHOICE: ${{ github.event.inputs.vulkan_sdk || 'runtime-1.4.321.0' }}
   TEST_MODE: ${{ github.event.inputs.test_mode || 'false' }}
@@ -329,11 +329,11 @@ jobs:
             Copy-Item -Path "$compilerDir\*" -Destination $finalPath -Recurse -Force
             
             # 创建压缩包
-            Set-Location $tempDir
+            Set-Location $finalPath
             $workspaceDir = "${{ github.workspace }}"
             $archiveFullPath = Join-Path $workspaceDir $archiveName
-            
-            7z a "$archiveFullPath" $finalDirName -mx=9
+
+            7z a "$archiveFullPath" . -mx=9
             
             echo "Archive created: $archiveFullPath"
             

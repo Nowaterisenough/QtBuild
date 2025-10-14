@@ -11,7 +11,7 @@ on:
       qt_version:
         description: 'Qt Version to release (e.g., 6.9.2)'
         required: true
-        default: '6.9.2'
+        default: '6.10.0'
         type: string
       search_days:
         description: 'Search for artifacts from the last N days'

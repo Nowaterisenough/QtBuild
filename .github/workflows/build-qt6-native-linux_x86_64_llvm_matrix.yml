@@ -11,7 +11,7 @@ on:
       qt_version:
         description: 'Qt Version'
         required: true
-        default: '6.9.2'
+        default: '6.10.0'
         type: string
       compiler_version:
         description: 'Compiler Version'
@@ -45,7 +45,7 @@ on:
         - 'false'
 
 env:
-  QT_VERSION: ${{ github.event.inputs.qt_version || '6.9.2' }}
+  QT_VERSION: ${{ github.event.inputs.qt_version || '6.10.0' }}
   COMPILER_VERSION: ${{ github.event.inputs.compiler_version || '21' }}
   VULKAN_CHOICE: ${{ github.event.inputs.vulkan_sdk || 'runtime-1.4.321.0' }}
   TEST_MODE: ${{ github.event.inputs.test_mode || 'false' }}

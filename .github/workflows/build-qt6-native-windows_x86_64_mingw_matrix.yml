@@ -11,7 +11,7 @@ on:
       qt_version:
         description: 'Qt Version'
         required: true
-        default: '6.9.2'
+        default: '6.10.0'
       compiler_version:
         description: 'Compiler Version'
         required: true
@@ -52,7 +52,7 @@ on:
         - 'false'
 
 env:
-  QT_VERSION: ${{ github.event.inputs.qt_version || '6.9.2' }}
+  QT_VERSION: ${{ github.event.inputs.qt_version || '6.10.0' }}
   COMPILER_VERSION: ${{ github.event.inputs.compiler_version || '15.2.0' }}
   RUNTIME: ${{ github.event.inputs.runtime || 'ucrt' }}
   VULKAN_CHOICE: ${{ github.event.inputs.vulkan_sdk || 'runtime-1.4.321.0' }}
@@ -367,8 +367,8 @@ jobs:
           New-Item -ItemType Directory -Path (Join-Path $tmp $finalRoot) | Out-Null
           Copy-Item -Path "$qtRoot\*" -Destination (Join-Path $tmp $finalRoot) -Recurse -Force
           $archive=Join-Path "${{ github.workspace }}" $name
-          Push-Location $tmp
-          7z a "$archive" $finalRoot -mx=9 | Out-Null
+          Push-Location (Join-Path $tmp $finalRoot)
+          7z a "$archive" . -mx=9 | Out-Null
           Pop-Location
           if (-not (Test-Path $archive)) { echo "Archive not found: $archive"; exit 1 }
           echo "ARCHIVE_NAME=$name" >> $env:GITHUB_ENV

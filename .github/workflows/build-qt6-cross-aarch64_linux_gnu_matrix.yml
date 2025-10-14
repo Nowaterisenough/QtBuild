@@ -6,7 +6,7 @@ on:
       qt_version:
         description: 'Qt Version'
         required: true
-        default: '6.9.2'
+        default: '6.10.0'
       gcc_version:
         description: 'GCC Version'
         required: true
@@ -30,7 +30,7 @@ on:
         - 'false'
 
 env:
-  QT_VERSION: ${{ github.event.inputs.qt_version || '6.9.2' }}
+  QT_VERSION: ${{ github.event.inputs.qt_version || '6.10.0' }}
   GCC_VERSION: ${{ github.event.inputs.gcc_version || '14.3.rel1' }}
   HOST_QT_URL: ${{ github.event.inputs.host_qt_url || 'https://github.com/yuanpeirong/buildQt/releases/download/Qt6.9.2_rev0/Qt_6.9.2-static-Release_mingw1510_64_UCRT.7z' }}
   TEST_MODE: ${{ github.event.inputs.test_mode || 'false' }}
