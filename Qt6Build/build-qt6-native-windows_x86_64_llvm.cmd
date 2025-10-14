@@ -86,7 +86,7 @@ mkdir "%TEMP_INSTALL_DIR%" || exit /b 1
 cd /d "%BUILD_DIR%" || exit /b 1
 
 REM === Base Configuration ===
-set "CFG_OPTIONS=-%LINK_TYPE% -prefix "%TEMP_INSTALL_DIR%" -platform win32-clang-g++ -nomake examples -nomake tests -c++std c++20 -opensource -confirm-license -qt-libpng -qt-libjpeg -qt-zlib -qt-pcre -qt-freetype -schannel -opengl desktop"
+set "CFG_OPTIONS=-%LINK_TYPE% -prefix "%TEMP_INSTALL_DIR%" -platform win32-clang-g++ -nomake examples -nomake tests -c++std c++23 -opensource -confirm-license -qt-libpng -qt-libjpeg -qt-zlib -qt-pcre -qt-freetype -schannel -opengl desktop -feature-backtrace -feature-etw"
 
 REM === Module Selection ===
 if /i "%TEST_MODE%"=="true" (

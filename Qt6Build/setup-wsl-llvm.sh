@@ -71,6 +71,11 @@ echo "Installing MySQL development libraries..."
 sudo apt-get install -y -qq --no-install-recommends \
     libmysqlclient-dev
 
+# === Install LTTng for Tracing Support ===
+echo "Installing LTTng tracing libraries..."
+sudo apt-get install -y -qq --no-install-recommends \
+    liblttng-ust-dev lttng-tools babeltrace
+
 # Set environment variables for Qt configure
 export PostgreSQL_ROOT=/usr
 export MYSQL_ROOT=/usr
