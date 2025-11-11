@@ -15,11 +15,12 @@ on:
       compiler_version:
         description: 'Emscripten Version'
         required: true
-        default: '4.0.14'
+        default: '4.0.19'
         type: choice
         options:
         - '3.1.70'
         - '4.0.14'
+        - '4.0.19'
       host_gcc_version:
         description: 'Host GCC Version (MinGW for cross-compilation)'
         required: true
@@ -57,7 +58,7 @@ on:
 
 env:
   QT_VERSION: ${{ github.event.inputs.qt_version || '6.10.0' }}
-  COMPILER_VERSION: ${{ github.event.inputs.compiler_version || '4.0.14' }}
+  COMPILER_VERSION: ${{ github.event.inputs.compiler_version || '4.0.19' }}
   HOST_GCC_VERSION: ${{ github.event.inputs.host_gcc_version || '15.2.0' }}
   HOST_QT_URL: ${{ github.event.inputs.host_qt_url || 'https://github.com/Nowaterisenough/QtBuild/releases/download/qt6.9.2-windows-mingw15.2.0-ucrt-20250819063525/qt6.9.2-windows-x86_64-mingw_gcc15.2.0_ucrt-shared_release.7z' }}
   VULKAN_CHOICE: ${{ github.event.inputs.vulkan_sdk || 'runtime-1.4.321.0' }}

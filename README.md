@@ -41,7 +41,7 @@
 
 | 工具链 | 版本选项 | 构建模式 | Debug支持 | 工作流文件 |
 |--------|----------|----------|-----------|------------|
-| **Emscripten** | 3.1.70/4.0.14 | 静态构建 | 支持 | `build-qt6-wasm32_emscripten_matrix.yml` |
+| **Emscripten** | 3.1.70/4.0.19 | 静态构建 | 支持 | `build-qt6-wasm32_emscripten_matrix.yml` |
 
 **WebAssembly 特性**：
 - 支持多线程模式
@@ -99,7 +99,7 @@ qt{版本}-{平台}_{架构}_{编译器}{版本}_{运行时}-{链接类型}_{构
 - `qt6.9.2-windows_x86_64_msvc2022-static_release.7z`
 - `qt6.9.2-windows_x86_64_mingw_gcc15.1.0_ucrt-shared_relwithdebinfo.7z`
 - `qt6.9.2-windows_x86_64_llvm_clang20.1_ucrt-static_release_and_debug.7z`
-- `qt6.9.2-wasm32_emscripten4.0.14-static_debug.7z`
+- `qt6.9.2-wasm32_emscripten4.0.19-static_debug.7z`
 - `qt5.15.17-windows_x86_64_msvc2022-shared_release.7z`
 
 ---
@@ -206,7 +206,7 @@ cd QtBuild
 
 **Qt6 WebAssembly**：
 ```bash
-.\Qt6Build\build-qt6-wasm32_emscripten.cmd 6.9.2 4.0.14 release static
+.\Qt6Build\build-qt6-wasm32_emscripten.cmd 6.9.2 4.0.19 release static
 ```
 
 **Qt5 Windows MSVC**：
@@ -228,7 +228,7 @@ script_name <Qt版本> <编译器版本> <构建类型> <链接类型> <分离�
 
 **参数详解**：
 - `Qt版本`: 6.9.2, 5.15.17
-- `编译器版本`: 2022 (MSVC), 15.1.0 (GCC), 20.1 (Clang), 4.0.14 (Emscripten)
+- `编译器版本`: 2022 (MSVC), 15.1.0 (GCC), 20.1 (Clang), 4.0.19 (Emscripten)
 - `构建类型`: release, debug, release-and-debug
 - `链接类型`: static, shared
 - `分离调试信息`: true, false

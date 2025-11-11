@@ -12,14 +12,14 @@ REM 参数验证和默认值
 if "%QT_VERSION%"=="" (
     echo Error: Qt version is required
     echo Usage: %0 QT_VERSION EMSCRIPTEN_VERSION BUILD_TYPE LINK_TYPE
-    echo Example: %0 6.9.2 4.0.14 release static
+    echo Example: %0 6.9.2 4.0.19 release static
     exit /b 1
 )
-if "%EMSCRIPTEN_VERSION%"=="" set EMSCRIPTEN_VERSION=4.0.14
+if "%EMSCRIPTEN_VERSION%"=="" set EMSCRIPTEN_VERSION=4.0.19
 if "%BUILD_TYPE%"=="" set BUILD_TYPE=release
 if "%LINK_TYPE%"=="" set LINK_TYPE=static
 
-REM 例如: 6.9.2  4.0.14  release  static
+REM 例如: 6.9.2  4.0.19  release  static
 
 REM 设置WASM版本代号
 set WASM_VERSION=wasm32_emscripten
