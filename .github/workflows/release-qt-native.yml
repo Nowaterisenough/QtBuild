@@ -450,18 +450,85 @@ jobs:
               "Qt NFC"
             )
 
-            # Create compact feature summary table
+            # Extract unique compilers from build_configs
+            declare -a compilers
+            for config in "${build_configs[@]}"; do
+              # Extract compiler name (e.g., "LLVM-Clang", "GCC", "MSVC", "MinGW")
+              if [[ "$config" =~ LLVM-Clang|LLVM ]]; then
+                compiler="LLVM"
+              elif [[ "$config" =~ MinGW|mingw ]]; then
+                compiler="MinGW"
+              elif [[ "$config" =~ MSVC|msvc ]]; then
+                compiler="MSVC"
+              elif [[ "$config" =~ GCC|gcc ]]; then
+                compiler="GCC"
+              else
+                compiler="Other"
+              fi
+              # Add to compilers list if not already present
+              found=false
+              for existing in "${compilers[@]}"; do
+                if [[ "$existing" == "$compiler" ]]; then
+                  found=true
+                  break
+                fi
+              done
+              if [[ "$found" == "false" ]]; then
+                compilers+=("$compiler")
+              fi
+            done
+
+            # Function to get feature status for a compiler (yes if any config has it)
+            get_compiler_feature_status() {
+              local feature="$1"
+              local target_compiler="$2"
+              local has_yes=false
+              local has_no=false
+
+              for config in "${build_configs[@]}"; do
+                # Check if this config matches the target compiler
+                local config_compiler=""
+                if [[ "$config" =~ LLVM-Clang|LLVM ]]; then
+                  config_compiler="LLVM"
+                elif [[ "$config" =~ MinGW|mingw ]]; then
+                  config_compiler="MinGW"
+                elif [[ "$config" =~ MSVC|msvc ]]; then
+                  config_compiler="MSVC"
+                elif [[ "$config" =~ GCC|gcc ]]; then
+                  config_compiler="GCC"
+                else
+                  config_compiler="Other"
+                fi
+
+                if [[ "$config_compiler" == "$target_compiler" ]]; then
+                  local status="${features["$feature,$config"]:-}"
+                  if [[ "$status" == "✅" ]]; then
+                    has_yes=true
+                  elif [[ "$status" == "❌" ]]; then
+                    has_no=true
+                  fi
+                fi
+              done
+
+              if [[ "$has_yes" == "true" ]]; then
+                echo "✅"
+              elif [[ "$has_no" == "true" ]]; then
+                echo "❌"
+              else
+                echo "❓"
+              fi
+            }
+
+            # Create compact feature summary table (by compiler)
             {
               echo -n "| Feature"
-              for config in "${build_configs[@]}"; do
-                # Abbreviate config names for table width
-                short_config=$(echo "$config" | sed 's/Linux //g' | sed 's/Windows //g' | sed 's/ shared/ sh/g' | sed 's/ static/ st/g' | sed 's/ debug/ dbg/g' | sed 's/ release/ rel/g' | sed 's/ relwithdebinfo/ rdi/g')
-                echo -n " | $short_config"
+              for compiler in "${compilers[@]}"; do
+                echo -n " | $compiler"
               done
               echo " |"
 
               echo -n "|:--------|"
-              for config in "${build_configs[@]}"; do
+              for compiler in "${compilers[@]}"; do
                 echo -n ":---:|"
               done
               echo ""
@@ -479,8 +546,8 @@ jobs:
 
                 if [[ "$found" == "true" ]]; then
                   echo -n "| **$feature**"
-                  for config in "${build_configs[@]}"; do
-                    status="${features["$feature,$config"]:-"❓"}"
+                  for compiler in "${compilers[@]}"; do
+                    status=$(get_compiler_feature_status "$feature" "$compiler")
                     echo -n " | $status"
                   done
                   echo " |"
@@ -493,17 +560,16 @@ jobs:
             echo "<summary><b>📋 Click to see full feature list (${#all_features[@]} features)</b></summary>" >> config_table.md
             echo "" >> config_table.md
 
-            # Full features table in collapsible section
+            # Full features table in collapsible section (by compiler)
             {
               echo -n "| Feature"
-              for config in "${build_configs[@]}"; do
-                short_config=$(echo "$config" | sed 's/Linux //g' | sed 's/Windows //g' | sed 's/ shared/ sh/g' | sed 's/ static/ st/g' | sed 's/ debug/ dbg/g' | sed 's/ release/ rel/g' | sed 's/ relwithdebinfo/ rdi/g')
-                echo -n " | $short_config"
+              for compiler in "${compilers[@]}"; do
+                echo -n " | $compiler"
               done
               echo " |"
 
               echo -n "|:--------|"
-              for config in "${build_configs[@]}"; do
+              for compiler in "${compilers[@]}"; do
                 echo -n ":---:|"
               done
               echo ""
@@ -516,8 +582,8 @@ jobs:
               for feature in "${sorted_features[@]}"; do
                 if [[ -n "$feature" ]]; then
                   echo -n "| **$feature**"
-                  for config in "${build_configs[@]}"; do
-                    status="${features["$feature,$config"]:-"❓"}"
+                  for compiler in "${compilers[@]}"; do
+                    status=$(get_compiler_feature_status "$feature" "$compiler")
                     echo -n " | $status"
                   done
                   echo " |"
