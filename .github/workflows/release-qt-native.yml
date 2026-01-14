@@ -326,7 +326,7 @@ jobs:
                     feature=$(echo "$feature" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
 
                     if [[ -n "$feature" && -n "$state" ]]; then
-                      ((feature_count++))
+                      feature_count=$((feature_count + 1))
 
                       if [[ "$state" == "yes" ]]; then
                         features["$feature,$config_name"]="✅"
