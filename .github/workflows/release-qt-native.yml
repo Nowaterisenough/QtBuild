@@ -236,12 +236,24 @@ jobs:
               if [ -f "$report" ]; then
                 echo "Processing report: $report"
 
-                # Extract configuration from filename: qt-build-report_{compiler}_{link}_{build}.txt
+                # Extract configuration from filename
+                # New format: qt-build-report_{compiler}_{link}_{build}.txt
+                # Old format: qt-build-report_{link}_{build}.txt
                 basename_report=$(basename "$report")
+                file_compiler=""
+                link_type=""
+                build_type=""
+
                 if [[ $basename_report =~ qt-build-report_([^_]+)_([^_]+)_([^\.]+)\.txt ]]; then
+                  # New format with compiler prefix
                   file_compiler="${BASH_REMATCH[1]}"
                   link_type="${BASH_REMATCH[2]}"
                   build_type="${BASH_REMATCH[3]}"
+                elif [[ $basename_report =~ qt-build-report_([^_]+)_([^\.]+)\.txt ]]; then
+                  # Old format without compiler prefix - detect from content
+                  file_compiler=""
+                  link_type="${BASH_REMATCH[1]}"
+                  build_type="${BASH_REMATCH[2]}"
                 else
                   echo "Skipping file with unrecognized name: $basename_report"
                   continue
@@ -252,14 +264,16 @@ jobs:
                 compiler="Unknown"
                 compiler_version=""
 
-                # Map file compiler prefix to display name
-                case "$file_compiler" in
-                  llvm) compiler="LLVM" ;;
-                  mingw) compiler="MinGW" ;;
-                  msvc) compiler="MSVC" ;;
-                  gcc) compiler="GCC" ;;
-                  *) compiler="$file_compiler" ;;
-                esac
+                # Map file compiler prefix to display name (if available)
+                if [[ -n "$file_compiler" ]]; then
+                  case "$file_compiler" in
+                    llvm) compiler="LLVM" ;;
+                    mingw) compiler="MinGW" ;;
+                    msvc) compiler="MSVC" ;;
+                    gcc) compiler="GCC" ;;
+                    *) compiler="$file_compiler" ;;
+                  esac
+                fi
 
                 while IFS= read -r line; do
                   # Qt config.summary format - detect platform
@@ -276,26 +290,33 @@ jobs:
                     platform="Linux"
                   fi
 
-                  # Compiler version detection
-                  if [[ "$line" =~ "Compiler: gcc "([0-9.]+) ]]; then
-                    compiler_version="${BASH_REMATCH[1]}"
-                  elif [[ "$line" =~ "Compiler: clang "([0-9.]+) ]]; then
-                    compiler_version="${BASH_REMATCH[1]}"
-                  elif [[ "$line" =~ "Microsoft.*Visual.*Studio" ]]; then
-                    platform="Windows"
-                  fi
-
-                  # Fallback format detection
-                  if [[ "$line" =~ Compiler:[[:space:]]*GCC[[:space:]]+([0-9.a-z]+) ]]; then
-                    compiler_version="${BASH_REMATCH[1]}"
-                  elif [[ "$line" =~ Compiler:[[:space:]]*(LLVM/Clang|LLVM)[[:space:]]+([0-9.]+) ]]; then
-                    compiler="LLVM"
-                    compiler_version="${BASH_REMATCH[2]}"
-                  elif [[ "$line" =~ LLVM[[:space:]]Version:[[:space:]]+([0-9.]+) ]]; then
-                    compiler="LLVM"
-                    compiler_version="${BASH_REMATCH[1]}"
-                  elif [[ "$line" =~ Compiler:[[:space:]]*MSVC ]]; then
-                    compiler="MSVC"
+                  # Compiler detection from content (for old format without prefix)
+                  if [[ "$compiler" == "Unknown" ]]; then
+                    if [[ "$line" =~ "Compiler: gcc "([0-9.]+) ]]; then
+                      compiler="GCC"
+                      compiler_version="${BASH_REMATCH[1]}"
+                    elif [[ "$line" =~ "Compiler: clang "([0-9.]+) ]]; then
+                      compiler="LLVM"
+                      compiler_version="${BASH_REMATCH[1]}"
+                    elif [[ "$line" =~ "Microsoft.*Visual.*Studio" ]]; then
+                      compiler="MSVC"
+                      platform="Windows"
+                    elif [[ "$line" =~ Compiler:[[:space:]]*GCC[[:space:]]+([0-9.a-z]+) ]]; then
+                      compiler="GCC"
+                      compiler_version="${BASH_REMATCH[1]}"
+                    elif [[ "$line" =~ Compiler:[[:space:]]*(LLVM/Clang|LLVM)[[:space:]]+([0-9.]+) ]]; then
+                      compiler="LLVM"
+                      compiler_version="${BASH_REMATCH[2]}"
+                    elif [[ "$line" =~ Compiler:[[:space:]]*MSVC ]]; then
+                      compiler="MSVC"
+                    fi
+                  else
+                    # Just get version if compiler already known
+                    if [[ "$line" =~ "Compiler: gcc "([0-9.]+) ]]; then
+                      compiler_version="${BASH_REMATCH[1]}"
+                    elif [[ "$line" =~ "Compiler: clang "([0-9.]+) ]]; then
+                      compiler_version="${BASH_REMATCH[1]}"
+                    fi
                   fi
                 done < "$report"
 
