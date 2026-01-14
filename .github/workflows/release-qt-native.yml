@@ -314,25 +314,25 @@ jobs:
                 echo "=== END DEBUG ==="
                 
                 # Parse all features from Qt config.summary format
-                # Add a newline at the end to ensure the last line is processed
-                { cat "$report"; echo; } | while IFS= read -r line; do
+                # Use process substitution to avoid subshell (pipe creates subshell where variable changes are lost)
+                while IFS= read -r line || [[ -n "$line" ]]; do
                   # Match Qt summary format: "  Feature name .......................... yes/no"
                   if [[ "$line" =~ ^[[:space:]]+([A-Za-z][^.]*[A-Za-z0-9/\-+_[:space:]])[[:space:]]*[.]{3,}[[:space:]]+(yes|no)[[:space:]]*$ ]]; then
                     feature="${BASH_REMATCH[1]}"
                     state="${BASH_REMATCH[2]}"
-                    
+
                     # Clean up feature name - remove trailing/leading spaces
                     feature=$(echo "$feature" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-                    
+
                     if [[ -n "$feature" && -n "$state" ]]; then
                       ((feature_count++))
-                      
+
                       if [[ "$state" == "yes" ]]; then
                         features["$feature,$config_name"]="✅"
                       else
                         features["$feature,$config_name"]="❌"
                       fi
-                      
+
                       # Add to features list if not already present
                       found=false
                       for existing_feature in "${all_features[@]}"; do
@@ -346,7 +346,7 @@ jobs:
                       fi
                     fi
                   fi
-                done
+                done < "$report"
                 
                 if [[ $feature_count -eq 0 ]]; then
                   echo "Warning: No Qt features found in $report - possibly not a config.summary format"
