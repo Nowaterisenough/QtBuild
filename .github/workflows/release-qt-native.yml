@@ -452,7 +452,7 @@ jobs:
 
             # Create compact feature summary table
             {
-              echo "| Feature"
+              echo -n "| Feature"
               for config in "${build_configs[@]}"; do
                 # Abbreviate config names for table width
                 short_config=$(echo "$config" | sed 's/Linux //g' | sed 's/Windows //g' | sed 's/ shared/ sh/g' | sed 's/ static/ st/g' | sed 's/ debug/ dbg/g' | sed 's/ release/ rel/g' | sed 's/ relwithdebinfo/ rdi/g')
@@ -460,9 +460,9 @@ jobs:
               done
               echo " |"
 
-              echo -n "|---------|"
+              echo -n "|:--------|"
               for config in "${build_configs[@]}"; do
-                echo -n "---------|"
+                echo -n ":---:|"
               done
               echo ""
 
@@ -495,16 +495,16 @@ jobs:
 
             # Full features table in collapsible section
             {
-              echo "| Feature"
+              echo -n "| Feature"
               for config in "${build_configs[@]}"; do
                 short_config=$(echo "$config" | sed 's/Linux //g' | sed 's/Windows //g' | sed 's/ shared/ sh/g' | sed 's/ static/ st/g' | sed 's/ debug/ dbg/g' | sed 's/ release/ rel/g' | sed 's/ relwithdebinfo/ rdi/g')
                 echo -n " | $short_config"
               done
               echo " |"
 
-              echo -n "|---------|"
+              echo -n "|:--------|"
               for config in "${build_configs[@]}"; do
-                echo -n "---------|"
+                echo -n ":---:|"
               done
               echo ""
 
