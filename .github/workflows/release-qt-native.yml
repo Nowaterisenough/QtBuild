@@ -192,6 +192,18 @@ jobs:
               if [ -f "$zip_file" ]; then
                 echo "Extracting report: $zip_file"
                 unzip -q "$zip_file"
+                # Rename extracted file to include compiler from artifact name
+                # Artifact name format: report-{compiler}-{link}_{build}.zip
+                base_name=$(basename "$zip_file" .zip)
+                if [[ "$base_name" =~ ^report-([^-]+)-(.*)$ ]]; then
+                  compiler="${BASH_REMATCH[1]}"
+                  config="${BASH_REMATCH[2]}"
+                  # Rename qt-build-report_{config}.txt to qt-build-report_{compiler}_{config}.txt
+                  if [ -f "qt-build-report_${config}.txt" ]; then
+                    mv "qt-build-report_${config}.txt" "qt-build-report_${compiler}_${config}.txt"
+                    echo "Renamed to: qt-build-report_${compiler}_${config}.txt"
+                  fi
+                fi
                 rm "$zip_file"
               fi
             done
@@ -223,24 +235,34 @@ jobs:
             for report in reports/*.txt; do
               if [ -f "$report" ]; then
                 echo "Processing report: $report"
-                
-                # Extract configuration from filename: qt-build-report_shared_debug.txt
+
+                # Extract configuration from filename: qt-build-report_{compiler}_{link}_{build}.txt
                 basename_report=$(basename "$report")
-                if [[ $basename_report =~ qt-build-report_([^_]+)_([^\.]+)\.txt ]]; then
-                  link_type="${BASH_REMATCH[1]}"
-                  build_type="${BASH_REMATCH[2]}"
+                if [[ $basename_report =~ qt-build-report_([^_]+)_([^_]+)_([^\.]+)\.txt ]]; then
+                  file_compiler="${BASH_REMATCH[1]}"
+                  link_type="${BASH_REMATCH[2]}"
+                  build_type="${BASH_REMATCH[3]}"
                 else
                   echo "Skipping file with unrecognized name: $basename_report"
                   continue
                 fi
-                
-                # Determine platform and compiler
+
+                # Determine platform and compiler from filename and file content
                 platform="Unknown"
                 compiler="Unknown"
                 compiler_version=""
 
+                # Map file compiler prefix to display name
+                case "$file_compiler" in
+                  llvm) compiler="LLVM" ;;
+                  mingw) compiler="MinGW" ;;
+                  msvc) compiler="MSVC" ;;
+                  gcc) compiler="GCC" ;;
+                  *) compiler="$file_compiler" ;;
+                esac
+
                 while IFS= read -r line; do
-                  # Qt config.summary format
+                  # Qt config.summary format - detect platform
                   if [[ "$line" =~ "Building for: win32-"* ]]; then
                     platform="Windows"
                   elif [[ "$line" =~ "Building for: linux-"* ]]; then
@@ -254,25 +276,17 @@ jobs:
                     platform="Linux"
                   fi
 
-                  # Compiler detection - Qt config.summary format
+                  # Compiler version detection
                   if [[ "$line" =~ "Compiler: gcc "([0-9.]+) ]]; then
-                    compiler="GCC"
                     compiler_version="${BASH_REMATCH[1]}"
                   elif [[ "$line" =~ "Compiler: clang "([0-9.]+) ]]; then
-                    if [[ "$line" =~ "mingw" ]]; then
-                      compiler="LLVM-MinGW"
-                    else
-                      compiler="LLVM-Clang"
-                    fi
                     compiler_version="${BASH_REMATCH[1]}"
                   elif [[ "$line" =~ "Microsoft.*Visual.*Studio" ]]; then
-                    compiler="MSVC"
                     platform="Windows"
                   fi
 
                   # Fallback format detection
                   if [[ "$line" =~ Compiler:[[:space:]]*GCC[[:space:]]+([0-9.a-z]+) ]]; then
-                    compiler="GCC"
                     compiler_version="${BASH_REMATCH[1]}"
                   elif [[ "$line" =~ Compiler:[[:space:]]*(LLVM/Clang|LLVM)[[:space:]]+([0-9.]+) ]]; then
                     compiler="LLVM"

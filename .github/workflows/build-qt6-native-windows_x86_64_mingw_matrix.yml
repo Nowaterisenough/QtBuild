@@ -383,7 +383,7 @@ jobs:
       - name: Upload build report
         uses: actions/upload-artifact@v4
         with:
-          name: report-${{ matrix.link_type }}_${{ matrix.build_type }}
+          name: report-mingw-${{ matrix.link_type }}_${{ matrix.build_type }}
           path: ${{ env.REPORT_FILE }}
           if-no-files-found: error
 
