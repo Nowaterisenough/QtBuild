@@ -138,6 +138,21 @@ echo Configure: %CFG_OPTIONS%
 REM === Configure ===
 call "%SRC_QT%\configure.bat" %CFG_OPTIONS% || exit /b 1
 
+REM === Save config.summary (generated during configure) ===
+echo Looking for config.summary in build directory...
+if exist "config.summary" (
+    echo Found config.summary in current directory
+    copy "config.summary" "%BUILD_DIR%\config.summary" >nul 2>&1
+    echo Saved config.summary to: %BUILD_DIR%\config.summary
+) else if exist "qtbase\config.summary" (
+    echo Found config.summary in qtbase subdirectory
+    copy "qtbase\config.summary" "%BUILD_DIR%\config.summary" >nul 2>&1
+    echo Saved config.summary to: %BUILD_DIR%\config.summary
+) else (
+    echo WARNING: config.summary not found after configure
+    dir /s /b config.summary 2>nul || echo No config.summary file found
+)
+
 REM === Build ===
 cmake --build . --parallel 4 || exit /b 1
 
