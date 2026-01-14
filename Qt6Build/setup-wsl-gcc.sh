@@ -115,7 +115,7 @@ if [ "$VULKAN_SDK" != "none" ]; then
 
     vulkan_version=$(echo "$VULKAN_SDK" | sed 's/runtime-//')
 
-    if [ "$vulkan_version" = "1.4.321.0" ] || [ "$vulkan_version" = "1.3.290.0" ]; then
+    if [ "$vulkan_version" = "1.4.335.0" ] || [ "$vulkan_version" = "1.3.290.0" ]; then
         echo "Installing Vulkan SDK headers: $vulkan_version"
         cd /tmp
         wget -q https://github.com/KhronosGroup/Vulkan-Headers/archive/refs/tags/vulkan-sdk-${vulkan_version}.tar.gz
