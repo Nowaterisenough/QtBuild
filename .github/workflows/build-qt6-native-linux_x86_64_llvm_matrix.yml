@@ -16,7 +16,7 @@ on:
       compiler_version:
         description: 'Compiler Version'
         required: true
-        default: '21'
+        default: '22'
         type: choice
         options:
         - '15'
@@ -26,6 +26,7 @@ on:
         - '19'
         - '20'
         - '21'
+        - '22'
       vulkan_sdk:
         description: 'Vulkan support (none/runtime-*)'
         required: true
@@ -46,7 +47,7 @@ on:
 
 env:
   QT_VERSION: ${{ github.event.inputs.qt_version || '6.10.0' }}
-  COMPILER_VERSION: ${{ github.event.inputs.compiler_version || '21' }}
+  COMPILER_VERSION: ${{ github.event.inputs.compiler_version || '22' }}
   VULKAN_CHOICE: ${{ github.event.inputs.vulkan_sdk || 'runtime-1.4.335.0' }}
   TEST_MODE: ${{ github.event.inputs.test_mode || 'false' }}
 

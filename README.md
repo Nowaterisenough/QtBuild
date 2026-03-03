@@ -16,9 +16,9 @@
 |------|--------|------|
 | Windows x64 | MSVC | 2019/2022 |
 | Windows x64 | MinGW-GCC | 13.1.0 - 15.2.0 |
-| Windows x64 | LLVM-Clang | 17.0 - 21 |
+| Windows x64 | LLVM-Clang | 17.0 - 22 |
 | Linux x86_64 | GCC | 11 - 15.2 |
-| Linux x86_64 | LLVM | 15 - 21 |
+| Linux x86_64 | LLVM | 15 - 22 |
 | WebAssembly | Emscripten | 3.1.70/4.0.23 |
 
 ### Qt 5.15.17

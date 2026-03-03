@@ -15,12 +15,13 @@ on:
       compiler_version:
         description: 'Compiler Version'
         required: true
-        default: '21'
+        default: '22'
         type: choice
         options:
         - '17.0'
         - '20.1'
         - '21'
+        - '22'
       runtime:
         description: 'Runtime (ucrt/msvcrt)'
         required: true
@@ -49,7 +50,7 @@ on:
 
 env:
   QT_VERSION: ${{ github.event.inputs.qt_version || '6.10.0' }}
-  COMPILER_VERSION: ${{ github.event.inputs.compiler_version || '21' }}
+  COMPILER_VERSION: ${{ github.event.inputs.compiler_version || '22' }}
   RUNTIME: ${{ github.event.inputs.runtime || 'ucrt' }}
   VULKAN_CHOICE: ${{ github.event.inputs.vulkan_sdk || 'runtime-1.4.335.0' }}
   TEST_MODE: ${{ github.event.inputs.test_mode || 'false' }}
@@ -107,13 +108,20 @@ jobs:
             $extractPath = ""
             $binPath = "D:\a\QtBuild\llvm-mingw-20250528-ucrt-x86_64\bin"
             $versionCode = "llvm-mingw20.1.6_64_UCRT"
-          } else {
-            # 使用GitHub源 - LLVM 21 (最新)
+          } elseif ($clangVersion -eq "21") {
+            # 使用GitHub源 - LLVM 21
             $downloadUrl = "https://github.com/mstorsjo/llvm-mingw/releases/download/20250924/llvm-mingw-20250924-ucrt-x86_64.zip"
             $fileName = "llvm-mingw-21.zip"
             $extractPath = ""
             $binPath = "D:\a\QtBuild\llvm-mingw-20250924-ucrt-x86_64\bin"
             $versionCode = "llvm-mingw21.1.2_64_UCRT"
+          } else {
+            # 使用GitHub源 - LLVM 22 (最新)
+            $downloadUrl = "https://github.com/mstorsjo/llvm-mingw/releases/download/20260224/llvm-mingw-20260224-ucrt-x86_64.zip"
+            $fileName = "llvm-mingw-22.zip"
+            $extractPath = ""
+            $binPath = "D:\a\QtBuild\llvm-mingw-20260224-ucrt-x86_64\bin"
+            $versionCode = "llvm-mingw22.1.0_64_UCRT"
           }
           
           echo "download_url=$downloadUrl" >> $env:GITHUB_OUTPUT
