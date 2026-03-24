@@ -75,8 +75,8 @@ if /i "%TEST_MODE%"=="true" (
     set "CFG_OPTIONS=%CFG_OPTIONS% -submodules qtbase"
     echo Module: qtbase only
 ) else (
-    set "CFG_OPTIONS=%CFG_OPTIONS% -skip qtwebengine"
-    echo Module: all except qtwebengine
+    set "CFG_OPTIONS=%CFG_OPTIONS% -skip qtwebengine -skip qtpdf"
+    echo Module: all except qtwebengine/qtpdf
 )
 
 REM === Build Type Configuration ===

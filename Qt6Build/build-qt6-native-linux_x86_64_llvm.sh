@@ -72,8 +72,8 @@ if [ "$TEST_MODE" = "true" ]; then
     CFG_OPTIONS="${CFG_OPTIONS} -submodules qtbase"
     echo "Module: qtbase only"
 else
-    CFG_OPTIONS="${CFG_OPTIONS} -skip qtwebengine"
-    echo "Module: all except qtwebengine"
+    CFG_OPTIONS="${CFG_OPTIONS} -skip qtwebengine -skip qtpdf"
+    echo "Module: all except qtwebengine/qtpdf"
 fi
 
 # === Build Type Configuration ===
