@@ -74,6 +74,16 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Validate unsupported Windows modules are excluded
+        shell: pwsh
+        run: |
+          $script = "Qt6Build\build-qt6-native-windows_x86_64_llvm.cmd"
+          $content = Get-Content -Path $script -Raw
+          if ($content -notmatch '-skip qtwebengine -skip qtpdf') {
+            throw "Windows LLVM builds must exclude qtwebengine/qtpdf to avoid unsupported QtPdf/QtWebEngine GN paths."
+          }
+          Write-Host "Validated Windows LLVM module exclusions for qtwebengine/qtpdf."
+
       - name: Setup Python
         uses: actions/setup-python@v6
         with:

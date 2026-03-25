@@ -32,6 +32,8 @@ if "%SEPARATE_DEBUG%"=="" set "SEPARATE_DEBUG=false"
 if "%VULKAN_SDK%"=="" set "VULKAN_SDK=none"
 if "%TEST_MODE%"=="" set "TEST_MODE=false"
 if "%RUNTIME%"=="" set "RUNTIME=ucrt"
+if "%DISABLE_HEADERSCLEAN%"=="" set "DISABLE_HEADERSCLEAN=false"
+if "%DISABLE_WNRVO%"=="" set "DISABLE_WNRVO=false"
 
 REM === MinGW Version String ===
 if /i "%RUNTIME%"=="ucrt" (
@@ -61,6 +63,8 @@ echo Link Type: %LINK_TYPE%
 echo Runtime: %RUNTIME%
 echo Test Mode: %TEST_MODE%
 echo Vulkan: %VULKAN_SDK%
+echo Headersclean Disabled: %DISABLE_HEADERSCLEAN%
+echo WNRVO Disabled: %DISABLE_WNRVO%
 echo Install: %FINAL_INSTALL_DIR%
 
 REM === Directory Preparation ===
@@ -71,13 +75,21 @@ mkdir "%TEMP_INSTALL_DIR%" || exit /b 1
 cd /d "%BUILD_DIR%" || exit /b 1
 
 REM === Base Configuration ===
-set "CFG_OPTIONS=-%LINK_TYPE% -prefix "%TEMP_INSTALL_DIR%" -nomake examples -nomake tests -c++std c++23 -headersclean -opensource -confirm-license -qt-libpng -qt-libjpeg -qt-zlib -qt-pcre -schannel -opengl desktop -platform win32-g++"
+set "CFG_OPTIONS=-%LINK_TYPE% -prefix "%TEMP_INSTALL_DIR%" -nomake examples -nomake tests -c++std c++23 -opensource -confirm-license -qt-libpng -qt-libjpeg -qt-zlib -qt-pcre -schannel -opengl desktop -platform win32-g++"
+
+if /i not "%DISABLE_HEADERSCLEAN%"=="true" (
+    set "CFG_OPTIONS=%CFG_OPTIONS% -headersclean"
+) else (
+    echo Header check: disabled
+)
 
 REM === Module Selection ===
 if /i "%TEST_MODE%"=="true" (
     set "CFG_OPTIONS=%CFG_OPTIONS% -submodules qtbase"
     echo Module: qtbase only
 ) else (
+    REM Qt WebEngine on Windows requires the MSVC toolchain. Qt 6.11's QtPdf GN
+    REM path also trips over Chromium CRT config assumptions on non-MSVC builds.
     set "CFG_OPTIONS=%CFG_OPTIONS% -skip qtwebengine -skip qtpdf"
     echo Module: all except qtwebengine/qtpdf
 )
@@ -87,6 +99,16 @@ if /i "%BUILD_TYPE%"=="debug" (
     set "CFG_OPTIONS=%CFG_OPTIONS% -debug"
 ) else (
     set "CFG_OPTIONS=%CFG_OPTIONS% -release"
+)
+
+if /i "%DISABLE_WNRVO%"=="true" (
+    set "CFG_OPTIONS=%CFG_OPTIONS% -no-warnings-are-errors"
+    if defined CXXFLAGS (
+        set "CXXFLAGS=%CXXFLAGS% -Wno-nrvo"
+    ) else (
+        set "CXXFLAGS=-Wno-nrvo"
+    )
+    echo Warning policy: -Wno-nrvo with warnings-as-errors disabled
 )
 
 REM === Debug Info Configuration ===
@@ -137,6 +159,7 @@ if /i "%TEST_MODE%"=="false" (
 )
 
 echo Configure: %CFG_OPTIONS%
+if defined CXXFLAGS echo CXXFLAGS: %CXXFLAGS%
 
 REM === Configure ===
 call "%SRC_QT%\configure.bat" %CFG_OPTIONS% || exit /b 1

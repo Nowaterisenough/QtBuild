@@ -58,6 +58,8 @@ env:
   RUNTIME: ${{ github.event.inputs.runtime || 'ucrt' }}
   VULKAN_CHOICE: ${{ github.event.inputs.vulkan_sdk || 'runtime-1.4.341.0' }}
   TEST_MODE: ${{ github.event.inputs.test_mode || 'false' }}
+  DISABLE_HEADERSCLEAN: 'true'
+  DISABLE_WNRVO: 'true'
   ACTIONS_STEP_DEBUG: 'true'
 
 jobs:
@@ -77,6 +79,16 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Validate unsupported Windows modules are excluded
+        shell: pwsh
+        run: |
+          $script = "Qt6Build\build-qt6-native-windows_x86_64_mingw.cmd"
+          $content = Get-Content -Path $script -Raw
+          if ($content -notmatch '-skip qtwebengine -skip qtpdf') {
+            throw "Windows MinGW builds must exclude qtwebengine/qtpdf to avoid unsupported QtPdf/QtWebEngine GN paths."
+          }
+          Write-Host "Validated Windows MinGW module exclusions for qtwebengine/qtpdf."
 
       - name: Setup Python
         uses: actions/setup-python@v6

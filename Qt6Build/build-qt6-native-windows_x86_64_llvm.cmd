@@ -93,6 +93,8 @@ if /i "%TEST_MODE%"=="true" (
     set "CFG_OPTIONS=%CFG_OPTIONS% -submodules qtbase"
     echo Module: qtbase only
 ) else (
+    REM Qt WebEngine on Windows requires the MSVC toolchain. Qt 6.11's QtPdf GN
+    REM path also trips over Chromium CRT config assumptions on non-MSVC builds.
     set "CFG_OPTIONS=%CFG_OPTIONS% -skip qtwebengine -skip qtpdf"
     echo Module: all except qtwebengine/qtpdf
 )
