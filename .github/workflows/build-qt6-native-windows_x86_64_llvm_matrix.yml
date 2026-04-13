@@ -70,6 +70,11 @@ jobs:
             build_type: debug
           - link_type: static
             build_type: release-sepdbg
+          # QtWebEngine/QtPdf's Chromium GN setup currently breaks on
+          # Windows llvm-mingw shared debug builds, while release and
+          # release-sepdbg remain healthy.
+          - link_type: shared
+            build_type: debug
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
