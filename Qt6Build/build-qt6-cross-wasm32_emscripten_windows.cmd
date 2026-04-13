@@ -2,26 +2,35 @@
 @chcp 65001 > nul
 @cd /d %~dp0
 
-REM 参数依次为: Qt版本, Emscripten版本, BUILD_TYPE, LINK_TYPE
+REM Args: Qt version, Emscripten version, build type, link type
 set QT_VERSION=%1
 set EMSCRIPTEN_VERSION=%2
 set BUILD_TYPE=%3
 set LINK_TYPE=%4
 
-REM 参数验证和默认值
 if "%QT_VERSION%"=="" (
     echo Error: Qt version is required
     echo Usage: %0 QT_VERSION EMSCRIPTEN_VERSION BUILD_TYPE LINK_TYPE
-    echo Example: %0 6.9.2 4.0.23 release static
+    echo Example: %0 6.9.2 latest release static
     exit /b 1
 )
-if "%EMSCRIPTEN_VERSION%"=="" set EMSCRIPTEN_VERSION=4.0.23
+if "%EMSCRIPTEN_VERSION%"=="" set EMSCRIPTEN_VERSION=latest
 if "%BUILD_TYPE%"=="" set BUILD_TYPE=release
 if "%LINK_TYPE%"=="" set LINK_TYPE=static
 
-REM 例如: 6.9.2  4.0.23  release  static
+set REQUESTED_EMSCRIPTEN_VERSION=%EMSCRIPTEN_VERSION%
+set RESOLVED_EMSCRIPTEN_VERSION=%EMSCRIPTEN_VERSION%
 
-REM 设置WASM版本代号
+if /I "%REQUESTED_EMSCRIPTEN_VERSION%"=="latest" (
+    for /f "usebackq delims=" %%i in (`powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0..\scripts\Resolve-EmsdkVersion.ps1" -Version "%REQUESTED_EMSCRIPTEN_VERSION%"`) do (
+        set RESOLVED_EMSCRIPTEN_VERSION=%%i
+    )
+    if not defined RESOLVED_EMSCRIPTEN_VERSION (
+        echo Failed to resolve the latest Emscripten version.
+        exit /b 1
+    )
+)
+
 set WASM_VERSION=wasm32_emscripten
 
 echo =====================================
@@ -29,26 +38,21 @@ echo Qt WebAssembly Build Configuration
 echo =====================================
 echo Qt Version: %QT_VERSION%
 echo WASM Version: %WASM_VERSION%
-echo Emscripten Version: %EMSCRIPTEN_VERSION%
+echo Requested Emscripten Version: %REQUESTED_EMSCRIPTEN_VERSION%
+echo Resolved Emscripten Version: %RESOLVED_EMSCRIPTEN_VERSION%
 echo Build Type: %BUILD_TYPE%
 echo Link Type: %LINK_TYPE%
 echo =====================================
 
-REM 设置Emscripten SDK路径并激活环境
-SET EMSDK_ROOT=D:\a\QtBuild\emsdk
+set EMSDK_ROOT=D:\a\QtBuild\emsdk
 echo Setting up Emscripten environment...
 call "%EMSDK_ROOT%\emsdk_env.bat"
 
-REM 设置工具路径
-SET PATH=D:\a\QtBuild\mingw64\bin;D:\a\QtBuild\ninja;%PATH%
-
+set PATH=D:\a\QtBuild\mingw64\bin;D:\a\QtBuild\ninja;%PATH%
 set QT_PATH=D:\a\QtBuild\Qt
-
-REM 使用短路径避免 Windows 路径长度限制
 set SHORT_BUILD_PATH=D:\a\QtBuild\build
 set TEMP_INSTALL_DIR=D:\a\QtBuild\temp_install
 
-REM 路径和文件名定义
 set SRC_QT="%QT_PATH%\%QT_VERSION%\qt-everywhere-src-%QT_VERSION%"
 set HOST_QT_DIR="%QT_PATH%\%QT_VERSION%-host"
 set FINAL_INSTALL_DIR="%QT_PATH%\%QT_VERSION%-%LINK_TYPE%-%WASM_VERSION%"
@@ -59,7 +63,7 @@ echo ================================
 echo Qt6 WebAssembly Build Configuration
 echo ================================
 echo Qt Version: %QT_VERSION%
-echo Platform: WebAssembly (Emscripten %EMSCRIPTEN_VERSION%)
+echo Platform: WebAssembly (Emscripten %RESOLVED_EMSCRIPTEN_VERSION%)
 echo Build Type: %LINK_TYPE% %BUILD_TYPE%
 echo Source Dir: %SRC_QT%
 echo Build Dir: %BUILD_DIR%
@@ -68,18 +72,15 @@ echo Host Qt Dir: %HOST_QT_DIR%
 echo ================================
 echo.
 
-REM 清理并创建build目录
 echo Cleaning previous build...
 rmdir /s /q %BUILD_DIR% 2>nul
 rmdir /s /q %TEMP_INSTALL_DIR% 2>nul
-mkdir "%SHORT_BUILD_PATH%" 
+mkdir "%SHORT_BUILD_PATH%"
 mkdir "%TEMP_INSTALL_DIR%"
 cd /d "%SHORT_BUILD_PATH%"
 
-REM 配置参数
 set CFG_OPTIONS=-prefix %TEMP_INSTALL_DIR% -platform wasm-emscripten -no-warnings-are-errors -qt-host-path %HOST_QT_DIR% -nomake examples -nomake tests -submodules qtbase,qtdeclarative -c++std c++20 -opensource -confirm-license -qt-libpng -qt-libjpeg -qt-zlib -qt-pcre -qt-freetype -no-dbus -feature-thread
 
-REM 添加链接类型选项
 if "%LINK_TYPE%"=="static" (
     set CFG_OPTIONS=%CFG_OPTIONS% -static
 ) else if "%LINK_TYPE%"=="shared" (
@@ -88,7 +89,6 @@ if "%LINK_TYPE%"=="static" (
     set CFG_OPTIONS=%CFG_OPTIONS% -static
 )
 
-REM 根据构建类型添加相应选项
 if "%BUILD_TYPE%"=="debug" (
     set CFG_OPTIONS=%CFG_OPTIONS% -debug -force-debug-info
     echo Building DEBUG version for WebAssembly...
@@ -103,7 +103,6 @@ if "%BUILD_TYPE%"=="debug" (
 
 echo Configure options: %CFG_OPTIONS%
 
-REM 执行configure
 echo Starting Qt configure...
 call %SRC_QT%\configure.bat %CFG_OPTIONS%
 if %errorlevel% neq 0 (
@@ -111,9 +110,7 @@ if %errorlevel% neq 0 (
     exit /b %errorlevel%
 )
 
-REM 构建
 echo Starting build...
-REM Debug版本使用较少的并行进程以避免内存问题
 if "%BUILD_TYPE%"=="debug" (
     cmake --build . --parallel 2
 ) else (
@@ -124,7 +121,6 @@ if %errorlevel% neq 0 (
     exit /b %errorlevel%
 )
 
-REM 安装到临时目录
 echo Installing to temporary directory...
 cmake --install .
 if %errorlevel% neq 0 (
@@ -132,37 +128,32 @@ if %errorlevel% neq 0 (
     exit /b %errorlevel%
 )
 
-REM 创建最终安装目录的父目录
 mkdir "%QT_PATH%\%QT_VERSION%-%LINK_TYPE%" 2>nul
 
-REM 移动文件到最终目录
 echo Moving files to final directory...
 move "%TEMP_INSTALL_DIR%" %FINAL_INSTALL_DIR%
 if %errorlevel% neq 0 (
     echo Failed to move to final directory with error code: %errorlevel%
-    REM 尝试复制而不是移动
     echo Trying to copy instead...
     xcopy "%TEMP_INSTALL_DIR%\*" %FINAL_INSTALL_DIR%\ /E /I /H /Y
     if %errorlevel% neq 0 (
         echo Copy also failed with error code: %errorlevel%
         exit /b %errorlevel%
     )
-    REM 清理临时目录
     rmdir /s /q %TEMP_INSTALL_DIR% 2>nul
 )
 
-REM 复制qt.conf (如果存在)
 if exist %~dp0\qt.conf (
     copy %~dp0\qt.conf %FINAL_INSTALL_DIR%\bin\ > nul
 )
 
-REM 创建构建信息文件
 echo Creating build info...
 (
 echo Qt6 WebAssembly Build Information
 echo ==================================
 echo Qt Version: %QT_VERSION%
-echo Platform: WebAssembly ^(Emscripten %EMSCRIPTEN_VERSION%^)
+echo Requested Emscripten Version: %REQUESTED_EMSCRIPTEN_VERSION%
+echo Platform: WebAssembly ^(Emscripten %RESOLVED_EMSCRIPTEN_VERSION%^)
 echo Build Type: %LINK_TYPE% %BUILD_TYPE%
 echo Build Date: %DATE% %TIME%
 echo Install Path: %FINAL_INSTALL_DIR%
@@ -188,7 +179,6 @@ echo Build completed successfully!
 echo Build completed successfully!
 echo Installation directory: %FINAL_INSTALL_DIR%
 
-REM 验证安装目录存在
 if exist %FINAL_INSTALL_DIR% (
     echo Final installation directory verified.
     echo.

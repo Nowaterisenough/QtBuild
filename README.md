@@ -19,7 +19,7 @@
 | Windows x64 | LLVM-Clang | 17.0 - 22 |
 | Linux x86_64 | GCC | 11 - 15.2 |
 | Linux x86_64 | LLVM | 15 - 22 |
-| WebAssembly | Emscripten | 3.1.70/4.0.23 |
+| WebAssembly | Emscripten | latest (auto-resolved at build time) |
 
 ### Qt 5.15.17
 
@@ -40,7 +40,7 @@ qt{版本}-{平台}-{架构}-{编译器}{版本}-{链接类型}_{构建类型}.7
 - `qt6.9.2-windows-x86_64-msvc2022-static_release.7z`
 - `qt6.11.0-windows-x86_64-msvc2026-static_release.7z`
 - `qt6.9.2-linux-x86_64-gcc15.2-shared_release.7z`
-- `qt6.9.2-wasm32_emscripten4.0.23-static_release.7z`
+- `qt6.9.2-wasm32_emscripten5.0.5-static_release.7z`
 
 ## 使用方法
 
@@ -65,8 +65,12 @@ qt{版本}-{平台}-{架构}-{编译器}{版本}-{链接类型}_{构建类型}.7
 ./Qt6Build/build-qt6-native-linux_x86_64_gcc.sh 6.9.2 15.2 release shared
 
 # WebAssembly
-.\Qt6Build\build-qt6-cross-wasm32_emscripten_windows.cmd 6.9.2 4.0.23 release static
+.\Qt6Build\build-qt6-cross-wasm32_emscripten_windows.cmd 6.9.2 latest release static
 ```
+
+WebAssembly builds accept `latest` and resolve it against the official `emsdk`
+release tags at runtime. Artifact names and build metadata always use the
+resolved concrete Emscripten version.
 
 ## 项目配置
 
