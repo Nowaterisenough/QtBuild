@@ -124,7 +124,7 @@ jobs:
             }
           } catch { }
           $map = @{
-            "15.2.0" = @{ rt="rt_v13"; rev="rev0" }
+            "15.2.0" = @{ rt="rt_v13"; rev="rev1" }
             "15.1.0" = @{ rt="rt_v12"; rev="rev0" }
             "14.2.0" = @{ rt="rt_v12"; rev="rev2" }
             "14.1.0" = @{ rt="rt_v12"; rev="rev0" }
