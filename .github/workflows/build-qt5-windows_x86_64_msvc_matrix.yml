@@ -15,6 +15,7 @@ on:
         options:
         - '2019'
         - '2022'
+        - '2026'
       vs_edition:
         description: 'Visual Studio版本'
         required: true
@@ -32,7 +33,7 @@ env:
 
 jobs:
   build:
-    runs-on: windows-2022
+    runs-on: windows-latest
     strategy:
       matrix:
         link_type: [static, shared]
@@ -61,20 +62,13 @@ jobs:
         run: |
           $msvcVersion = "${{ env.MSVC_VERSION }}"
           $vsEdition = "${{ env.VS_EDITION }}"
-          
-          if ($msvcVersion -eq "2019") {
-            $vcvarsPath = "C:\Program Files (x86)\Microsoft Visual Studio\2019\$vsEdition\VC\Auxiliary\Build\vcvarsall.bat"
-            $redist = "C:\Program Files (x86)\Microsoft Visual Studio\2019\$vsEdition\VC\Redist\MSVC"
-            $versionCode = "msvc2019_64"
-          } else {
-            $vcvarsPath = "C:\Program Files\Microsoft Visual Studio\2022\$vsEdition\VC\Auxiliary\Build\vcvarsall.bat"
-            $redist = "C:\Program Files\Microsoft Visual Studio\2022\$vsEdition\VC\Redist\MSVC"
-            $versionCode = "msvc2022_64"
-          }
-          
-          echo "vcvars_path=$vcvarsPath" >> $env:GITHUB_OUTPUT
-          echo "redist_path=$redist" >> $env:GITHUB_OUTPUT
-          echo "version_code=$versionCode" >> $env:GITHUB_OUTPUT
+
+          . "$env:GITHUB_WORKSPACE\scripts\Resolve-VsInstall.ps1"
+          $result = Resolve-VsInstall -Version $msvcVersion -PreferredEdition $vsEdition
+
+          echo "vcvars_path=$($result.VcvarsPath)" >> $env:GITHUB_OUTPUT
+          echo "redist_path=$($result.RedistPath)" >> $env:GITHUB_OUTPUT
+          echo "version_code=$($result.VersionCode)" >> $env:GITHUB_OUTPUT
         shell: pwsh
 
       - name: 设置Perl环境

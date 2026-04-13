@@ -32,14 +32,9 @@ if "%VULKAN_SDK%"=="" set "VULKAN_SDK=none"
 if "%TEST_MODE%"=="" set "TEST_MODE=false"
 
 REM === Environment Setup ===
-if "%COMPILER_VERSION%"=="2022" (
-    call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" amd64 || exit /b 1
-) else if "%COMPILER_VERSION%"=="2019" (
-    call "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" amd64 || exit /b 1
-) else (
-    echo ERROR: Unsupported MSVC version: %COMPILER_VERSION%
-    exit /b 1
-)
+call :resolve_vs_install "%COMPILER_VERSION%" VCVARS_PATH || exit /b 1
+echo Visual Studio environment: %VCVARS_PATH%
+call "%VCVARS_PATH%" amd64 || exit /b 1
 
 cl 2>nul || (
     echo ERROR: MSVC compiler not found
@@ -189,3 +184,31 @@ if /i "%LINK_TYPE%"=="shared" if /i "%TEST_MODE%"=="false" (
 echo === Build Completed ===
 echo Install: %FINAL_INSTALL_DIR%
 if /i "%TEST_MODE%"=="true" echo NOTE: Test mode - qtbase only
+goto :eof
+
+:resolve_vs_install
+set "%~2="
+set "VS_VERSION=%~1"
+set "VS_ROOT="
+
+if "%VS_VERSION%"=="2019" (
+    set "VS_ROOT=%ProgramFiles(x86)%\Microsoft Visual Studio\2019"
+) else if "%VS_VERSION%"=="2022" (
+    set "VS_ROOT=%ProgramFiles%\Microsoft Visual Studio\2022"
+) else if "%VS_VERSION%"=="2026" (
+    set "VS_ROOT=%ProgramFiles%\Microsoft Visual Studio\2026"
+) else (
+    echo ERROR: Unsupported MSVC version: %VS_VERSION%
+    exit /b 1
+)
+
+for %%E in (Enterprise Professional Community BuildTools) do (
+    if exist "%VS_ROOT%\%%E\VC\Auxiliary\Build\vcvarsall.bat" (
+        set "%~2=%VS_ROOT%\%%E\VC\Auxiliary\Build\vcvarsall.bat"
+        exit /b 0
+    )
+)
+
+echo ERROR: Visual Studio %VS_VERSION% not found under %VS_ROOT%
+echo ERROR: Searched editions: Enterprise, Professional, Community, BuildTools
+exit /b 1
