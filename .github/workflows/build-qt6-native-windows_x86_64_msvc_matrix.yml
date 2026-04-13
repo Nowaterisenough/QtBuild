@@ -49,7 +49,7 @@ env:
 
 jobs:
   build:
-    runs-on: windows-latest
+    runs-on: ${{ github.event.inputs.compiler_version == '2026' && 'windows-2025-vs2026' || 'windows-latest' }}
     strategy:
       fail-fast: false
       matrix:

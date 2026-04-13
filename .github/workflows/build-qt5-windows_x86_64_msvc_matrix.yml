@@ -33,7 +33,7 @@ env:
 
 jobs:
   build:
-    runs-on: windows-latest
+    runs-on: ${{ github.event.inputs.msvc_version == '2026' && 'windows-2025-vs2026' || 'windows-latest' }}
     strategy:
       matrix:
         link_type: [static, shared]

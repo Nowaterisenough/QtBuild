@@ -9,9 +9,21 @@ function Resolve-VsInstall {
     )
 
     $versionRoots = @{
-        "2019" = ${env:ProgramFiles(x86)}
-        "2022" = ${env:ProgramFiles}
-        "2026" = ${env:ProgramFiles}
+        "2019" = @{
+            BasePath = ${env:ProgramFiles(x86)}
+            InstallFolders = @("2019", "16")
+            VsWhereRange = "[16.0,17.0)"
+        }
+        "2022" = @{
+            BasePath = ${env:ProgramFiles}
+            InstallFolders = @("2022", "17")
+            VsWhereRange = "[17.0,18.0)"
+        }
+        "2026" = @{
+            BasePath = ${env:ProgramFiles}
+            InstallFolders = @("2026", "18")
+            VsWhereRange = "[18.0,19.0)"
+        }
     }
 
     if (-not $versionRoots.ContainsKey($Version)) {
@@ -23,27 +35,49 @@ function Resolve-VsInstall {
         $editions = @($PreferredEdition) + ($editions | Where-Object { $_ -ne $PreferredEdition })
     }
 
-    if ($Roots -and $Roots.ContainsKey($Version)) {
-        $vsRoot = $Roots[$Version]
+    $vsConfig = $versionRoots[$Version]
+    $candidateRoots = @()
+
+    if ($Roots) {
+        foreach ($folder in @($Version) + $vsConfig.InstallFolders) {
+            if ($Roots.ContainsKey($folder)) {
+                $candidateRoots += $Roots[$folder]
+            }
+        }
     } else {
-        $vsRoot = Join-Path $versionRoots[$Version] "Microsoft Visual Studio\$Version"
+        $vsWherePath = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+        if (Test-Path $vsWherePath) {
+            $vsWhereResult = & $vsWherePath -products * -version $vsConfig.VsWhereRange -latest -property installationPath 2>$null
+            if ($LASTEXITCODE -eq 0 -and $vsWhereResult) {
+                $candidateRoots += $vsWhereResult.Trim()
+            }
+        }
+
+        foreach ($folder in $vsConfig.InstallFolders) {
+            $candidateRoots += Join-Path $vsConfig.BasePath "Microsoft Visual Studio\$folder"
+        }
     }
 
-    foreach ($edition in $editions) {
-        $editionRoot = Join-Path $vsRoot $edition
-        $vcvarsPath = Join-Path $editionRoot "VC/Auxiliary/Build/vcvarsall.bat"
-        $redistPath = Join-Path $editionRoot "VC/Redist/MSVC"
+    $candidateRoots = $candidateRoots | Select-Object -Unique
 
-        if ((Test-Path $vcvarsPath) -and (Test-Path $redistPath)) {
-            return @{
-                Version = $Version
-                Edition = $edition
-                VcvarsPath = $vcvarsPath
-                RedistPath = $redistPath
-                VersionCode = "msvc${Version}_64"
+    foreach ($vsRoot in $candidateRoots) {
+        foreach ($edition in $editions) {
+            $editionRoot = Join-Path $vsRoot $edition
+            $vcvarsPath = Join-Path $editionRoot "VC/Auxiliary/Build/vcvarsall.bat"
+            $redistPath = Join-Path $editionRoot "VC/Redist/MSVC"
+
+            if ((Test-Path $vcvarsPath) -and (Test-Path $redistPath)) {
+                return @{
+                    Version = $Version
+                    Edition = $edition
+                    VcvarsPath = $vcvarsPath
+                    RedistPath = $redistPath
+                    VersionCode = "msvc${Version}_64"
+                }
             }
         }
     }
 
-    throw "Visual Studio $Version not found under $vsRoot"
+    $searchedRoots = if ($candidateRoots) { $candidateRoots -join ", " } else { "<none>" }
+    throw "Visual Studio $Version not found. Searched roots: $searchedRoots"
 }

@@ -192,23 +192,34 @@ set "VS_VERSION=%~1"
 set "VS_ROOT="
 
 if "%VS_VERSION%"=="2019" (
-    set "VS_ROOT=%ProgramFiles(x86)%\Microsoft Visual Studio\2019"
+    call :try_vs_root "%ProgramFiles(x86)%\Microsoft Visual Studio\2019" %2 || call :try_vs_root "%ProgramFiles(x86)%\Microsoft Visual Studio\16" %2
 ) else if "%VS_VERSION%"=="2022" (
-    set "VS_ROOT=%ProgramFiles%\Microsoft Visual Studio\2022"
+    call :try_vs_root "%ProgramFiles%\Microsoft Visual Studio\2022" %2 || call :try_vs_root "%ProgramFiles%\Microsoft Visual Studio\17" %2
 ) else if "%VS_VERSION%"=="2026" (
-    set "VS_ROOT=%ProgramFiles%\Microsoft Visual Studio\2026"
+    call :try_vs_root "%ProgramFiles%\Microsoft Visual Studio\2026" %2 || call :try_vs_root "%ProgramFiles%\Microsoft Visual Studio\18" %2
 ) else (
     echo ERROR: Unsupported MSVC version: %VS_VERSION%
     exit /b 1
 )
 
+if defined %~2 exit /b 0
+
+echo ERROR: Visual Studio %VS_VERSION% not found
+echo ERROR: Searched editions: Enterprise, Professional, Community, BuildTools
+if "%VS_VERSION%"=="2019" (
+    echo ERROR: Searched roots: %ProgramFiles(x86)%\Microsoft Visual Studio\2019, %ProgramFiles(x86)%\Microsoft Visual Studio\16
+) else if "%VS_VERSION%"=="2022" (
+    echo ERROR: Searched roots: %ProgramFiles%\Microsoft Visual Studio\2022, %ProgramFiles%\Microsoft Visual Studio\17
+) else if "%VS_VERSION%"=="2026" (
+    echo ERROR: Searched roots: %ProgramFiles%\Microsoft Visual Studio\2026, %ProgramFiles%\Microsoft Visual Studio\18
+)
+exit /b 1
+
+:try_vs_root
 for %%E in (Enterprise Professional Community BuildTools) do (
-    if exist "%VS_ROOT%\%%E\VC\Auxiliary\Build\vcvarsall.bat" (
-        set "%~2=%VS_ROOT%\%%E\VC\Auxiliary\Build\vcvarsall.bat"
+    if exist "%~1\%%E\VC\Auxiliary\Build\vcvarsall.bat" (
+        set "%~2=%~1\%%E\VC\Auxiliary\Build\vcvarsall.bat"
         exit /b 0
     )
 )
-
-echo ERROR: Visual Studio %VS_VERSION% not found under %VS_ROOT%
-echo ERROR: Searched editions: Enterprise, Professional, Community, BuildTools
 exit /b 1

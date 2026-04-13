@@ -23,6 +23,23 @@ Describe "Resolve-VsInstall" {
         $result.RedistPath | Should Be $redist
     }
 
+    It "resolves VS2026 from the Visual Studio 18 install root alias" {
+        $aliasRoots = @{
+            "18" = Join-Path $TestDrive "VS18"
+        }
+        $vcvars = Join-Path $aliasRoots["18"] "Enterprise/VC/Auxiliary/Build/vcvarsall.bat"
+        $redist = Join-Path $aliasRoots["18"] "Enterprise/VC/Redist/MSVC"
+
+        New-Item -ItemType Directory -Force -Path (Split-Path $vcvars), $redist | Out-Null
+        Set-Content -Path $vcvars -Value "@echo off"
+
+        $result = Resolve-VsInstall -Version "2026" -PreferredEdition "Enterprise" -Roots $aliasRoots
+
+        $result.VersionCode | Should Be "msvc2026_64"
+        $result.VcvarsPath | Should Be $vcvars
+        $result.RedistPath | Should Be $redist
+    }
+
     It "falls back to another edition when the preferred edition is missing" {
         $vcvars = Join-Path $script:roots["2022"] "Community/VC/Auxiliary/Build/vcvarsall.bat"
         $redist = Join-Path $script:roots["2022"] "Community/VC/Redist/MSVC"
