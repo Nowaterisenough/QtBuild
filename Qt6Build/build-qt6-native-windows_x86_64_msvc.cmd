@@ -36,12 +36,9 @@ call :resolve_vs_install "%COMPILER_VERSION%" VCVARS_PATH || exit /b 1
 echo Visual Studio environment: %VCVARS_PATH%
 call "%VCVARS_PATH%" amd64 || exit /b 1
 
-if /i "%COMPILER_VERSION%"=="2026" (
-    set "CL=/Wv:18 %CL%"
-    echo Applied MSVC compatibility flags: %CL%
-)
+if /i "%COMPILER_VERSION%"=="2026" call :apply_msvc_compat_flags
 
-cl 2>nul || (
+where cl >nul 2>nul || (
     echo ERROR: MSVC compiler not found
     exit /b 1
 )
@@ -228,3 +225,8 @@ for %%E in (Enterprise Professional Community BuildTools) do (
     )
 )
 exit /b 1
+
+:apply_msvc_compat_flags
+set "CL=/Wv:18 %CL%"
+echo Applied MSVC compatibility flags: %CL%
+exit /b 0
