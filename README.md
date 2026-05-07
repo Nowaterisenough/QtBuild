@@ -15,9 +15,9 @@
 | 平台 | 编译器 | 版本 |
 |------|--------|------|
 | Windows x64 | MSVC | 2019/2022/2026 |
-| Windows x64 | MinGW-GCC | 13.1.0 - 15.2.0 |
+| Windows x64 | MinGW-GCC | 13.1.0 - 16.1.0 |
 | Windows x64 | LLVM-Clang | 17.0 - 22 |
-| Linux x86_64 | GCC | 11 - 15.2 |
+| Linux x86_64 | GCC | 11 - 16.1 |
 | Linux x86_64 | LLVM | 15 - 22 |
 | WebAssembly | Emscripten | latest (auto-resolved at build time) |
 
@@ -39,7 +39,7 @@ qt{版本}-{平台}-{架构}-{编译器}{版本}-{链接类型}_{构建类型}.7
 示例:
 - `qt6.9.2-windows-x86_64-msvc2022-static_release.7z`
 - `qt6.11.0-windows-x86_64-msvc2026-static_release.7z`
-- `qt6.9.2-linux-x86_64-gcc15.2-shared_release.7z`
+- `qt6.11.0-linux-x86_64-gcc16.1-shared_release.7z`
 - `qt6.9.2-wasm32_emscripten5.0.5-static_release.7z`
 
 ## 使用方法
@@ -59,10 +59,10 @@ qt{版本}-{平台}-{架构}-{编译器}{版本}-{链接类型}_{构建类型}.7
 .\Qt6Build\build-qt6-native-windows_x86_64_msvc.cmd 6.11.0 2026 release static
 
 # Windows MinGW
-.\Qt6Build\build-qt6-native-windows_x86_64_mingw.cmd 6.9.2 15.2.0 release shared ucrt
+.\Qt6Build\build-qt6-native-windows_x86_64_mingw.cmd 6.11.0 16.1.0 release shared ucrt
 
 # Linux GCC (WSL)
-./Qt6Build/build-qt6-native-linux_x86_64_gcc.sh 6.9.2 15.2 release shared
+./Qt6Build/build-qt6-native-linux_x86_64_gcc.sh 6.11.0 16.1 release shared
 
 # WebAssembly
 .\Qt6Build\build-qt6-cross-wasm32_emscripten_windows.cmd 6.9.2 latest release static

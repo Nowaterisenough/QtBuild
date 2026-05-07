@@ -30,6 +30,7 @@ on:
         - '14.2.0'
         - '15.1.0'
         - '15.2.0'
+        - '16.1.0'
       host_qt_url:
         description: 'Host Qt Download URL'
         required: false
@@ -121,6 +122,7 @@ jobs:
             }
           } catch { }
           $map = @{
+            "16.1.0" = @{ rt="rt_v14"; rev="rev0" }
             "15.2.0" = @{ rt="rt_v13"; rev="rev1" }
             "15.1.0" = @{ rt="rt_v12"; rev="rev0" }
             "14.2.0" = @{ rt="rt_v12"; rev="rev2" }

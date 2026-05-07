@@ -16,7 +16,7 @@ on:
       compiler_version:
         description: 'Compiler Version'
         required: true
-        default: '15.2'
+        default: '16.1'
         type: choice
         options:
         - '11'
@@ -24,6 +24,7 @@ on:
         - '13'
         - '14'
         - '15.2'
+        - '16.1'
       vulkan_sdk:
         description: 'Vulkan support (none/runtime-*)'
         required: true
@@ -45,7 +46,7 @@ on:
 
 env:
   QT_VERSION: ${{ github.event.inputs.qt_version || '6.11.0' }}
-  COMPILER_VERSION: ${{ github.event.inputs.compiler_version || '15.2' }}
+  COMPILER_VERSION: ${{ github.event.inputs.compiler_version || '16.1' }}
   VULKAN_CHOICE: ${{ github.event.inputs.vulkan_sdk || 'runtime-1.4.341.0' }}
   TEST_MODE: ${{ github.event.inputs.test_mode || 'false' }}
 
@@ -74,12 +75,12 @@ jobs:
           use-cache: 'false'
           set-as-default: 'true'
 
-      - name: Cache GCC 15.2
-        if: ${{ env.COMPILER_VERSION == '15.2' }}
+      - name: Cache source-built GCC
+        if: ${{ env.COMPILER_VERSION == '15.2' || env.COMPILER_VERSION == '16.1' }}
         uses: actions/cache@v4
         with:
-          path: gcc-15.2-install.tar.xz
-          key: gcc-15.2-ubuntu2404-${{ runner.os }}
+          path: gcc-${{ env.COMPILER_VERSION }}-install.tar.xz
+          key: gcc-${{ env.COMPILER_VERSION }}-ubuntu2404-${{ runner.os }}
 
       - name: Copy scripts to WSL
         shell: pwsh

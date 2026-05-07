@@ -25,27 +25,28 @@ sudo apt-get install -y -qq --no-install-recommends \
     wget curl xz-utils
 
 # === Install GCC Compiler ===
-if [ "$GCC_VERSION" = "15.2" ]; then
-    GCC_PREFIX=/opt/gcc-15.2
-    CACHE_FILE="$(pwd)/gcc-15.2-install.tar.xz"
+if [ "$GCC_VERSION" = "15.2" ] || [ "$GCC_VERSION" = "16.1" ]; then
+    GCC_SOURCE_VERSION="${GCC_VERSION}.0"
+    GCC_PREFIX=/opt/gcc-${GCC_VERSION}
+    CACHE_FILE="$(pwd)/gcc-${GCC_VERSION}-install.tar.xz"
 
     if [ -f "$CACHE_FILE" ]; then
-        echo "Restoring GCC 15.2 from cache..."
+        echo "Restoring GCC ${GCC_VERSION} from cache..."
         sudo mkdir -p $GCC_PREFIX
         sudo tar -xJf "$CACHE_FILE" -C /
     else
-        echo "Building GCC 15.2 from source (60-90 minutes)..."
+        echo "Building GCC ${GCC_VERSION} from source (60-90 minutes)..."
         sudo apt-get install -y -qq libgmp-dev libmpfr-dev libmpc-dev flex
         cd /tmp
-        wget -q https://ftp.gnu.org/gnu/gcc/gcc-15.2.0/gcc-15.2.0.tar.xz
-        tar -xf gcc-15.2.0.tar.xz
-        cd gcc-15.2.0
+        wget -q https://sourceware.org/pub/gcc/releases/gcc-${GCC_SOURCE_VERSION}/gcc-${GCC_SOURCE_VERSION}.tar.xz
+        tar -xf gcc-${GCC_SOURCE_VERSION}.tar.xz
+        cd gcc-${GCC_SOURCE_VERSION}
         ./configure --prefix=$GCC_PREFIX --enable-languages=c,c++ --disable-multilib --disable-bootstrap
         make -j$(nproc)
         sudo make install
         cd ..
-        rm -rf gcc-15.2.0*
-        sudo tar -cJf "$CACHE_FILE" -C / opt/gcc-15.2
+        rm -rf gcc-${GCC_SOURCE_VERSION}*
+        sudo tar -cJf "$CACHE_FILE" -C / opt/gcc-${GCC_VERSION}
     fi
 
     sudo ln -sf $GCC_PREFIX/bin/gcc /usr/local/bin/gcc
