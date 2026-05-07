@@ -74,6 +74,9 @@ mkdir "%BUILD_DIR%" || exit /b 1
 mkdir "%TEMP_INSTALL_DIR%" || exit /b 1
 cd /d "%BUILD_DIR%" || exit /b 1
 
+REM === Source Compatibility Patches ===
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0..\scripts\Patch-QtWebEngineGnPool.ps1" -SourceRoot "%SRC_QT%" || exit /b 1
+
 REM === Base Configuration ===
 set "CFG_OPTIONS=-%LINK_TYPE% -prefix "%TEMP_INSTALL_DIR%" -nomake examples -nomake tests -c++std c++23 -opensource -confirm-license -qt-libpng -qt-libjpeg -qt-zlib -qt-pcre -schannel -opengl desktop -platform win32-g++"
 
